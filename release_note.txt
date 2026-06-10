@@ -1,7 +1,9 @@
-# 🇨🇳 ocgt v2.0.0 - 重大更新版本发布
+# 🇨🇳 ocgt v2.0.3 - Bug 修复版本
 
-本次 2.0.0 版本包含全面的系统升级，完整的 MD 文档更新与最新的控制面板截图。
-支持多系统（由于环境限制，本次预编译版本仅提供 Windows 原生支持）。
-- 移除了旧版的 AI 生成界面截图，全面替换为最新的实机截图。
-- 同步最新的 OpenCode Go 工作流。
-- 更多底层稳定性改进。
+本次更新重点修复费用估算双重计费问题，以及其他数据准确性修复。
+- 修复 EstimateCost 缓存读取双重计费（严重）
+- 修复 extractUsageFromAnthropicStream 缺 message_start 字段
+- 修复重试记录导致请求次数虚高
+- 修复模型缓存命中率误含写入
+- 修复流式 message_delta 缺 input_tokens
+- 更新 README 已知限制说明

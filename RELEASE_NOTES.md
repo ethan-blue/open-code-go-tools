@@ -1,28 +1,34 @@
 # Release Notes - v2.0.0
 
 ## 🌐 语言选择 / Language
-* [简体中文 (Simplified Chinese)](#-ocgt-v200---v2.0.0 版本说明 (Release Notes))
-* [English](#-ocgt-v200---major-update-release)
+* [简体中文 (Simplified Chinese)](#-ocgt-v203---v203-版本说明)
+* [English](#-ocgt-v203---release-notes)
 
 ---
 
-# 🇨🇳 ocgt v2.0.0 - v2.0.0 版本说明 (Release Notes)
+# 🇨🇳 ocgt v2.0.3 - v2.0.3 版本说明
 
-本次更新主要包括多平台构建支持、增加 Qwen3.7 模型、修复 Token 统计以及界面截图的同步更新。
-支持多系统（Windows, macOS, Linux）架构。
-- 更新了文档中的控制面板截图。
-- 同步最新的 OpenCode Go 工作流。
-- 修复了若干代理服务的稳定性问题。
+## 修复
+
+- **费用估算双重计费（严重）**：`EstimateCost` 对缓存读取的 tokens 既按全价计费又按缓存价计费，导致有缓存的请求费用虚高约 2-23 倍。修复后费用估算恢复正常值
+- **`extractUsageFromAnthropicStream` 缺字段**：该函数只解析 `message_delta` 事件中的 usage，遗漏了 `message_start` 中的 `input_tokens` / `cache_creation_input_tokens` / `cache_read_input_tokens`。修复后走 Anthropic 原生流式的请求可正确记录 input 和 cache 字段
+- **重试导致请求次数虚高**：每次重试失败都写入历史记录，导致 1 次用户请求在统计中最多被计为 6 次。修复后仅在最终失败或成功时记录一次
+- **`modelBreakdown` 缓存命中率误含写入**：命中率分子使用了 `CacheRead + CacheCreation`，修复后只使用 `CacheRead`
+- **流式 `message_delta` 缺 `input_tokens`**：OpenAI → Anthropic 协议转换的合成 `message_delta` 未包含 `input_tokens`，下游客户端无法获取真实 input_tokens。修复后补全
+- **README 已知限制过时**：原说明称 cache 字段始终为 0，现已支持
 
 ---
 
-# 🇺🇸 ocgt v2.0.0 - Release Notes for v2.0.0
+# 🇺🇸 ocgt v2.0.3 - Release Notes
 
-This update introduces multi-platform builds, adds the Qwen3.7 model, fixes token usage stats, and updates interface screenshots.
-Supports multi-OS (Windows, macOS, Linux) architectures.
-- Updated control panel screenshots in the documentation.
-- Synced with the newest OpenCode Go workflow.
-- Fixed proxy service stability issues.
+## Fixes
+
+- **Cost double-counting (critical)**: `EstimateCost` billed cache read tokens at both full input price and cache read price, inflating costs by 2-23x for cached requests. Fixed
+- **`extractUsageFromAnthropicStream` missing fields**: Only parsed `message_delta` events, missing `input_tokens`/cache fields from `message_start`. Fixed
+- **Retry entries inflating request count**: Each failed retry created a history entry, counting 1 user request as up to 6. Fixed
+- **`modelBreakdown` cache hit rate included writes**: Used `CacheRead + CacheCreation` as numerator. Fixed to use `CacheRead` only
+- **Streaming `message_delta` missing `input_tokens`**: OpenAI→Anthropic conversion didn't include real `input_tokens`. Fixed
+- **Outdated README limitations**: Cache fields are now supported
 
 ---
 

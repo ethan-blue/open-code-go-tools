@@ -29,3 +29,13 @@
 - **原因:** 已知限制中关于 cache 字段的说明已过时（现已支持 OpenAI 路径的 cache 捕获）；项目描述可更精炼；构建命令修正
 - **决策:** 删除过时的"cache 始终为 0"限制，改为缓存统计依赖上游；费用说明改为"基于官方预估定价表，与官方账单可能有出入，仅供参考"；构建命令从 build.bat 改为 wails build
 - **影响范围:** 仅 README.md
+
+## 2026-06-10 16:00: 版本号更新 v0.2.2 → v0.2.3 + 发布说明更新
+- **文件:**
+  - `internal/version/version.go` — 0.2.2 → 0.2.3
+  - `wails.json` — productVersion 2.0.2 → 2.0.3
+  - `frontend/app.js` — APP_VERSION v2.0.2 → v2.0.3
+  - `RELEASE_NOTES.md` — 新增 v2.0.3 中英文发布说明（修复清单）
+  - `RELEASE_NOTE.txt` — 更新为 v2.0.3
+- **原因:** 本次会话完成了多项 Bug 修复，需标记版本并更新发布说明
+- **影响范围:** 仅版本号和文档

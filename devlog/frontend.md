@@ -203,3 +203,7 @@
 - **文件:** `frontend/style.css`, `frontend/traffic.js`
 - **原因:** `td-btn-sm` 类在 HTML 中使用但未定义 CSS；切换时间范围后模型筛选可能残留无效值
 - **决策:** 新增 `.td-btn-sm` 样式规则；`updateModelFilterOptions` 在模型不在新数据中时自动重置筛选
+
+## 2026-06-10 16:00: 版本号同步更新 v2.0.2 → v2.0.3
+- **文件:** `frontend/app.js` — APP_VERSION 更新
+- **原因:** 后端版本号升级后前端同步更新显示版本号

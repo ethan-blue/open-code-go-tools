@@ -1,4 +1,4 @@
-const APP_VERSION = 'v2.0.2';
+const APP_VERSION = 'v2.0.3';
 const DEFAULT_CLOSE_BEHAVIOR = 'prompt';
 const CLOSE_BEHAVIORS = new Set(['prompt', 'minimize', 'exit']);
 const ALLOWED_THINKING_BUDGETS = ['256', '512', '1024', '2048', '-1'];

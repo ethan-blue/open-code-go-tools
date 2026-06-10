@@ -23,3 +23,9 @@
 - **原因:** 后端 proxy 启动失败 goroutine 静默退出，前端完全不知情
 - **决策:** `startup()` goroutine 中所有错误路径调用 `wailsruntime.EventsEmit` 发 `proxy-error` 事件
 - **影响范围:** 启动失败时前端能立即看到具体错误原因
+
+## 2026-06-10 15:20: 更新 README 描述和已知限制
+- **文件:** `README.md`
+- **原因:** 已知限制中关于 cache 字段的说明已过时（现已支持 OpenAI 路径的 cache 捕获）；项目描述可更精炼；构建命令修正
+- **决策:** 删除过时的"cache 始终为 0"限制，改为缓存统计依赖上游；费用说明改为"基于官方预估定价表，与官方账单可能有出入，仅供参考"；构建命令从 build.bat 改为 wails build
+- **影响范围:** 仅 README.md

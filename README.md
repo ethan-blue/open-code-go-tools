@@ -1,8 +1,8 @@
 # ocgt — Claude Code 原生 GUI 控制面板与代理
 
-> 🌐 **[English Version](docs/README.en-US.md)**
+`ocgt`（OpenCode Go Tools）是 **Claude Code** 的桌面控制面板，提供流量监控、套餐额度看板、配置管理和一键终端启动等功能。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），中英双语 GUI。
 
-`ocgt`（OpenCode Go Tools）是专为 **Claude Code** 与 **OpenCode Go**（opencode.ai）定制的原生桌面控制中心。内置超低延迟本地代理（Anthropic ↔ OpenAI Chat Completions 协议互转），提供中英双语 GUI，支持一键终端启动、流量监控与套餐额度看板。
+> 🌐 **[English Version](docs/README.en-US.md)**
 
 ---
 
@@ -99,19 +99,19 @@ ocgt version    # 查看版本
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
 wails dev          # 开发模式
-.\build.bat        # 生产构建
+wails build        # 生产构建
 ```
 
 ---
 
 ## ⚠️ 已知限制
 
-通过 ocgt 代理时，`used_percentage` 和 usage 统计可能不准确：
+通过 ocgt 代理时，`used_percentage` 和 usage 统计可能存在偏差：
 
-1. **协议差异**：OpenAI Chat Completions API 不支持 Anthropic 的 prompt caching 字段（`cache_creation_input_tokens` / `cache_read_input_tokens` 始终为 0）
-2. **上游限制**：非 Anthropic 模型（kimi/deepseek/qwen 等）不返回 prompt caching 数据
+1. **缓存统计依赖上游**：DeepSeek/Qwen 等通过 `prompt_tokens_details.cached_tokens` 返回缓存数据；部分上游可能不返回
+2. **费用为估算值**：基于 go 的官方预估定价表计算，但或许与 OpenCode Go 官方账单有出入，仅供参考
 
-**这不是 bug，而是架构限制。**
+**以上为架构限制，非程序 Bug。**
 
 ---
 

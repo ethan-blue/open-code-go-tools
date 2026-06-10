@@ -412,20 +412,21 @@ func dailyTrend(entries []requestLogEntry, days int, granularity string) []Daily
 }
 
 func modelBreakdown(entries []requestLogEntry) []ModelStat {
-	modelMap := make(map[string]*ModelStat)
+	modelMap := make(map[string]*modelBreakdownAccum)
 	for _, e := range entries {
 		model := e.Model
 		if model == "" {
 			model = "unknown"
 		}
 		if _, ok := modelMap[model]; !ok {
-			modelMap[model] = &ModelStat{Name: model}
+			modelMap[model] = &modelBreakdownAccum{Name: model}
 		}
 		ms := modelMap[model]
 		ms.Requests++
 		ms.InputTokens += int64(e.InputTokens)
 		ms.OutputTokens += int64(e.OutputTokens)
-		ms.CacheTokens += int64(e.CacheReadTokens + e.CacheCreationTokens)
+		ms.CacheReadTokens += int64(e.CacheReadTokens)
+		ms.CacheCreationTokens += int64(e.CacheCreationTokens)
 		ms.TotalTokens += int64(e.TotalTokens)
 		ms.Cost += pricing.EstimateCost(model, e.InputTokens, e.OutputTokens, e.CacheReadTokens, e.CacheCreationTokens)
 	}
@@ -436,18 +437,42 @@ func modelBreakdown(entries []requestLogEntry) []ModelStat {
 	}
 	var result []ModelStat
 	for _, ms := range modelMap {
+		pct := 0.0
 		if totalTokens > 0 {
-			ms.Pct = float64(ms.TotalTokens) / totalTokens * 100
+			pct = float64(ms.TotalTokens) / totalTokens * 100
+		}
+		cacheHitRate := 0.0
 		if ms.InputTokens > 0 {
-			ms.CacheHitRate = float64(ms.CacheTokens) / float64(ms.InputTokens) * 100
+			cacheHitRate = float64(ms.CacheReadTokens) / float64(ms.InputTokens) * 100
 		}
-		}
-		result = append(result, *ms)
+		result = append(result, ModelStat{
+			Name:        ms.Name,
+			Requests:    ms.Requests,
+			InputTokens: ms.InputTokens,
+			OutputTokens: ms.OutputTokens,
+			CacheTokens: ms.CacheReadTokens + ms.CacheCreationTokens,
+			TotalTokens: ms.TotalTokens,
+			Cost:        ms.Cost,
+			Pct:         pct,
+			CacheHitRate: cacheHitRate,
+		})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].TotalTokens > result[j].TotalTokens
 	})
 	return result
+}
+
+// modelBreakdownAccum 是 modelBreakdown 内部使用的累加器
+type modelBreakdownAccum struct {
+	Name              string
+	Requests          int
+	InputTokens       int64
+	OutputTokens      int64
+	CacheReadTokens   int64
+	CacheCreationTokens int64
+	TotalTokens       int64
+	Cost              float64
 }
 
 func parseDurationFloat(str string) float64 {

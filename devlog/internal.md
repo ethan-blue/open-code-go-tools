@@ -199,4 +199,19 @@
   - 成功路径记录不变
   - TotalTokens 公式增加 `+ usage.CacheReadTokens`
   - 删除不实的去重注释
-- **影响范围:** 修复后 1 次用户请求不再因重试产生多条记录，请求次数统计恢复正常；TotalTokens 值增加 CacheReadTokens 部分（之前被遗漏）
+- **影响范围:** 修复后 1 次用户请求不再因重试产生多条记录，请求次数统计恢复正常
+
+## 2026-06-10 14:50: 修复 EstimateCost 双重计费 + TotalTokens 回退 + 模型 Cache 命中率修正
+- **文件:**
+  - `internal/pricing/pricing.go` — EstimateCost 将 cacheReadTokens 从 inputTokens 中减去再计 input 价
+  - `internal/proxy/handler.go` — TotalTokens 回退为 `Input+Output+CacheCreation`（CacheRead 已包含在 Input 中）
+  - `internal/proxy/stats.go` — modelBreakdown 改用独立累加器，CacheHitRate 使用纯 CacheReadTokens
+- **根因:**
+  1. **EstimateCost 双重计费（严重）：** `input_tokens` 已包含 `cache_read_tokens`（后者是子集），但原来对全部 input 按全价计费，又对 cache_read 按缓存价计费，导致缓存读取部分被计了两次。以 deepseek-v4-flash 为例，输入价 $0.14、缓存价 $0.0028，有 cache 时费用虚高约 2x
+  2. **TotalTokens 多加了 CacheReadTokens：** 上一轮修复中错误地加入了 CacheReadTokens，但 InputTokens 已包含它。回退到 `Input+Output+CacheCreation`
+  3. **modelBreakdown 命中率不准：** 使用 `CacheRead + CacheCreation` 做分子计算命中率，创建（写入）不应计入命中
+- **决策:**
+  - EstimateCost: `nonCacheInput = inputTokens - cacheReadTokens` 后按全价计，cacheReadTokens 单独按缓存价计
+  - TotalTokens: 回退到 `Input+Output+CacheCreation`（与 6-3 的修复一致）
+  - modelBreakdown: 新建 `modelBreakdownAccum` 结构体，分别累加 CacheRead 和 CacheCreation，命中率只用 CacheRead
+- **影响范围:** 费用估算降低（修复前有 cache 请求被虚高）；TotalTokens 恢复正确；模型表 Cache 命中率略微降低（之前误含 CacheCreation）

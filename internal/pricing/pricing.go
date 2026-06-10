@@ -75,7 +75,13 @@ func EstimateCost(model string, inputTokens, outputTokens, cacheReadTokens, cach
 	if !ok {
 		price = ModelPrices["default"]
 	}
-	inputCost := (float64(inputTokens) / 1_000_000) * price.InputPricePer1M
+	// input_tokens 已包含 cache_read_tokens（后者是子集），
+	// 缓存读取部分应按缓存价而非全价计费，故从 input 中减去
+	nonCacheInput := inputTokens - cacheReadTokens
+	if nonCacheInput < 0 {
+		nonCacheInput = 0
+	}
+	inputCost := (float64(nonCacheInput) / 1_000_000) * price.InputPricePer1M
 	outputCost := (float64(outputTokens) / 1_000_000) * price.OutputPricePer1M
 	cacheReadCost := (float64(cacheReadTokens) / 1_000_000) * price.CacheReadPricePer1M
 	cacheWriteCost := (float64(cacheWriteTokens) / 1_000_000) * price.CacheWritePricePer1M

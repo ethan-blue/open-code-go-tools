@@ -1159,7 +1159,7 @@ func (s *Server) addHistoryEntryWithUsageAndError(method, path string, status in
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationTokens,
 		CacheReadTokens:     usage.CacheReadTokens,
-		TotalTokens:         usage.InputTokens + usage.OutputTokens + usage.CacheCreationTokens + usage.CacheReadTokens,
+		TotalTokens:         usage.InputTokens + usage.OutputTokens + usage.CacheCreationTokens,
 		Error:               errorText,
 	}
 	s.history = append([]requestLogEntry{entry}, s.history...) // prepend so newest is first

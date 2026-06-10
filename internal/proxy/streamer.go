@@ -215,6 +215,7 @@ func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string
 	closeCurrentBlock()
 
 	// Send final message delta with usage statistics
+	// input_tokens: 流中最后一个有 usage 的 chunk 的真实值（message_start 中是估算值）
 	sendSSE(w, "message_delta", map[string]any{
 		"type": "message_delta",
 		"delta": map[string]any{
@@ -222,6 +223,7 @@ func streamOpenAIAsAnthropic(w http.ResponseWriter, body io.Reader, model string
 			"stop_sequence": nil,
 		},
 		"usage": map[string]int{
+			"input_tokens":                inputTokens,
 			"output_tokens":               outputTokens,
 			"cache_creation_input_tokens": cacheCreateTokens,
 			"cache_read_input_tokens":     cacheReadTokens,

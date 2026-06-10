@@ -215,3 +215,16 @@
   - TotalTokens: 回退到 `Input+Output+CacheCreation`（与 6-3 的修复一致）
   - modelBreakdown: 新建 `modelBreakdownAccum` 结构体，分别累加 CacheRead 和 CacheCreation，命中率只用 CacheRead
 - **影响范围:** 费用估算降低（修复前有 cache 请求被虚高）；TotalTokens 恢复正确；模型表 Cache 命中率略微降低（之前误含 CacheCreation）
+
+## 2026-06-10 15:45: 修复 extractUsageFromAnthropicStream 遗漏 message_start + 优化流式 message_delta 补全 input_tokens
+- **文件:**
+  - `internal/proxy/handler.go` — extractUsageFromAnthropicStream 增加 message_start 事件解析（input_tokens/cache 字段）
+  - `internal/proxy/streamer.go` — 合成 message_delta 增加 input_tokens 字段
+- **原因:**
+  1. **extractUsageFromAnthropicStream 缺字段：** 该函数只捕获 `message_delta` 事件，但 Anthropic 流式协议中 `input_tokens` / `cache_creation_input_tokens` / `cache_read_input_tokens` 在 `message_start.message.usage` 中（非 `message_delta.usage`），导致走 Anthropic 原生流式的请求丢失了 input 和 cache 字段
+  2. **流式 message_delta 缺 input_tokens：** `streamOpenAIAsAnthropic` 的合成 `message_delta` 只发了 output/cache 字段，下游客户端收不到真实 input_tokens
+- **决策:**
+  - extractUsageFromAnthropicStream 同时捕获 `message_start` 和 `message_delta`，按事件类型分别从 `message.usage`（嵌套）和 `usage`（顶层）解析
+  - streamOpenAIAsAnthropic 的 `message_delta` 增加 `input_tokens` 字段，值为流中最后 chunk 的真实 prompt_tokens（或估计值兜底）
+  - message_start 的 input_tokens 仍为估算值（流式特点决定无法在首帧发送真实值）
+- **影响范围:** Anthropic 原生流式请求的 input/cache 字段现在可被正确记录；下游客户端能通过 message_delta 拿到真实 input_tokens

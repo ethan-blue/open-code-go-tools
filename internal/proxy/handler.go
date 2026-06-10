@@ -659,9 +659,8 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 }
 
 // extractUsageFromAnthropicStream tees the upstream SSE response body,
-// streams it to the client, and simultaneously parses the final
-// message_delta event for usage statistics (input_tokens, output_tokens,
-// cache_creation_input_tokens, cache_read_input_tokens).
+// streams it to the client, and simultaneously parses usage statistics from
+// message_start (input_tokens, cache fields) and message_delta (output_tokens).
 func extractUsageFromAnthropicStream(w http.ResponseWriter, body io.Reader) tokenUsage {
 	var (
 		usage                                     tokenUsage
@@ -686,18 +685,29 @@ func extractUsageFromAnthropicStream(w http.ResponseWriter, body io.Reader) toke
 				if capturing {
 					var payload map[string]any
 					if json.Unmarshal([]byte(lineBuf.String()), &payload) == nil {
+						// message_start: usage 在 message.usage 中（input_tokens / cache_*）
+						if t, _ := payload["type"].(string); t == "message_start" {
+							if msg, ok := payload["message"].(map[string]any); ok {
+								if u, ok := msg["usage"].(map[string]any); ok {
+									if v, ok := u["input_tokens"].(float64); ok {
+										usage.InputTokens = int(v)
+									}
+									if v, ok := u["cache_creation_input_tokens"].(float64); ok {
+										usage.CacheCreationTokens = int(v)
+									}
+									if v, ok := u["cache_read_input_tokens"].(float64); ok {
+										usage.CacheReadTokens = int(v)
+									}
+								}
+							}
+						}
+						// message_delta: usage 在顶层（output_tokens / 可能含 input_tokens）
 						if u, ok := payload["usage"].(map[string]any); ok {
 							if v, ok := u["input_tokens"].(float64); ok {
 								usage.InputTokens = int(v)
 							}
 							if v, ok := u["output_tokens"].(float64); ok {
 								usage.OutputTokens = int(v)
-							}
-							if v, ok := u["cache_creation_input_tokens"].(float64); ok {
-								usage.CacheCreationTokens = int(v)
-							}
-							if v, ok := u["cache_read_input_tokens"].(float64); ok {
-								usage.CacheReadTokens = int(v)
 							}
 						}
 					}
@@ -709,7 +719,7 @@ func extractUsageFromAnthropicStream(w http.ResponseWriter, body io.Reader) toke
 			continue
 		}
 
-		if strings.HasPrefix(line, "event: message_delta") {
+		if strings.HasPrefix(line, "event: message_start") || strings.HasPrefix(line, "event: message_delta") {
 			inEvent = true
 			capturing = true
 		}

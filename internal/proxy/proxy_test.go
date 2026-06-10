@@ -622,9 +622,9 @@ func TestUpstreamErrorHistoryIncludesReason(t *testing.T) {
 	if rr.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", rr.Code)
 	}
-	// 6 retry attempts → 6 history entries, newest first
-	if len(srv.history) != 6 {
-		t.Fatalf("history len = %d (expected 6 for 6 retry attempts)", len(srv.history))
+	// 6次重试耗尽 → 只记录1条最终错误（不再为每次重试分别记录）
+	if len(srv.history) != 1 {
+		t.Fatalf("history len = %d (expected 1 for all retries exhausted, final log only)", len(srv.history))
 	}
 	if srv.history[0].Error != "upstream temporarily unavailable" {
 		t.Fatalf("history error = %q", srv.history[0].Error)

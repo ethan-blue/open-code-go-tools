@@ -558,7 +558,6 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			lastErr = err
 			lastStatus = proxyErrorStatus(err)
 			log.Printf("[Retry] Request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
-			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "messages", tokenUsage{Client: client}, err.Error())
 
 			if attempt < maxRetries {
 				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
@@ -566,6 +565,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 				time.Sleep(backoff)
 				continue
 			}
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "messages", tokenUsage{Client: client}, err.Error())
 			break
 		}
 
@@ -587,7 +587,6 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 			// 5xx or 429 → log and retry
 			log.Printf("[Retry] Model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
-			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "messages", tokenUsage{Client: client}, errText)
 
 			if attempt < maxRetries {
 				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
@@ -600,6 +599,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			lastErr = fmt.Errorf("upstream model %s returned status %d after %d retries: %s", model, resp.StatusCode, maxRetries+1, errText)
 			lastStatus = resp.StatusCode
 			lastBody = respBody
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "messages", tokenUsage{Client: client}, errText)
 			break
 		}
 
@@ -772,7 +772,6 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 			lastErr = err
 			lastStatus = proxyErrorStatus(err)
 			log.Printf("[Retry] Request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
-			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
 
 			if attempt < maxRetries {
 				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
@@ -780,6 +779,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 				time.Sleep(backoff)
 				continue
 			}
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
 			break
 		}
 
@@ -801,7 +801,6 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 
 			// 5xx or 429 → log and retry
 			log.Printf("[Retry] Model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
-			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions", tokenUsage{Client: client}, errText)
 
 			if attempt < maxRetries {
 				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
@@ -814,6 +813,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 			lastErr = fmt.Errorf("upstream model %s returned status %d after %d retries: %s", model, resp.StatusCode, maxRetries+1, errText)
 			lastStatus = resp.StatusCode
 			lastBody = respBody
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, lastStatus, duration, model, "chat/completions", tokenUsage{Client: client}, errText)
 			break
 		}
 
@@ -1159,7 +1159,7 @@ func (s *Server) addHistoryEntryWithUsageAndError(method, path string, status in
 		OutputTokens:        usage.OutputTokens,
 		CacheCreationTokens: usage.CacheCreationTokens,
 		CacheReadTokens:     usage.CacheReadTokens,
-		TotalTokens:         usage.InputTokens + usage.OutputTokens + usage.CacheCreationTokens,
+		TotalTokens:         usage.InputTokens + usage.OutputTokens + usage.CacheCreationTokens + usage.CacheReadTokens,
 		Error:               errorText,
 	}
 	s.history = append([]requestLogEntry{entry}, s.history...) // prepend so newest is first
@@ -1419,7 +1419,7 @@ func (s *Server) apiHistory(w http.ResponseWriter, r *http.Request) {
 		memHist := s.history
 		s.historyMu.RUnlock()
 
-		// 再从 JSONL 文件读取（历史持久化），readJSONLLogs 内部有去重
+		// 再从 JSONL 文件读取（历史持久化）
 		fileEntries := s.readJSONLLogs(days)
 
 		// 合并两份数据：文件条目（已按时间倒序）+ 内存中新增的（文件可能没来得及写入的）

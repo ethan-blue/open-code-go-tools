@@ -184,3 +184,19 @@
 - **根因:** `apiHistory`（`/ocgt/api/history`）只读 `s.history` 内存环形缓冲区（最多 100 条），启动时 nil，只显示当前会话新产生的请求。而统计 API（`/summary`/`/trend`/`/models`）已使用 `readJSONLLogs()` 从持久化 JSONL 文件读取
 - **决策:** `apiHistory` 改为：先读 `readJSONLLogs(days)`（从 JSONL 持久日志读），再用内存中的新增条目补充去重，最后按时间倒序合并输出。与统计 API 保持一致的持久化策略
 - **影响范围:** 重启程序后流量明细 Tab 仍能显示历史日志数据
+
+## 2026-06-10 14:35: 修复价格和 Token 重复计算问题
+- **文件:**
+  - `internal/proxy/handler.go` — 重试循环不再记录历史（仅在最终失败或成功时记录）；TotalTokens 公式加入 CacheReadTokens
+  - `internal/proxy/proxy_test.go` — 适配 history 断言从 6 条改为 1 条
+- **根因:**
+  1. **请求次数虚高：** retry 循环中每次失败的重试都调用 `addHistoryEntryWithUsageAndError`，导致 1 次用户请求在 JSONL 中产生最多 6 条记录，stats 统计时全部计入 `TotalRequests++`
+  2. **TotalTokens 漏字段：** `handler.go:1162` 的 TotalTokens 公式 `Input + Output + CacheCreation` 漏了 `CacheReadTokens`
+  3. **注释误导：** `apiHistory` 注释声称 "readJSONLLogs 内部有去重"，实际该函数并无去重逻辑
+- **决策:**
+  - 重试失败改为仅在最后一次尝试（break 前）写入历史，中间的重试尝试不记录
+  - 4xx 非 429 的即时返回仍保留单次记录（正确）
+  - 成功路径记录不变
+  - TotalTokens 公式增加 `+ usage.CacheReadTokens`
+  - 删除不实的去重注释
+- **影响范围:** 修复后 1 次用户请求不再因重试产生多条记录，请求次数统计恢复正常；TotalTokens 值增加 CacheReadTokens 部分（之前被遗漏）

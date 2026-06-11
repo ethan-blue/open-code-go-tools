@@ -178,10 +178,7 @@ log.Printf("[stats] readJSONLLogs: reading %q, found %d files, cutoff %s", dir, 
 		return allEntries[i].Time.After(allEntries[j].Time)
 	})
 
-	// 限制返回最多 10000 条，避免内存爆炸
-	if len(allEntries) > 10000 {
-		allEntries = allEntries[:10000]
-	}
+		// 不限制返回条数，全量数据返回给前端做本地筛选和分页
 
 	// Fallback: 如果 JSONL 文件没有数据（日志未启用或目录不存在），
 	// 从内存历史记录读取，确保 stats API 总有数据可返回

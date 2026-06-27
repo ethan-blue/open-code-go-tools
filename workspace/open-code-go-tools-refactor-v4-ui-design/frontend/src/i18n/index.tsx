@@ -431,6 +431,18 @@ const zh = {
   td_sse_not_available: 'SSE 数据不可用',
   td_upstream_label: '上游',
   toast_sync_models_success: '模型同步成功',
+  config_presets_title: '配置预设',
+  config_presets_desc: '快速应用常用配置方案',
+  config_preset_use: '应用',
+  onboarding_welcome: '欢迎使用 OCGT',
+  onboarding_step0_title: '系统检测',
+  onboarding_detecting: '正在检测系统环境...',
+  td_wf_dns: 'DNS 解析',
+  td_wf_connect: '建立连接',
+  td_wf_tls: 'TLS 握手',
+  td_wf_send: '发送请求',
+  td_wf_wait: '等待响应',
+  td_wf_receive: '接收数据',
 }
 
 type Dict = typeof zh
@@ -867,6 +879,18 @@ const en: Dict = {
   td_sse_not_available: 'SSE data not available',
   td_upstream_label: 'Upstream',
   toast_sync_models_success: 'Models synced successfully',
+  config_presets_title: 'Config Presets',
+  config_presets_desc: 'Quickly apply common configuration profiles',
+  config_preset_use: 'Apply',
+  onboarding_welcome: 'Welcome to OCGT',
+  onboarding_step0_title: 'System Detection',
+  onboarding_detecting: 'Detecting system environment...',
+  td_wf_dns: 'DNS Resolution',
+  td_wf_connect: 'Connecting',
+  td_wf_tls: 'TLS Handshake',
+  td_wf_send: 'Send Request',
+  td_wf_wait: 'Waiting',
+  td_wf_receive: 'Receiving',
 }
 
 const dicts = { zh, en }

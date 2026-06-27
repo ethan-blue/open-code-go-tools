@@ -47,7 +47,8 @@ type Config struct {
 	RateLimitBurst          int                `json:"rate_limit_burst,omitempty"`        // Rate limit: max burst size per IP
 	RateLimitPerMinute      int                `json:"rate_limit_per_minute,omitempty"`   // Quota protection: max requests per minute (0 = unlimited)
 	ClaudeEnv               map[string]string  `json:"claude_env,omitempty"`              // User-editable Claude Code env template
-	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
+	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
+	AuthEnabled             bool               `json:"auth_enabled,omitempty"`            // Whether local auth token is enabled for proxy access
 }
 
 // Profile holds configuration for a specific API backend.

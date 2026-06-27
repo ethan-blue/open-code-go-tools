@@ -114,6 +114,18 @@ export function SaveUIPreferences(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['SaveUIPreferences'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function SetAuthEnabled(arg1) {
+  return window['go']['main']['App']['SetAuthEnabled'](arg1);
+}
+
+export function SavePlugins(arg1) {
+  return window['go']['main']['App']['SavePlugins'](arg1);
+}
+
+export function TestUpstreamConnection(arg1, arg2) {
+  return window['go']['main']['App']['TestUpstreamConnection'](arg1, arg2);
+}
+
 export function SetupClaudeDesktop() {
   return window['go']['main']['App']['SetupClaudeDesktop']();
 }

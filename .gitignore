@@ -1,1 +1,4 @@
 .omx/
+node_modules/
+*.exe
+settings.json

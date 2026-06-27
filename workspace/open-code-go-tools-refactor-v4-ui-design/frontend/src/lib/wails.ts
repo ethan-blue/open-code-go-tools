@@ -65,6 +65,7 @@ export const wails = {
   TestUpstreamConnection: (upstream: string, apiKey: string) => callWails<Record<string, any>>('TestUpstreamConnection', upstream, apiKey),
   GetPreferences: () => callWails<Record<string, string>>('GetPreferences'),
   SavePreferences: (closeBehavior: string) => callWails<string>('SavePreferences', closeBehavior),
+  SavePlugins: (pluginsJSON: string) => callWails<string>('SavePlugins', pluginsJSON),
   SaveUIPreferences: (theme: string, language: string, accentHue: number, lastView: string, compactShell: string, expandedIntegrationsJSON: string) =>
     callWails<string>('SaveUIPreferences', theme, language, accentHue, lastView, compactShell, expandedIntegrationsJSON),
   SaveLogPreferences: (enabled: boolean, dir: string, retention: number) =>

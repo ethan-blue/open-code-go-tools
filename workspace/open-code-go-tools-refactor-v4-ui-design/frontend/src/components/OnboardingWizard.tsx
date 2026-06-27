@@ -67,7 +67,7 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
   const handleFinish = async () => {
     setSaving(true)
     try {
-      const res = await wails.SaveProfileConfig('opencode-go', apiKey, defaultModel, sonnetAlias, haikuAlias, opusAlias, '300', '2048', '127.0.0.1:8787', upstream, '0', '0', '0', '{}', '', '')
+      const res = await wails.SaveProfileConfig('default', apiKey, defaultModel, sonnetAlias, haikuAlias, opusAlias, '300', '2048', '127.0.0.1:8787', upstream, '0', '0', '0', '{}', '', '')
       if (res !== 'success') throw new Error(res)
       if (installCli) await wails.InstallClaudeUserEnv().catch(() => {})
       if (installVscode) await wails.InstallVSCodeEnv().catch(() => {})
@@ -141,6 +141,17 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
           )}
           {step === 2 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p className="muted tiny" style={{ marginBottom: 8 }}>{(t as any)('onboarding_step2_desc') || t('onboarding_step3_desc')}</p>
+              <div style={{ padding: 16, borderRadius: 8, border: '1px solid var(--line)', background: 'var(--surface)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div><p className="muted tiny">Upstream</p><p style={{ fontSize: 13, fontWeight: 500 }}>{upstream || 'default'}</p></div>
+                  <div><p className="muted tiny">Model</p><p style={{ fontSize: 13, fontWeight: 500 }}>{defaultModel || 'auto'}</p></div>
+                </div>
+              </div>
+            </div>
+          )}
+          {step === 3 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <p className="muted tiny" style={{ marginBottom: 8 }}>{t('onboarding_step3_desc')}</p>
               {[
                 { id: 'cli', label: t('int_sys_title'), desc: '~/.claude/settings.json', checked: installCli, set: setInstallCli },
@@ -161,7 +172,7 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
           <button className="btn btn-sm btn-ghost" onClick={() => step > 0 ? setStep(step - 1) : onClose()} disabled={saving}>
             {step > 0 ? <><ArrowLeft width={13} height={13} /> {t('td_prev')}</> : t('about_close')}
           </button>
-          {step < 2 ? (
+          {step < 3 ? (
             <button className="btn btn-sm btn-primary" onClick={() => setStep(step + 1)}>
               {t('td_next')} <ArrowRight width={13} height={13} />
             </button>

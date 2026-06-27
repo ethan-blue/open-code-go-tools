@@ -35,3 +35,4 @@ frontend/111111/
 
 # Python helper scripts
 *.py
+node_modules/

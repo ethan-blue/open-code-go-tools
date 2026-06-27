@@ -51,6 +51,22 @@ interface ModelsData {
   }[]
 }
 
+interface HistoryEntry {
+  id: string
+  time: string
+  method: string
+  path: string
+  status: number
+  duration: string
+  model: string
+  route: string
+  client?: string
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  error?: string
+}
+
 // ── Area Chart ──────────────────────────────────────────────────────────
 
 function AreaChart({ data }: { data: TrendData['daily'] }) {
@@ -210,6 +226,7 @@ export default function TrafficMonitor() {
   const [trend, setTrend] = useState<TrendData | null>(null)
   const [models, setModels] = useState<ModelsData | null>(null)
   const [reqPage, setReqPage] = useState(0)
+  const [recentRequests, setRecentRequests] = useState<HistoryEntry[]>([])
 
   useEffect(() => { load() }, [range])
 
@@ -223,6 +240,11 @@ export default function TrafficMonitor() {
         apiGet<ModelsData>(`/ocgt/api/stats/models?days=${days}`),
       ])
       setSummary(s); setTrend(tr); setModels(m)
+      // Fetch recent request history
+      try {
+        const hist = await apiGet<HistoryEntry[]>(`/ocgt/api/history?days=${days}`)
+        setRecentRequests(Array.isArray(hist) ? hist.slice(0, 50) : [])
+      } catch { setRecentRequests([]) }
     } catch {
       toast(t('toast_traffic_load_failed'), 'error')
       setSummary(null); setTrend(null); setModels(null)
@@ -255,11 +277,20 @@ export default function TrafficMonitor() {
     return t('tm_all')
   }
 
-  const recentRequests: { time: string; id: string; client: string; model: string; inp: number; out: number; latency: number; ok: boolean }[] = []
+  const mappedRequests = recentRequests.map(r => ({
+    time: typeof r.time === 'string' ? new Date(r.time).toLocaleTimeString() : '-',
+    id: r.id,
+    client: r.client || r.route || '-',
+    model: r.model || '-',
+    inp: r.input_tokens || 0,
+    out: r.output_tokens || 0,
+    latency: r.duration ? parseFloat(r.duration) || 0 : 0,
+    ok: r.status >= 200 && r.status < 300,
+  }))
 
-  const reqTotal = recentRequests.length
+  const reqTotal = mappedRequests.length
   const reqPages = Math.ceil(reqTotal / PAGE_SIZE)
-  const pageRows = recentRequests.slice(reqPage * PAGE_SIZE, (reqPage + 1) * PAGE_SIZE)
+  const pageRows = mappedRequests.slice(reqPage * PAGE_SIZE, (reqPage + 1) * PAGE_SIZE)
 
   return (
     <div id="page-traffic">

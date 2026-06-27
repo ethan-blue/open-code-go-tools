@@ -245,11 +245,23 @@ type anthropicErrorResponse struct {
 	Error anthropicError `json:"error"`
 }
 
-// OpenAI Responses API types (for Codex compatibility)
-type responsesRequest struct {
-	Model  string `json:"model"`
-	Input  any    `json:"input"` // string or array of input items
-	Stream bool   `json:"stream,omitempty"`
+// OpenAI Responses API types (for Codex compatibility)
+type responsesRequest struct {
+	Model           string        `json:"model"`
+	Input           any           `json:"input"` // string or array of input items
+	Stream          bool          `json:"stream,omitempty"`
+	Instructions    string        `json:"instructions,omitempty"`
+	Tools           []responsesTool `json:"tools,omitempty"`
+	Temperature     *float64      `json:"temperature,omitempty"`
+	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
+}
+
+// responsesTool represents a tool definition in the Responses API format.
+type responsesTool struct {
+	Type        string         `json:"type"`
+	Name        string         `json:"name,omitempty"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters,omitempty"`
 }
 
 type responsesResponse struct {

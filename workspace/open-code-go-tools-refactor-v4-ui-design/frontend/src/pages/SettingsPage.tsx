@@ -94,7 +94,7 @@ const THINKING_OPTIONS = [
    return saved ? parseInt(saved, 10) : 210
  })
  const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'zh')
- const [closeBehavior, setCloseBehavior] = useState(() => localStorage.getItem('close_behavior') || 'prompt')
+
  const [hubEnabled, setHubEnabled] = useState(false)
  const [hubUrl, setHubUrl] = useState('')
  const [hubSecret, setHubSecret] = useState('')
@@ -187,7 +187,7 @@ const THINKING_OPTIONS = [
       if (prefs.theme && ['light','dark','system'].includes(prefs.theme)) setTheme(prefs.theme as 'light' | 'dark' | 'system')
       if (prefs.accent_hue) setAccentHue(parseInt(prefs.accent_hue))
       if (prefs.language) setLanguage(prefs.language)
-      if (prefs.close_behavior) setCloseBehavior(prefs.close_behavior)
+      if (prefs.close_behavior) set('closeBehavior', prefs.close_behavior)
      }
     } catch { /* ignore */ }
 
@@ -444,15 +444,18 @@ const THINKING_OPTIONS = [
     await wails.SaveLogPreferences(form.logEnabled, form.logDir, parseInt(form.logRetention) || 7)
    }
 
-   // Save UI preferences (theme, accent, language, closeBehavior)
-   if (isWails()) {
-    await wails.SaveUIPreferences(theme, language, accentHue, localStorage.getItem('last-view') || 'dashboard', '', '').catch(() => {})
-    await wails.SavePreferences(closeBehavior).catch(() => {})
-    // Persist to localStorage as well for web fallback
-    localStorage.setItem('theme', theme)
-    localStorage.setItem('accent_hue', String(accentHue))
-    localStorage.setItem('language', language)
-    localStorage.setItem('close_behavior', closeBehavior)
+   // Persist plugins via dedicated Wails call
+   await wails.SavePlugins(JSON.stringify(form.plugins)).catch(() => {})
+
+   // Save UI preferences (theme, accent, language, closeBehavior)
+   if (isWails()) {
+    await wails.SaveUIPreferences(theme, language, accentHue, localStorage.getItem('last-view') || 'dashboard', '', '').catch(() => {})
+    await wails.SavePreferences(form.closeBehavior).catch(() => {})
+    // Persist to localStorage as well for web fallback
+    localStorage.setItem('theme', theme)
+    localStorage.setItem('accent_hue', String(accentHue))
+    localStorage.setItem('language', language)
+    localStorage.setItem('close_behavior', form.closeBehavior)
    }
 
    const next = { ...form, claudeEnvJSON: envJSON }

@@ -41,21 +41,7 @@ export function NetworkSection({ form, set, errors }: Props) {
             {errors.timeoutSeconds && <span className="hint" style={{ color: 'var(--danger)' }}>{errors.timeoutSeconds}</span>}
           </div>
         </div>
-        <div className="set-row">
-          <div className="label"><b>{t('sett_rate_limit_label')}</b><p>{t('sett_rate_limit_desc')}</p></div>
-          <div className="control">
-            <div className="row gap-3">
-              <div className="col">
-                <span className="hint">{t('sett_reqs_min')}</span>
-                <input className="input" value={form.rateLimitPerMinute} onChange={(e) => set('rateLimitPerMinute', e.target.value)} style={{ width: 100 }} />
-              </div>
-              <div className="col">
-                <span className="hint">{t('sett_rate_burst')}</span>
-                <input className="input" value={form.rateLimitBurst} onChange={(e) => set('rateLimitBurst', e.target.value)} style={{ width: 100 }} />
-              </div>
-            </div>
-          </div>
-        </div>
+
       </div>
     </section>
   )

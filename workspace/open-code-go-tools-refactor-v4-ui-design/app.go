@@ -419,7 +419,135 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 		a.srv.ApplyConfig(cfg)
 	}
 	if errStr := a.SyncConfiguredIntegrations(); errStr != "success" {
+
 		return errStr
+
+	}
+
+
+
+	return "success"
+
+}
+
+
+
+// SetAuthEnabled enables or disables local auth token for proxy access.
+
+// When enabled, generates a new local auth token if one doesn't exist.
+
+// When disabled, clears the local auth token.
+
+func (a *App) SetAuthEnabled(enabled bool) string {
+
+	// 1. Resolve path
+
+	path, err := config.DefaultPath()
+
+	if err != nil {
+
+		return "resolve path error: " + err.Error()
+
+	}
+
+
+
+	// 2. Load config
+
+	cfg, err := config.Load(path)
+
+	if err != nil {
+
+		return "load error: " + err.Error()
+
+	}
+
+
+
+	// 3. Update auth enabled state
+
+	cfg.AuthEnabled = enabled
+
+
+
+	// 4. Generate or clear token based on enabled state
+
+	if enabled {
+
+		// Generate token if empty
+
+		if strings.TrimSpace(cfg.LocalAuthToken) == "" {
+
+			token, err := generateLocalAuthToken()
+
+			if err != nil {
+
+				return "token generation error: " + err.Error()
+
+			}
+
+			cfg.LocalAuthToken = token
+
+		}
+
+	} else {
+
+		// Clear token when disabled
+
+		cfg.LocalAuthToken = ""
+
+	}
+
+
+
+	// 5. Save config
+
+	if err := cfg.Save(path); err != nil {
+
+		return "save error: " + err.Error()
+
+	}
+
+
+
+	// 6. Update server config in-memory if running
+
+	if a.srv != nil {
+
+		a.srv.ApplyConfig(cfg)
+
+	}
+
+
+
+	return "success"
+}
+
+// SavePlugins persists the plugins enabled/disabled map to config.json.
+func (a *App) SavePlugins(pluginsJSON string) string {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return "resolve path error: " + err.Error()
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		return "load error: " + err.Error()
+	}
+
+	var plugins map[string]bool
+	if err := json.Unmarshal([]byte(pluginsJSON), &plugins); err != nil {
+		return "parse error: " + err.Error()
+	}
+
+	cfg.Plugins = plugins
+
+	if err := cfg.Save(path); err != nil {
+		return "save error: " + err.Error()
+	}
+
+	if a.srv != nil {
+		a.srv.ApplyConfig(cfg)
 	}
 
 	return "success"
@@ -1229,7 +1357,74 @@ func (a *App) FetchUpstreamModels() map[string]any {
 		return map[string]any{"success": false, "error": err.Error()}
 	}
 	return map[string]any{"success": true, "data": data}
+
 }
+
+
+
+// TestUpstreamConnection tests connectivity to an upstream URL with the provided API key.
+
+// Returns a result with success status, message, and latency in milliseconds.
+
+func (a *App) TestUpstreamConnection(upstream, apiKey string) map[string]any {
+
+	if a.srv == nil {
+
+		return map[string]any{"success": false, "message": "proxy server not started", "latencyMs": 0}
+
+	}
+
+
+
+	start := time.Now()
+
+	result, err := a.srv.TestConnection(context.Background(), upstream, apiKey)
+
+	latencyMs := time.Since(start).Milliseconds()
+
+
+
+	if err != nil {
+
+		return map[string]any{
+
+			"success":   false,
+
+			"message":   err.Error(),
+
+			"latencyMs": latencyMs,
+
+		}
+
+	}
+
+
+
+	// Extract model count for success message
+
+	models, _ := result["models"].([]any)
+
+	modelCount := len(models)
+
+	message := fmt.Sprintf("Connection successful. %d models available.", modelCount)
+
+
+
+	return map[string]any{
+
+		"success":   true,
+
+		"message":   message,
+
+		"latencyMs": latencyMs,
+
+		"data":      result,
+
+	}
+
+}
+
+
 
 // resolveQuotaCredentials resolves quota credentials from config or env vars.
 // Priority: Profile.QuotaCookie/QuotaWorkspaceID → env vars.

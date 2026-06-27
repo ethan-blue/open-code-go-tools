@@ -70,7 +70,7 @@ jobs:
           - os: windows-latest
             platform: windows/amd64
           - os: macos-latest
-            platform: darwin/universal
+            platform: darwin/amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4

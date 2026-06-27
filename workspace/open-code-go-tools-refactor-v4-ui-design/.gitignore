@@ -1,0 +1,37 @@
+# 构建产物
+*.exe
+*.zip
+*.msi
+build/bin/
+dist/
+/tmp/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 设计文档（非项目代码）
+分析报告-数据计算准确性.html
+设计文档-流量监控页UI方案.html
+设计文档-流量监控页优化方案.html
+
+# IDE / OS artifacts
+.alma-snapshots/
+.claude/
+nul
+settings.json
+
+# Node.js
+node_modules/
+
+# Frontend build artifacts
+frontend/dist/
+
+# Build hashes
+*.md5
+
+# Temp/junk dirs
+frontend/111111/
+
+# Python helper scripts
+*.py

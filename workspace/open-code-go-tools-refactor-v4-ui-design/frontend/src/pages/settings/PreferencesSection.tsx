@@ -17,9 +17,11 @@ interface Props {
   setTheme: (v: 'light' | 'dark' | 'system') => void
   accentHue: number
   setAccentHue: (v: number) => void
+  language: string
+  setLanguage: (v: string) => void
 }
 
-export function PreferencesSection({ form, set, theme, setTheme, accentHue, setAccentHue }: Props) {
+export function PreferencesSection({ form, set, theme, setTheme, accentHue, setAccentHue, language, setLanguage }: Props) {
   const { t } = useI18n()
 
   return (
@@ -72,6 +74,15 @@ export function PreferencesSection({ form, set, theme, setTheme, accentHue, setA
               <input className="input" value={form.logDir} onChange={(e) => set('logDir', e.target.value)} placeholder="~/.config/ocgt/logs" style={{ width: 200 }} />
               <button className="btn btn-sm btn-ghost" onClick={async () => { if (isWails()) await wails.OpenLogLocation().catch(() => {}) }}>{t('btn_open_log_dir')}</button>
             </div>
+          </div>
+        </div>
+        <div className="set-row">
+          <div className="label"><b>{t('sett_language') || 'Language'}</b><p>{t('sett_language_desc') || 'Interface language'}</p></div>
+          <div className="control">
+            <select className="select" value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: 120 }}>
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
           </div>
         </div>
         <div className="set-row">

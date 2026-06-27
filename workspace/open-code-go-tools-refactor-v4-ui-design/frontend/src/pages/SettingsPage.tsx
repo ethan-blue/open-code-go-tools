@@ -444,18 +444,30 @@ const THINKING_OPTIONS = [
     await wails.SaveLogPreferences(form.logEnabled, form.logDir, parseInt(form.logRetention) || 7)
    }
 
-   // Persist plugins via dedicated Wails call
-   await wails.SavePlugins(JSON.stringify(form.plugins)).catch(() => {})
-
-   // Save UI preferences (theme, accent, language, closeBehavior)
-   if (isWails()) {
-    await wails.SaveUIPreferences(theme, language, accentHue, localStorage.getItem('last-view') || 'dashboard', '', '').catch(() => {})
-    await wails.SavePreferences(form.closeBehavior).catch(() => {})
-    // Persist to localStorage as well for web fallback
-    localStorage.setItem('theme', theme)
-    localStorage.setItem('accent_hue', String(accentHue))
-    localStorage.setItem('language', language)
-    localStorage.setItem('close_behavior', form.closeBehavior)
+   // Persist plugins via dedicated Wails call
+
+   await wails.SavePlugins(JSON.stringify(form.plugins)).catch(() => {})
+
+
+
+   // Save UI preferences (theme, accent, language, closeBehavior)
+
+   if (isWails()) {
+
+    await wails.SaveUIPreferences(theme, language, accentHue, localStorage.getItem('last-view') || 'dashboard', '', '').catch(() => {})
+
+    await wails.SavePreferences(form.closeBehavior).catch(() => {})
+
+    // Persist to localStorage as well for web fallback
+
+    localStorage.setItem('theme', theme)
+
+    localStorage.setItem('accent_hue', String(accentHue))
+
+    localStorage.setItem('language', language)
+
+    localStorage.setItem('close_behavior', form.closeBehavior)
+
    }
 
    const next = { ...form, claudeEnvJSON: envJSON }
@@ -551,7 +563,7 @@ const THINKING_OPTIONS = [
      <EnvironmentSection form={form} set={set} errors={errors} />
 
      {/* ─── 05 Preferences ─── */}
-     <PreferencesSection form={form} set={set} theme={theme} setTheme={setTheme} accentHue={accentHue} setAccentHue={setAccentHue} />
+     <PreferencesSection form={form} set={set} theme={theme} setTheme={setTheme} accentHue={accentHue} setAccentHue={setAccentHue} language={language} setLanguage={setLanguage} />
 
      {/* ─── 06 Hub Sync ─── */}
      <HubSection hubEnabled={hubEnabled} setHubEnabled={setHubEnabled} hubUrl={hubUrl} setHubUrl={setHubUrl} hubSecret={hubSecret} setHubSecret={setHubSecret} hubDeviceName={hubDeviceName} setHubDeviceName={setHubDeviceName} hubInterval={hubInterval} setHubInterval={setHubInterval} />

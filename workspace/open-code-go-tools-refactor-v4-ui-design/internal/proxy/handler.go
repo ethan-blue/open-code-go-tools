@@ -54,6 +54,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/models", s.models)
 	mux.HandleFunc("/v1/messages/count_tokens", s.countTokens)
 	mux.HandleFunc("/v1/messages", s.messages)
+	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
 	mux.HandleFunc("/claude-desktop/v1/models", s.models)
 	mux.HandleFunc("/claude-desktop/v1/messages/count_tokens", s.countTokens)
 	mux.HandleFunc("/claude-desktop/v1/messages", s.messages)
@@ -1916,4 +1917,99 @@ func (s *Server) apiHubSync(w http.ResponseWriter, r *http.Request) {
 	}
 	s.HubClient.SyncNow()
 	writeJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+// chatCompletions handles OpenAI-compatible /v1/chat/completions requests (for Codex).
+func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
+		return
+	}
+	profile, _, err := s.profileFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if int64(len(data)) > MaxBodySize {
+		writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("request body too large (max %d bytes)", MaxBodySize))
+		return
+	}
+	var payload openAIRequest
+	if err := json.Unmarshal(data, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(payload.Model) == "" {
+		writeError(w, http.StatusBadRequest, errors.New("model is required"))
+		return
+	}
+	if len(payload.Messages) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New("messages must contain at least one message"))
+		return
+	}
+	payload.Model = profile.ResolveModel(payload.Model)
+
+	start := time.Now()
+	client := clientSourceFromRequest(r)
+
+	// Build upstream request
+	body, err := json.Marshal(payload)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), profile)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	resp, err := s.clientSnapshot().Do(req)
+	if err != nil {
+		duration := time.Since(start)
+		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, payload.Model, "chat/completions", tokenUsage{Client: client}, err.Error())
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	duration := time.Since(start)
+	if payload.Stream {
+		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)", tokenUsage{Client: client})
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(resp.StatusCode)
+		flusher, ok := w.(http.Flusher)
+		if ok {
+			buf := make([]byte, 4096)
+			for {
+				n, err := resp.Body.Read(buf)
+				if n > 0 {
+					w.Write(buf[:n])
+					flusher.Flush()
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
+	} else {
+		var result openAIResponse
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", tokenUsage{Client: client}, err.Error())
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		usage := tokenUsage{
+			Client:         client,
+			InputTokens:    result.Usage.PromptTokens,
+			OutputTokens:   result.Usage.CompletionTokens,
+		}
+		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", usage)
+		writeJSON(w, resp.StatusCode, result)
+	}
 }

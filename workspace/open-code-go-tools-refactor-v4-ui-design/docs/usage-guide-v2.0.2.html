@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ocgt v2.0.2 — 使用指南 · Dopamine Guide</title>
+<style>
+/* ═══════════════════════════════════════════
+   Reset · Base — dopamine foundation
+   ═══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+  color: #1a1d28; background: #faf9f6;
+  line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+
+/* ── Dopamine Palette ── */
+:root {
+  --red: #FF6B6B; --teal: #4ECDC4; --yellow: #FFE66D; --mint: #A8E6CF;
+  --pink: #FF8B94; --sage: #95E1D3; --coral: #F38181; --lavender: #AA96DA;
+  --blush: #FCBAD3; --green: #6BCB77; --gold: #FFD93D; --blue: #4D96FF;
+  --foam: #C3F0CA; --cream: #F9ED69; --sky: #B8E8FC;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4 { font-weight: 800; letter-spacing: -0.02em; }
+h1 {
+  font-family: 'Playfair Display', 'Noto Serif SC', 'Georgia', serif;
+  font-size: 3.6rem; font-weight: 700; line-height: 1.05;
+  background: linear-gradient(135deg, var(--red), var(--pink), var(--lavender));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+h2 {
+  font-size: 2rem; font-weight: 700; margin-bottom: 1.2rem;
+  display: inline-block; position: relative;
+}
+h2::after {
+  content: ''; display: block; width: 100%; height: 6px; margin-top: 0.3rem;
+  background: repeating-linear-gradient(90deg,
+    var(--red) 0px, var(--red) 30px,
+    var(--yellow) 30px, var(--yellow) 60px,
+    var(--teal) 60px, var(--teal) 90px,
+    var(--lavender) 90px, var(--lavender) 120px
+  ); border-radius: 3px;
+}
+h3 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+h4 { font-size: 0.95rem; margin-bottom: 0.2rem; color: #2c2c2c; }
+p { margin-bottom: 0.75rem; }
+a { color: var(--red); text-decoration: underline; text-underline-offset: 2px; transition: color 0.2s; }
+a:hover { color: #d04545; }
+code {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.82em; background: #f0ece4; padding: 0.15em 0.4em;
+  border-radius: 4px; color: #2a2a2a;
+}
+pre {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.78rem; background: #1a1d28; color: #e8e4de;
+  padding: 1rem 1.2rem; border-radius: 10px; overflow-x: auto;
+  line-height: 1.5; margin: 0.8rem 0; border-left: 4px solid var(--red);
+}
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+ul, ol { margin: 0.5rem 0 1rem 1.6rem; }
+li { margin-bottom: 0.3rem; }
+
+/* Tables */
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  margin: 1rem 0; font-size: 0.85rem; border-radius: 8px;
+  overflow: hidden; border: 1px solid #ddd8d0;
+}
+th, td { padding: 0.55rem 0.75rem; text-align: left; vertical-align: top;
+  border-bottom: 1px solid #e8e4de; }
+th { background: #1a1d28; color: #fff; font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em; }
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: rgba(78, 205, 196, 0.04); }
+
+blockquote {
+  border-left: 4px solid var(--teal); padding: 0.6rem 1rem; margin: 1rem 0;
+  background: rgba(78, 205, 196, 0.06); color: #333;
+}
+
+/* ── Container ── */
+.container { max-width: 1000px; margin: 0 auto; padding: 0 2rem; }
+
+/* ── Header ── */
+.doc-header {
+  padding: 4rem 0 2.5rem; position: relative; overflow: hidden;
+  background: linear-gradient(180deg, #faf9f6 60%, rgba(255,107,107,0.03) 100%);
+}
+.doc-header::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 8px;
+  background: repeating-linear-gradient(90deg,
+    var(--red) 0px, var(--red) 80px,
+    var(--yellow) 80px, var(--yellow) 140px,
+    var(--teal) 140px, var(--teal) 220px,
+    var(--lavender) 220px, var(--lavender) 280px,
+    var(--pink) 280px, var(--pink) 340px,
+    var(--mint) 340px, var(--mint) 400px
+  );
+}
+.doc-header h1 { margin-bottom: 0.2rem; }
+.doc-header .subtitle {
+  font-size: 0.9rem; color: #6a6560; margin-bottom: 1rem;
+  letter-spacing: 0.06em;
+}
+.doc-header .badge-row { display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap; }
+.doc-header .ver-badge {
+  display: inline-block; padding: 0.3rem 1rem; font-size: 0.82rem; font-weight: 700;
+  background: var(--red); color: #fff; border-radius: 6px;
+}
+.doc-header .meta { font-size: 0.8rem; color: #8a847a; }
+
+/* ── Decorative blobs ── */
+.blob {
+  position: fixed; pointer-events: none; z-index: -1; opacity: 0.06;
+  border-radius: 50%;
+}
+.blob-1 { width: 400px; height: 400px; background: var(--red); top: 100px; right: -120px; }
+.blob-2 { width: 300px; height: 300px; background: var(--teal); bottom: 200px; left: -100px; }
+.blob-3 { width: 200px; height: 200px; background: var(--yellow); top: 50%; right: -60px; }
+
+/* ── Rainbow jump nav ── */
+.jump-band {
+  display: flex; gap: 0; flex-wrap: wrap; margin-bottom: 0;
+  border-radius: 10px; overflow: hidden;
+}
+.jump-band a {
+  flex: 1; display: block; padding: 0.7rem 1rem; min-width: 80px;
+  font-size: 0.75rem; font-weight: 700; color: #fff; text-align: center;
+  text-decoration: none; text-transform: uppercase; letter-spacing: 0.04em;
+  transition: filter 0.2s;
+}
+.jump-band a:hover { filter: brightness(1.15); }
+.jb-1 { background: var(--red); } .jb-2 { background: var(--coral); }
+.jb-3 { background: var(--gold); color: #1a1d28; } .jb-4 { background: var(--teal); }
+.jb-5 { background: var(--blue); } .jb-6 { background: var(--lavender); }
+.jb-7 { background: var(--pink); } .jb-8 { background: var(--green); }
+.jb-9 { background: var(--sage); color: #1a1d28; }
+
+/* ── Section ── */
+section { padding: 2.5rem 0; border-bottom: 1px solid #e8e4de; }
+section:last-of-type { border-bottom: none; }
+
+/* ── Two-column ── */
+.col2 {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin: 1rem 0;
+}
+.c2 {
+  border: 1px solid #ddd8d0; border-radius: 10px; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.c2:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.06); }
+.c2-hdr { padding: 0.6rem 1rem; font-weight: 700; font-size: 0.78rem;
+  text-transform: uppercase; letter-spacing: 0.04em; }
+.c2-hdr.old { background: #e8e4de; color: #6a6560; border-bottom: 1px solid #ddd8d0; }
+.c2-hdr.new { background: var(--red); color: #fff; }
+.c2-body { padding: 1rem; font-size: 0.84rem; }
+.c2-body ul { margin: 0; padding-left: 1.2rem; }
+.c2-body li { margin-bottom: 0.35rem; line-height: 1.5; }
+
+/* ── Feature cards — dopamine grid ── */
+.f-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 1.2rem 0;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid #ddd8d0;
+}
+.f-grid > * { padding: 1.2rem; border-right: 1px solid #ddd8d0;
+  border-bottom: 1px solid #ddd8d0; }
+.f-grid > *:nth-child(odd) { border-left: 6px solid var(--red); }
+.f-grid > *:nth-child(even) { border-left: 6px solid var(--teal); }
+.f-grid h4 { font-size: 0.9rem; }
+.f-grid h4 small { font-weight: 400; color: #8a847a; font-size: 0.82rem; }
+.f-grid p { font-size: 0.82rem; color: #5a5550; margin: 0; }
+.f-grid .hk { margin-top: 0.4rem; }
+.f-grid .hk .kbd { font-size: 0.72rem; }
+
+/* ── Tags ── */
+.tag {
+  display: inline-block; font-size: 0.62rem; padding: 0.15em 0.5em;
+  font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase;
+  border-radius: 4px;
+}
+.tag-new { background: var(--red); color: #fff; }
+.tag-fix { background: var(--gold); color: #1a1d28; }
+.tag-up { background: var(--teal); color: #fff; }
+.tag-cln { background: var(--lavender); color: #fff; }
+
+/* ── Timeline ── */
+.tl { margin: 1.2rem 0; }
+.tl-item {
+  padding: 1rem 1rem 1rem 1.5rem; margin-bottom: 0.8rem;
+  border-left: 4px solid var(--red); position: relative;
+  background: rgba(255,107,107,0.02); border-radius: 0 8px 8px 0;
+  transition: background 0.2s;
+}
+.tl-item:hover { background: rgba(255,107,107,0.05); }
+.tl-item:nth-child(2n) { border-left-color: var(--teal); background: rgba(78,205,196,0.02); }
+.tl-item:nth-child(2n):hover { background: rgba(78,205,196,0.05); }
+.tl-item:nth-child(3n) { border-left-color: var(--yellow); background: rgba(255,230,109,0.02); }
+.tl-item:nth-child(3n):hover { background: rgba(255,230,109,0.05); }
+.tl-item .tl-d { font-size: 0.72rem; color: #8a847a; font-family: 'JetBrains Mono', monospace; }
+.tl-item .tl-t { font-weight: 700; font-size: 0.92rem; margin: 0.1rem 0 0.15rem; }
+.tl-item .tl-desc { font-size: 0.82rem; color: #5a5550; }
+.tl-item .tl-tt { margin-top: 0.3rem; display: flex; gap: 0.3rem; flex-wrap: wrap; }
+
+/* ── Steps ── */
+.steps { margin: 1rem 0; }
+.step {
+  display: flex; gap: 1rem; margin-bottom: 1rem; padding: 1.2rem;
+  border: 1px solid #ddd8d0; border-radius: 10px; position: relative;
+  transition: box-shadow 0.2s;
+}
+.step:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
+.step-n {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.9rem; font-weight: 800; color: #fff;
+}
+.sn-1 { background: var(--red); } .sn-2 { background: var(--teal); }
+.sn-3 { background: var(--gold); color: #1a1d28; } .sn-4 { background: var(--lavender); }
+.step-b { flex: 1; }
+.step-b h4 { margin-bottom: 0.15rem; }
+.step-b p { font-size: 0.84rem; color: #5a5550; margin: 0; }
+.step-b p + p { margin-top: 0.3rem; }
+
+/* ── Kbd ── */
+.kbd {
+  display: inline-block; padding: 0.1em 0.45em; font-size: 0.73em;
+  font-family: 'JetBrains Mono', monospace; background: #e8e4de;
+  border: 1px solid #d4cdc0; border-radius: 4px; font-weight: 700;
+}
+
+/* ── Architecture ── */
+.arch { margin: 1.2rem 0; }
+.ar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem; flex-wrap: wrap; padding: 0.5rem 0;
+}
+.ar-box {
+  padding: 0.7rem 1.2rem; font-size: 0.82rem; font-weight: 700;
+  text-align: center; min-width: 80px; border-radius: 8px;
+}
+.ar-box.client { background: rgba(78,205,196,0.1); border: 2px solid var(--teal); color: #1a1d28; }
+.ar-box.proxy { background: #1a1d28; color: #fff; }
+.ar-box.upstream { background: rgba(255,107,107,0.08); border: 2px solid var(--red); color: #1a1d28; }
+.ar-box.storage { border: 2px dashed var(--lavender); background: rgba(170,150,218,0.06); color: #1a1d28; }
+.ar-arrow { font-size: 1.2rem; color: var(--red); font-weight: 700; }
+.ar-label { font-size: 0.65rem; color: #8a847a; text-align: center; margin-top: 0.2rem; }
+
+/* ── Highlight ── */
+.highlight {
+  padding: 1rem 1.2rem; margin: 1rem 0; border-radius: 8px;
+  background: linear-gradient(135deg, var(--red), var(--coral));
+  color: #fff; font-size: 0.88rem; font-weight: 600;
+}
+.highlight code { background: rgba(255,255,255,0.15); color: #fff; }
+
+/* ── Diff table ── */
+.vd { font-size: 0.84rem; }
+.vd td:first-child { white-space: nowrap; font-weight: 700; color: #2c2c2c; width: 130px; }
+.vd .ck { color: var(--teal); font-weight: 700; }
+.vd .cr { color: var(--red); }
+
+/* ── Footer ── */
+.doc-footer { padding: 2rem 0; text-align: center; font-size: 0.78rem; color: #8a847a;
+  border-top: 8px solid repeating-linear-gradient(90deg,
+    var(--red) 0px, var(--red) 60px,
+    var(--gold) 60px, var(--gold) 120px,
+    var(--teal) 120px, var(--teal) 180px,
+    var(--lavender) 180px, var(--lavender) 240px
+  ); margin-top: 0; }
+
+/* ── Responsive ── */
+@media (max-width: 700px) {
+  h1 { font-size: 2.2rem; }
+  .col2 { grid-template-columns: 1fr; }
+  .f-grid { grid-template-columns: 1fr; }
+  .ar { flex-direction: column; gap: 0.2rem; }
+  .ar-arrow { transform: rotate(90deg); }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="doc-header">
+  <div class="container">
+    <h1>ocgt</h1>
+    <div class="subtitle">OpenCode Go Tools · 原生桌面控制面板 · 本地代理</div>
+    <div class="badge-row">
+      <span class="ver-badge">v2.0.2 / 2026-06</span>
+      <span class="meta">从 v2.0.1 到 v2.0.2 — 全面迭代 · From v2.0.1 to v2.0.2</span>
+    </div>
+  </div>
+</header>
+
+<!-- ═══════════ RAINBOW NAV ═══════════ -->
+<nav class="jump-band" style="margin: 0 auto; max-width: 1000px;">
+  <a href="#overview" class="jb-1">概述</a>
+  <a href="#comparison" class="jb-2">对比</a>
+  <a href="#arch" class="jb-3">架构</a>
+  <a href="#features" class="jb-4">功能</a>
+  <a href="#quickstart" class="jb-5">开始</a>
+  <a href="#panels" class="jb-6">面板</a>
+  <a href="#integrations" class="jb-7">集成</a>
+  <a href="#changelog" class="jb-8">更新</a>
+  <a href="#tips" class="jb-9">技巧</a>
+</nav>
+
+<main class="container">
+
+<!-- ═══════════ 1. OVERVIEW ═══════════ -->
+<section id="overview">
+  <h2>概述 · Overview</h2>
+  <p>
+    <strong>ocgt</strong> (OpenCode Go Tools) 是专为 <strong>Claude Code</strong> 与
+    <strong>OpenCode Go</strong> 打造的原生桌面控制中心与本地代理。
+    内建 Anthropic ↔ OpenAI 协议互转引擎，提供中英双语 GUI，
+    支持一键终端启动、流量监控、套餐额度看板。
+  </p>
+  <p>
+    v2.0.2 增加了 <strong>6 项新功能</strong>，修复了 <strong>10+ 个问题</strong>，
+    完成了定价系统、Token 追踪、流量监控等核心模块的迭代升级。
+  </p>
+  <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+    <span class="tag tag-new">+6 NEW</span>
+    <span class="tag tag-fix">10+ FIX</span>
+    <span class="tag tag-up">REWRITE</span>
+  </div>
+</section>
+
+<!-- ═══════════ 2. COMPARISON ═══════════ -->
+<section id="comparison">
+  <h2>版本对比 · Version Comparison</h2>
+
+  <div class="col2">
+    <div class="c2">
+      <div class="c2-hdr old">v2.0.1 — 基础版</div>
+      <div class="c2-body">
+        <ul>
+          <li>配置文件热重载</li>
+          <li>多 Profile 支持</li>
+          <li>模型映射 (Sonnet / Haiku / Opus)</li>
+          <li>思考强度控制</li>
+          <li>基本流量请求列表</li>
+          <li>终端一键启动</li>
+          <li>浅色 / 深色主题</li>
+          <li>中英双语</li>
+          <li>Fallback 链</li>
+        </ul>
+      </div>
+    </div>
+    <div class="c2">
+      <div class="c2-hdr new">v2.0.2 — 全面进化</div>
+      <div class="c2-body">
+        <ul>
+          <li><span class="tag tag-new">NEW</span> 套餐额度看板</li>
+          <li><span class="tag tag-new">NEW</span> 流量监控雷达 Chart.js</li>
+          <li><span class="tag tag-new">NEW</span> 流量明细 (分页+筛选+CSV)</li>
+          <li><span class="tag tag-new">NEW</span> 客户端集成中心</li>
+          <li><span class="tag tag-new">NEW</span> 多巴胺配色方案</li>
+          <li><span class="tag tag-fix">FIX</span> Token 追踪完善</li>
+          <li><span class="tag tag-fix">FIX</span> Cache 数据支持</li>
+          <li><span class="tag tag-up">RWT</span> 同模型重试机制</li>
+          <li><span class="tag tag-up">RWT</span> 官方模型定价</li>
+          <li><span class="tag tag-up">RWT</span> 端口自动释放</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <table>
+    <tr><th>模块</th><th>v2.0.1</th><th>v2.0.2</th></tr>
+    <tr><td>Token 追踪</td><td class="cr">流式/Messages 为估算或 0</td><td class="ck">✅ 精准 InputTokens + Cache</td></tr>
+    <tr><td>Cache 数据</td><td class="cr">始终为 0</td><td class="ck">✅ 完整 cache_read/creation</td></tr>
+    <tr><td>故障恢复</td><td>Fallback 链 (全 502)</td><td class="ck">✅ 同模型重试 5 次</td></tr>
+    <tr><td>熔断保护</td><td class="cr">无</td><td class="ck">✅ 30s 自动熔断</td></tr>
+    <tr><td>端口占用</td><td>启动失败 (需手动杀)</td><td class="ck">✅ 自动释放</td></tr>
+    <tr><td>流量监控</td><td>简单列表</td><td class="ck">✅ Chart.js 仪表盘</td></tr>
+    <tr><td>趋势粒度</td><td>固定按天</td><td class="ck">✅ 智能自适应 (小时/天/周)</td></tr>
+    <tr><td>流量明细</td><td>基本表格</td><td class="ck">✅ 分页+筛选+CSV</td></tr>
+    <tr><td>套餐额度</td><td class="cr">无</td><td class="ck">✅ Rolling/Weekly/Monthly</td></tr>
+    <tr><td>模型定价</td><td class="cr">基础估算</td><td class="ck">✅ 官方定价表</td></tr>
+    <tr><td>UI 配色</td><td>GitHub 风格</td><td class="ck">✅ 多巴胺 + 主题色自定义</td></tr>
+    <tr><td>日志存储</td><td>可调整 (最长 365 天)</td><td class="ck">范围 1-365 天</td></tr>
+  </table>
+</section>
+
+<!-- ═══════════ 3. ARCH ═══════════ -->
+<section id="arch">
+  <h2>架构 · Architecture</h2>
+  <p>ocgt 采用 <strong>Wails v2</strong> 构建——Go 后端 + HTML/JS 前端 WebView 渲染。</p>
+
+  <div class="arch">
+    <div class="ar">
+      <div><div class="ar-box client">Claude Code</div><div class="ar-label">CLI / VS Code / Desktop</div></div>
+      <div class="ar-arrow">→</div>
+      <div><div class="ar-box proxy">ocgt Proxy<br><span style="font-weight:400;font-size:0.72rem;">127.0.0.1:8787</span></div><div class="ar-label">协议转换</div></div>
+      <div class="ar-arrow">→</div>
+      <div><div class="ar-box upstream">opencode.ai</div><div class="ar-label">Kimi·DeepSeek·Qwen·GLM</div></div>
+    </div>
+    <div style="text-align:center;margin:0.2rem 0;"><span class="ar-arrow" style="display:inline-block;transform:rotate(90deg);">↓</span></div>
+    <div class="ar">
+      <div><div class="ar-box storage">GUI 控制面板</div></div>
+      <div><div class="ar-box storage">内存+JSONL 日志</div></div>
+      <div><div class="ar-box storage">~/.ocgt/config.json</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 4. FEATURES ═══════════ -->
+<section id="features">
+  <h2>功能 · Features</h2>
+  <p>v2.0.2 提供 <strong>5 个核心面板</strong>，快捷键一键切换：</p>
+
+  <div class="f-grid">
+    <div>
+      <h4>系统状态 <small>Dashboard</small></h4>
+      <p>监听端口、上游 API、API Key、默认模型。集成状态一目了然。</p>
+      <div class="hk"><span class="kbd">Ctrl+1</span></div>
+    </div>
+    <div>
+      <h4>配置管理 <small>Settings</small></h4>
+      <p>API Key、Profile、模型映射、限流、环境变量、日志。修改即检测。</p>
+      <div class="hk"><span class="kbd">Ctrl+2</span></div>
+    </div>
+    <div>
+      <h4>快速连接 <small>Quick Connect</small></h4>
+      <p>一键终端 + 4 种集成 (CLI/VS Code/settings/Desktop App)。</p>
+      <div class="hk"><span class="kbd">Ctrl+3</span></div>
+    </div>
+    <div>
+      <h4>流量雷达 <small>Traffic Radar</small></h4>
+      <p>多巴胺仪表盘——统计卡片、折线图 (自适应粒度)、环形图、模型表。</p>
+      <div class="hk"><span class="kbd">Ctrl+4</span></div>
+    </div>
+    <div>
+      <h4>流量明细 <small>Traffic Detail</small></h4>
+      <p>10 字段全维度表格。分页 + 三维筛选 + CSV 导出 + 一键清除。</p>
+      <div class="hk"><span class="kbd">Ctrl+5</span></div>
+    </div>
+  </div>
+
+  <h3>亮点</h3>
+  <div class="col2" style="margin-top:0.5rem;">
+    <div class="c2"><div class="c2-hdr" style="background:var(--red);color:#fff;">多巴胺配色</div><div class="c2-body"><p>15 色高饱和度调色板，自适应亮/暗主题。5 种预设 + 自定义色相。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--gold);color:#1a1d28;">自适应粒度</div><div class="c2-body"><p>≤2 天→小时，≤90 天→天，>90 天→周。<code>tension 0.4</code> 平滑曲线。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--teal);color:#fff;">重试 + 熔断</div><div class="c2-body"><p>同模型 5 次指数退避重试。30 秒熔断，503 快速返回。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--lavender);color:#fff;">额度看板</div><div class="c2-body"><p>Rolling / Weekly / Monthly 三级额度进度条实时展示。</p></div></div>
+  </div>
+</section>
+
+<!-- ═══════════ 5. QUICK START ═══════════ -->
+<section id="quickstart">
+  <h2>快速开始 · Quick Start</h2>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-n sn-1">1</div>
+      <div class="step-b"><h4>下载并运行</h4><p><code>build/bin/ocgt.exe</code> 直接运行，系统栏常驻。</p></div>
+    </div>
+    <div class="step">
+      <div class="step-n sn-2">2</div>
+      <div class="step-b"><h4>配置 API 密钥</h4><p><span class="kbd">Ctrl+2</span> → 输入 <code>sk-...</code> 密钥 → 保存。</p></div>
+    </div>
+    <div class="step">
+      <div class="step-n sn-3">3</div>
+      <div class="step-b"><h4>启动终端</h4><p><span class="kbd">Ctrl+3</span> → 选择 Shell → "打开临时终端"。输入 <code>claude</code> 开始。</p></div>
+    </div>
+    <div class="step">
+      <div class="step-n sn-4">4</div>
+      <div class="step-b"><h4>监控流量</h4><p><span class="kbd">Ctrl+4</span> 雷达仪表盘 · <span class="kbd">Ctrl+5</span> 请求明细。</p></div>
+    </div>
+  </div>
+
+  <div class="highlight">默认监听 127.0.0.1:8787 · 首次启动允许防火墙通信</div>
+</section>
+
+<!-- ═══════════ 6. PANELS ═══════════ -->
+<section id="panels">
+  <h2>面板导航 · Panel Navigation</h2>
+
+  <h3>系统状态 <span class="kbd">Ctrl+1</span></h3>
+  <p>6 个核心指标卡片：监听地址、上游 API、超时、API Key、Profile、默认模型。下方显示 CLI / VS Code / Claude Desktop 配置状态。</p>
+
+  <h3>配置管理 <span class="kbd">Ctrl+2</span></h3>
+  <p>API 代理配置 → 网络限流 → 模型策略 → 高级环境变量 → 日志存储 → 偏好设置。保存即热重载。</p>
+
+  <h3>快速连接 <span class="kbd">Ctrl+3</span></h3>
+  <p>6 张集成卡片：一键修复、临时终端、CLI (全局)、VS Code、Claude Code settings、Claude Desktop App (3P Profile)。</p>
+
+  <h3>流量雷达 <span class="kbd">Ctrl+4</span></h3>
+  <p>统计卡片 → Token 趋势折线图 → 请求量折线图 → 模型环形图 → 模型明细表 → 客户端来源表。时间范围切换 <strong>今日 / 7日 / 30日 / 全部</strong>。</p>
+
+  <h3>流量明细 <span class="kbd">Ctrl+5</span></h3>
+  <p>10 字段全维度表格：时间 / 模型 / 状态 / Input / Output / Cache / Total / 延迟 / 来源 / 错误。三维筛选 + 分页 + CSV 导出 + 一键清除。</p>
+</section>
+
+<!-- ═══════════ 7. INTEGRATIONS ═══════════ -->
+<section id="integrations">
+  <h2>客户端集成 · Client Integrations</h2>
+
+  <table>
+    <tr><th>集成</th><th>配置目标</th><th>生效范围</th></tr>
+    <tr><td>CLI</td><td><code>~/.claude/settings.json</code></td><td>全局终端</td></tr>
+    <tr><td>VS Code</td><td>VS Code 用户 settings.json</td><td>VS Code 内 Claude Code</td></tr>
+    <tr><td>Code settings</td><td><code>~/.claude/settings.json</code> env 块</td><td>本机 Claude Code</td></tr>
+    <tr><td>Desktop App</td><td>cc-switch 3P Profile</td><td>Claude Desktop App</td></tr>
+  </table>
+
+  <blockquote>建议 CLI + 一键拉起终端。无需为所有 shell 逐一配置。</blockquote>
+</section>
+
+<!-- ═══════════ 8. CHANGELOG ═══════════ -->
+<section id="changelog">
+  <h2>更新日志 · Changelog</h2>
+
+  <div class="tl">
+    <div class="tl-item">
+      <div class="tl-d">2026-06-02 11:20</div>
+      <div class="tl-t">Token 监控 Bug 修复 + 额度监控模块</div>
+      <div class="tl-desc">流式请求 InputTokens 估算值修复；Messages 端点 Token 0 问题；额度 RPC 查询模块。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span><span class="tag tag-new">NEW</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-02 14:30</div>
+      <div class="tl-t">统计 API + 额度看板 + 官方定价</div>
+      <div class="tl-desc">/summary /trend /models 三个统计 API；日志无限制 (0=永久)；定价修正为官方数据。</div>
+      <div class="tl-tt"><span class="tag tag-new">NEW</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-02 17:20</div>
+      <div class="tl-t">流量监控仪表盘 Chart.js</div>
+      <div class="tl-desc">多巴胺配色仪表盘：统计卡片、折线图、环形图、模型表。分页+CSV+清除。</div>
+      <div class="tl-tt"><span class="tag tag-new">NEW</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-02 23:40</div>
+      <div class="tl-t">端口自动释放 + 重试机制重写</div>
+      <div class="tl-desc">启动自动杀旧进程；Fallback 链废弃→同模型 5 次指数退避+30s 断路器。</div>
+      <div class="tl-tt"><span class="tag tag-up">RWT</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 01:30</div>
+      <div class="tl-t">前端多项修复</div>
+      <div class="tl-desc">app.js 语法错误白屏修复；CSS 注释闭合；启动失败实时反馈；5s 额度轮询。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 10:00</div>
+      <div class="tl-t">快速连接 + API 地址统一</div>
+      <div class="tl-desc">快速连接页面 (4 种集成卡片)；traffic.js 与 app.js 同步代理地址；额度多巴胺化。</div>
+      <div class="tl-tt"><span class="tag tag-new">NEW</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 11:00–12:00</div>
+      <div class="tl-t">流量监控 Bug 连环修复</div>
+      <div class="tl-desc">URL 双倍叠加；10s 加载超时；401 (缺 auth token)；内存历史回退。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 12:30</div>
+      <div class="tl-t">Cache 捕获 + Code Review 修复</div>
+      <div class="tl-desc">OpenAI 路径完整捕获 Cache tokens；断路器/CORS/atomicWrite 等 7 项。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 15:00–16:00</div>
+      <div class="tl-t">Streaming Cache + TotalTokens 双重修复</div>
+      <div class="tl-desc">Streaming 路径兜底读取 cached_tokens；CacheRead 重复计入 TotalTokens 修复。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 16:14–16:45</div>
+      <div class="tl-t">Cache 命中率 + 折线图优化</div>
+      <div class="tl-desc">命中率计算展示；tension 0.3→0.4 + monotone；趋势图自适应粒度。</div>
+      <div class="tl-tt"><span class="tag tag-up">UP</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 17:00–19:30</div>
+      <div class="tl-t">流量明细 Tab + 死亡代码清理</div>
+      <div class="tl-desc">Ctrl+5 分页+筛选+CSV+清除。~250 行死亡代码清理 (旧统计函数/syslog/install-env-btn)。</div>
+      <div class="tl-tt"><span class="tag tag-new">NEW</span><span class="tag tag-cln">CLN</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 18:10–19:00</div>
+      <div class="tl-t">集成卡片补全 + UI 优化</div>
+      <div class="tl-desc">缺失的 VS Code/Code settings/Desktop App 卡片补全。HTML 嵌套修复。卡片重新设计。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span><span class="tag tag-up">UI</span></div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-d">2026-06-03 19:30–20:00</div>
+      <div class="tl-t">Auth Token 修复 + 表格/分页优化 + 状态徽标</div>
+      <div class="tl-desc">loadDetailData auth token 等待；表格圆角+斑马纹+sticky 表头；分页动画；状态码改为彩色圆角徽标；模型列显示路由。</div>
+      <div class="tl-tt"><span class="tag tag-fix">FIX</span><span class="tag tag-up">UI</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ 9. TIPS ═══════════ -->
+<section id="tips">
+  <h2>技巧 · Tips &amp; Tricks</h2>
+
+  <div class="col2">
+    <div class="c2"><div class="c2-hdr" style="background:var(--red);color:#fff;">快捷键</div><div class="c2-body"><p><span class="kbd">Ctrl+1</span>–<span class="kbd">5</span> 切换面板。<span class="kbd">Esc</span> 关闭模态框。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--teal);color:#fff;">同步模型</div><div class="c2-body"><p>配置管理 → "同步上游模型" 自动拉取最新模型。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--gold);color:#1a1d28;">永久保存</div><div class="c2-body"><p>日志保留天数设 <strong>0</strong> = 永久。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--lavender);color:#fff;">CSV 导出</div><div class="c2-body"><p>含 BOM 头，Excel 直接打开中文不乱码。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--pink);color:#fff;">自定义色</div><div class="c2-body"><p>偏好设置输入 0–360 色相值，任意颜色。</p></div></div>
+    <div class="c2"><div class="c2-hdr" style="background:var(--sage);color:#1a1d28;">端口恢复</div><div class="c2-body"><p>启动自动释放旧进程端口，无需手动 taskkill。</p></div></div>
+  </div>
+</section>
+
+</main>
+
+<footer class="doc-footer">
+  <div class="container">
+    <p>ocgt v2.0.2 · MIT License · Wails v2 · Go · Chart.js</p>
+  </div>
+</footer>
+
+<!-- Background blobs -->
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+</body>
+</html>

@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ocgt - Claude API Proxy Dashboard Center</title>
+    <script>
+        (function () {
+            const savedTheme = localStorage.getItem('theme');
+            const requestedTheme = savedTheme || 'system';
+            const resolvedTheme = requestedTheme === 'system'
+                ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                : (requestedTheme === 'dark' ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', resolvedTheme);
+
+            const savedAccent = localStorage.getItem('accent-hue');
+            if (savedAccent !== null && savedAccent !== '') {
+                const hue = Math.max(0, Math.min(360, parseInt(savedAccent, 10) || 174));
+                document.documentElement.style.setProperty('--accent-h', hue);
+            }
+        })();
+    </script>
+    <link rel="stylesheet" href="style.css">
+    <script src="lib/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <!-- Toast notification container -->
+    <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+    <!-- Startup / proxy recovery overlay -->
+    <div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite">
+        <div class="loading-content">
+            <div class="loading-spinner" id="loadingSpinner" aria-hidden="true"></div>
+            <div class="loading-title" id="loadingTitle" data-i18n="loading_title">正在连接本地代理</div>
+            <p class="loading-text" id="loadingText" data-i18n="loading_init">正在初始化代理服务...</p>
+            <button class="loading-retry-btn hidden" id="loadingRetryBtn" type="button"
+                data-i18n="btn_retry_connection">重试连接</button>
+        </div>
+    </div>
+
+    <div class="app">
+        <!-- 1. Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand" id="sidebarBrand" tabindex="0" aria-label="ocgt home">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                    </svg>
+                </div>
+                <div class="brand-title">
+                    <h1>ocgt</h1>
+                    <span class="version" id="app-version"></span>
+                </div>
+            </div>
+
+            <nav class="sidebar-menu" aria-label="Main navigation">
+                <button class="nav-item active" id="btn-nav-dashboard" data-view="dashboard"
+                    aria-label="Dashboard, Ctrl+1">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
+                    </svg>
+                    <span data-i18n="nav_dashboard">系统状态</span>
+                    <span class="nav-shortcut">Ctrl+1</span>
+                </button>
+                <button class="nav-item" id="btn-nav-settings" data-view="settings" aria-label="Settings, Ctrl+2">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path
+                            d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                        <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    <span data-i18n="nav_settings">配置管理</span>
+                    <span class="nav-shortcut">Ctrl+2</span>
+                </button>
+                <button class="nav-item" id="btn-nav-terminal" data-view="terminal" aria-label="Terminal, Ctrl+3">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 17 10 11 4 5" />
+                        <line x1="12" y1="19" x2="20" y2="19" />
+                    </svg>
+                    <span data-i18n="nav_terminal">快速连接</span>
+                    <span class="nav-shortcut">Ctrl+3</span>
+                </button>
+                <button class="nav-item" id="btn-nav-history" data-view="history" aria-label="Traffic, Ctrl+4">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                        <polyline points="2 17 12 22 22 17" />
+                        <polyline points="2 12 12 17 22 12" />
+                    </svg>
+                    <span data-i18n="nav_history">流量监控</span>
+                    <span class="nav-shortcut">Ctrl+4</span>
+                </button>
+                <button class="nav-item" id="btn-nav-traffic-detail" data-view="traffic-detail" aria-label="Traffic Detail, Ctrl+5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <line x1="3" y1="9" x2="21" y2="9" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
+                    </svg>
+                    <span data-i18n="nav_traffic_detail">流量明细</span>
+                    <span class="nav-shortcut">Ctrl+5</span>
+                </button>
+                <button class="nav-item" id="btn-nav-hub" data-view="hub" aria-label="Multi-Device, Ctrl+6">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="2" width="20" height="20" rx="2" />
+                        <line x1="2" y1="12" x2="22" y2="12" />
+                        <line x1="12" y1="2" x2="12" y2="22" />
+                    </svg>
+                    <span data-i18n="nav_hub">多设备同步</span>
+                    <span class="nav-shortcut">Ctrl+6</span>
+                </button>
+                <button class="nav-item" id="btn-nav-sessions" data-view="sessions" aria-label="Sessions, Ctrl+7">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span data-i18n="nav_sessions">会话</span>
+                    <span class="nav-shortcut">Ctrl+7</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-pill" id="statusPill" tabindex="0" role="button"
+                    aria-label="Connection status, click to view dashboard">
+                    <span class="status-dot pulse"></span>
+                    <span data-i18n="status_running">代理运行中</span>
+                </div>
+                <div class="sidebar-footer-actions">
+                    <button class="settings-trigger-btn" id="prefsToggleBtn" title="偏好设置" aria-label="Preferences">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3" />
+                            <path
+                                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 2. Main Content -->
+        <main class="main-content">
+            <header class="main-header">
+                <div class="header-left">
+                    <h2 class="view-title" id="current-view-title" data-i18n="title_dashboard">系统状态监控</h2>
+                    <p class="view-subtitle" id="current-view-subtitle" data-i18n="subtitle_dashboard">查看当前代理服务运行指标与后台状态
+                    </p>
+                </div>
+                <div class="header-right">
+                    <span class="last-updated" id="lastUpdated" aria-live="polite">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        <span data-i18n="lbl_last_updated">刚刚更新</span>
+                    </span>
+                    <div class="uptime-badge">
+                        <span class="pulse-dot"></span>
+                        <span data-i18n="service_normal">服务正常</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="view-container">
+
+                <!-- ========== Dashboard ========== -->
+                <section class="view active" id="view-dashboard">
+                    <div class="dashboard-grid" id="dashboard-skeletons">
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                        <div class="skeleton-card"><div class="skeleton skeleton-icon"></div><div><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text short"></div></div></div>
+                    </div>
+                    <div class="dashboard-grid hidden" id="dashboard-content">
+                        <div class="stat-card stat-card-wide">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_listen">监听地址</span>
+                                <h3 class="stat-value" id="status-listen">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-wide">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 12a11.05 11.05 0 0 0-22 0zm-5 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_upstream">上游 API 节点</span>
+                                <h3 class="stat-value" id="status-upstream">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_timeout">请求超时</span>
+                                <h3 class="stat-value" id="status-timeout">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M12 12l8-8"/><path d="M17 4h3v3"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_api_key">API Key 状态</span>
+                                <h3 class="stat-value" id="status-api-key">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_profile">当前活跃 Profile</span>
+                                <h3 class="stat-value" id="status-profile">-</h3>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="lbl_model">默认解析模型</span>
+                                <h3 class="stat-value mono" id="status-model">-</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quota monitoring card -->
+                    <div class="dashboard-grid" id="dashboard-quota-grid">
+                        <div class="stat-card stat-card-wide">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                            <div class="stat-info stat-info-quota">
+                                <span class="stat-label" id="quota-label">OpenCode Go 套餐额度</span>
+                                <div class="quota-bars" id="quota-bars">
+                                    <span class="quota-loading">点击刷新加载额度...</span>
+                                </div>
+                                <div class="quota-actions">
+                                    <button class="quota-refresh-btn" id="btn-refresh-quota" type="button">刷新额度</button>
+                                    <span class="quota-time" id="quota-refresh-time"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid dashboard-integrations-grid">
+                        <div class="stat-card stat-card-wide dashboard-integrations-card">
+                            <div class="stat-icon dashboard-integrations-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="dash_integrations">客户端集成状态</span>
+                                <div class="dashboard-integration-chips">
+                                    <div class="sync-chip dashboard-sync-chip">
+                                        <span class="sync-dot inactive" id="dash-cli-dot"></span>
+                                        <span data-i18n="dash_cli">CLI</span>
+                                    </div>
+                                    <div class="sync-chip dashboard-sync-chip">
+                                        <span class="sync-dot inactive" id="dash-vscode-dot"></span>
+                                        <span data-i18n="dash_vscode">VS Code</span>
+                                    </div>
+                                    <div class="sync-chip dashboard-sync-chip">
+                                        <span class="sync-dot inactive" id="dash-claude-dot"></span>
+                                        <span data-i18n="dash_claude_desktop">Claude Desktop</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========== Quick Connect ========== -->
+                <section class="view" id="view-terminal">
+                    <div class="integrations-page">
+                        <div class="integrations-stack">
+
+                            <!-- CLI Integration -->
+                            <div class="integration-row" data-integration="cli">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="int_sys_title">Claude Code CLI</h3>
+                                        <span class="integration-badge inactive" id="sys-env-badge" data-i18n="badge_not_configured">未配置</span>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="sys-env-install-btn" type="button" data-i18n="btn_sys_install">一键激活</button>
+                                        <button class="btn-ghost btn-danger-ghost btn-sm" id="sys-env-remove-btn" type="button" data-i18n="btn_sys_remove">移除配置</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="int_sys_desc">将代理地址自动写入 ~/.claude/settings.json，Claude Code 在任意终端均可直接使用代理，移除时自动恢复原配置。</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Start: Temp Terminal -->
+                            <div class="integration-row quick-start-row" data-integration="quick">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="int_quick_title">快速开始：临时终端</h3>
+                                        <span class="integration-badge active" data-i18n="badge_recommended">推荐</span>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="launch-temp-terminal-btn" type="button" data-i18n="btn_launch_temp_term">打开临时终端</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="int_quick_desc">只为当前新开的终端窗口临时注入代理变量，不写入系统配置。</p>
+                                        <div class="ic-qi-body">
+                                            <div class="compact-tabs" id="compact-shell-tabs">
+                                                <button class="compact-tab active" type="button" data-shell="powershell">PowerShell</button>
+                                                <button class="compact-tab" type="button" data-shell="cmd">CMD</button>
+                                                <button class="compact-tab" type="button" data-shell="bash">Bash</button>
+                                            </div>
+                                            <div class="code-copy-container">
+                                                <pre class="pre-clean"><code id="compact-env-code">$env:ANTHROPIC_BASE_URL="http://127.0.0.1:8787"</code></pre>
+                                                <button class="copy-btn sm-copy" id="compact-copy-btn" type="button">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                    <span data-i18n="btn_copy">复制</span>
+                                                    <span class="copied-tooltip" id="compact-copied-tooltip" data-i18n="btn_copied">已复制 ✓</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            <!-- Repair All -->
+                            <div class="integration-row repair-row" data-integration="repair">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4"/><path d="M15 5l4 4"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="repair_title">一键修复</h3>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="repair-all-btn" type="button" data-i18n="btn_repair_all">一键修复</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="repair_desc">修复 Claude Code settings、基础环境变量，并刷新已配置过的 VS Code / Claude Desktop 集成。</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- VS Code Integration -->
+                            <div class="integration-row" data-integration="vscode">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="int_vscode_title">VS Code Claude Code 插件</h3>
+                                        <span class="integration-badge inactive" id="vscode-badge" data-i18n="badge_not_configured">未配置</span>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="vscode-install-btn" type="button" data-i18n="btn_vscode_install">一键激活</button>
+                                        <button class="btn-ghost btn-danger-ghost btn-sm" id="vscode-remove-btn" type="button" data-i18n="btn_vscode_remove">移除配置</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="int_vscode_desc">自动向 VS Code 用户配置注入 ocgt 代理变量。插件或其启动的 Claude Code 进程会继承这些变量，新建会话即可走本地代理。</p>
+                                        <p class="ic-tip" data-i18n="int_vscode_tip" style="margin-top:0.4rem;font-size:0.82rem;color:var(--text-3);">注入后重新打开 VS Code 内的 Claude Code 会话即可验证。</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Claude Code settings (settings.json) -->
+                            <div class="integration-row" data-integration="claude">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="int_claude_title">Claude Code settings</h3>
+                                        <span class="integration-badge inactive" id="claude-desktop-badge" data-i18n="badge_not_configured">未配置</span>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="setup-desktop-btn" type="button" data-i18n="btn_setup_desktop_full">一键激活</button>
+                                        <button class="btn-ghost btn-danger-ghost btn-sm" id="clear-desktop-btn" type="button" data-i18n="btn_clear_desktop_full">移除配置</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="int_claude_desc">将 ocgt 代理写入 <code>~/.claude/settings.json</code>，用于 Claude Code 本地客户端读取代理环境；真实 Claude Desktop App 请使用下方集成卡片。</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Claude Desktop App (3P Profile) -->
+                            <div class="integration-row" data-integration="claude-desktop">
+                                <div class="ir-main">
+                                    <div class="ir-icon">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+                                    </div>
+                                    <div class="ir-title-area">
+                                        <h3 data-i18n="int_claude_desktop_title">Claude Desktop App</h3>
+                                        <span class="integration-badge inactive" id="claude-desktop-app-badge" data-i18n="badge_not_configured">未配置</span>
+                                    </div>
+                                    <div class="ir-actions">
+                                        <button class="btn-primary btn-sm" id="setup-claude-desktop-app-btn" type="button" data-i18n="btn_setup_claude_desktop_app">一键激活</button>
+                                        <button class="btn-ghost btn-danger-ghost btn-sm" id="clear-claude-desktop-app-btn" type="button" data-i18n="btn_clear_claude_desktop_app">移除配置</button>
+                                    </div>
+                                    <button class="ir-expand-btn" type="button" aria-label="Toggle details" aria-expanded="false">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                </div>
+                                <div class="ir-drawer">
+                                    <div class="ir-drawer-inner">
+                                        <p class="ic-desc" data-i18n="int_claude_desktop_desc">按 cc-switch 的 3P profile 方式写入 Claude Desktop 配置，重启 Claude Desktop 后通过 ocgt 本地路由转发。</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ========== Settings ========== -->
+                <section class="view" id="view-settings">
+                    <div class="sett-v2" id="settings-form">
+
+                        <!-- ── Card 1: API & Profile ── -->
+                        <div class="sett-card sett-card--api">
+                            <div class="sett-card__header">
+                                <div class="sett-card__icon sett-card__icon--shield">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                </div>
+                                <div class="sett-card__titles">
+                                    <h3 data-i18n="sett_section_api">API 代理配置</h3>
+                                    <p data-i18n="sett_section_api_desc">Profile、API Key、默认模型与超时</p>
+                                </div>
+                            </div>
+                            <div class="sett-card__body">
+                                <div class="sett-field-row sett-field-row--2">
+                                    <div class="field">
+                                        <label for="profile-select" data-i18n="sett_profile">当前配置 Profile</label>
+                                        <div class="select-wrap">
+                                            <select id="profile-select"></select>
+                                            <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                        </div>
+                                    </div>
+                                    <div class="field" id="field-api-key">
+                                        <label for="api-key-input" data-i18n="sett_api_key">OpenCode Go API Key (代理密钥)</label>
+                                        <div class="input-wrap">
+                                            <input type="password" id="api-key-input" placeholder="请输入您的 sk-... 密钥" data-i18n-placeholder="placeholder_api_key">
+                                            <button class="eye-btn" type="button" id="toggle-key-visibility" title="切换明文" aria-label="Toggle password visibility">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                            </button>
+                                        </div>
+                                        <span class="field-error-text" data-i18n="err_api_key_required">请输入 API Key</span>
+                                    </div>
+                                </div>
+                                <div class="sett-field-row sett-field-row--2" style="margin-top: 12px;">
+                                    <div class="field">
+                                        <label for="quota-cookie-input">OpenCode Go 配额 Cookie</label>
+                                        <div class="input-wrap">
+                                            <input type="password" id="quota-cookie-input" placeholder="从浏览器 DevTools 复制">
+                                        </div>
+                                    </div>
+                                    <div class="field">
+                                        <label for="quota-workspace-input">Workspace ID</label>
+                                        <input type="text" id="quota-workspace-input" placeholder="wrk_xxxxxxxxxxxx">
+                                    </div>
+                                </div>
+                                <div class="sett-field-row sett-field-row--2">
+                                    <div class="field">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                            <label for="default-model-input" data-i18n="sett_default_model" style="margin-bottom: 0;">全局默认模型</label>
+                                            <button id="btn-sync-models" class="btn-secondary btn-sm" type="button" style="padding: 2px 8px; font-size: 12px; height: auto;" data-i18n="btn_sync_models">同步模型</button>
+                                        </div>
+                                        <div class="select-wrap">
+                                            <select id="default-model-input" data-model-source="default"></select>
+                                            <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                        </div>
+                                    </div>
+                                    <div class="field" id="field-timeout">
+                                        <label for="timeout-input" data-i18n="sett_timeout">请求超时 (秒，1-3600)</label>
+                                        <input type="number" id="timeout-input" min="1" max="3600" step="1" placeholder="300">
+                                        <span class="field-error-text" data-i18n="err_timeout_range">超时必须在 1-3600 秒之间</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Card 2: Model Mapping & Thinking ── -->
+                        <div class="sett-card sett-card--model">
+                            <div class="sett-card__header">
+                                <div class="sett-card__icon sett-card__icon--layers">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                                </div>
+                                <div class="sett-card__titles">
+                                    <h3 data-i18n="sett_section_model">模型策略设置</h3>
+                                    <p data-i18n="sett_section_model_desc">思考强度与 Claude 模型别名映射</p>
+                                </div>
+                            </div>
+                            <div class="sett-card__body">
+                                <div class="field">
+                                    <label for="thinking-budget-input" data-i18n="sett_thinking">思考强度（支持模型生效）</label>
+                                    <div class="sett-seg-control" id="thinking-seg-control">
+                                        <button class="sett-seg-btn" type="button" data-val="-1" data-i18n="opt_thinking_off">关</button>
+                                        <button class="sett-seg-btn" type="button" data-val="256" data-i18n="opt_thinking_256">低</button>
+                                        <button class="sett-seg-btn" type="button" data-val="512" data-i18n="opt_thinking_512">中</button>
+                                        <button class="sett-seg-btn" type="button" data-val="1024" data-i18n="opt_thinking_1024">高</button>
+                                        <button class="sett-seg-btn active" type="button" data-val="2048" data-i18n="opt_thinking_2048">极高</button>
+                                    </div>
+                                    <select id="thinking-budget-input" class="sett-hidden-select">
+                                        <option value="-1">关</option>
+                                        <option value="256">低</option>
+                                        <option value="512">中</option>
+                                        <option value="1024">高</option>
+                                        <option value="2048" selected>极高</option>
+                                    </select>
+                                </div>
+                                <div class="sett-mapping-strip">
+                                    <h4 class="sett-mapping-strip__title" data-i18n="sett_mapping_title">Claude Model Alias Mapping</h4>
+                                    <div class="mapping-grid">
+                                        <div class="field">
+                                            <label for="mapping-sonnet-input" data-i18n="sett_mapping_sonnet">Sonnet</label>
+                                            <div class="select-wrap"><select id="mapping-sonnet-input" data-model-source="sonnet"></select><svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+                                        </div>
+                                        <div class="field">
+                                            <label for="mapping-haiku-input" data-i18n="sett_mapping_haiku">Haiku</label>
+                                            <div class="select-wrap"><select id="mapping-haiku-input" data-model-source="haiku"></select><svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+                                        </div>
+                                        <div class="field">
+                                            <label for="mapping-opus-input" data-i18n="sett_mapping_opus">Opus</label>
+                                            <div class="select-wrap"><select id="mapping-opus-input" data-model-source="opus"></select><svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <details class="settings-drawer sett-advanced-drawer">
+                            <summary class="settings-section-header sett-advanced-summary">
+                                <span data-i18n="sett_advanced_title">高级代理参数</span>
+                                <small data-i18n="sett_advanced_summary">监听、限流、环境变量与 JSON</small>
+                                <svg class="drawer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5">
+                                    <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                            </summary>
+                            <div class="drawer-body sett-advanced-body">
+
+                        <!-- ── Advanced Card 1: Network & Rate Limiting ── -->
+                        <div class="sett-card sett-card--network">
+                            <div class="sett-card__header">
+                                <div class="sett-card__icon sett-card__icon--network">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                                </div>
+                                <div class="sett-card__titles">
+                                    <h3 data-i18n="sett_section_network">网络与限流</h3>
+                                    <p data-i18n="sett_section_network_desc">上游 API 地址、监听端口与请求限制</p>
+                                </div>
+                            </div>
+                            <div class="sett-card__body">
+                                <div class="sett-field-row sett-field-row--2">
+                                    <div class="field" id="field-upstream">
+                                        <label for="upstream-input" data-i18n="sett_upstream">上游 API 地址</label>
+                                        <input type="text" id="upstream-input" placeholder="https://opencode.ai/zen/go">
+                                        <span class="field-error-text" data-i18n="err_upstream_url">请输入有效的 http(s) 地址</span>
+                                    </div>
+                                    <div class="field" id="field-listen">
+                                        <label for="listen-input" data-i18n="pref_listen_addr">监听地址</label>
+                                        <input type="text" id="listen-input" placeholder="127.0.0.1:8787">
+                                        <span class="field-error-text" data-i18n="err_listen_addr">请输入有效的监听地址，例如 127.0.0.1:8787 或 :8787</span>
+                                    </div>
+                                </div>
+                                <div class="sett-field-row sett-field-row--3">
+                                    <div class="field" id="field-rate-limit">
+                                        <label for="rate-limit-input" data-i18n="sett_rate_limit">每秒请求上限</label>
+                                        <input type="number" id="rate-limit-input" min="1" max="10000" step="1" placeholder="100">
+                                        <span class="field-error-text" data-i18n="err_rate_limit_range">范围 1-10000</span>
+                                    </div>
+                                    <div class="field" id="field-rate-burst">
+                                        <label for="rate-burst-input" data-i18n="sett_rate_burst">突发请求容量</label>
+                                        <input type="number" id="rate-burst-input" min="1" max="100000" step="1" placeholder="200">
+                                        <span class="field-error-text" data-i18n="err_rate_burst_range">范围 1-100000</span>
+                                    </div>
+                                    <div class="field" id="field-rate-minute">
+                                        <label for="rate-minute-input" data-i18n="sett_rate_minute">每分钟请求上限</label>
+                                        <input type="number" id="rate-minute-input" min="0" max="100000" step="1" placeholder="0">
+                                        <span class="field-error-text" data-i18n="err_rate_minute_range">范围 0-100000，0 表示不限量</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ── Advanced Card 2: Advanced Env JSON ── -->
+                        <div class="sett-card sett-card--env">
+                            <div class="sett-card__header">
+                                <div class="sett-card__icon sett-card__icon--env">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                                </div>
+                                <div class="sett-card__titles">
+                                    <h3 data-i18n="sett_env_title">高级环境变量</h3>
+                                    <p data-i18n="sett_env_desc">Claude Code 环境参数开关与自定义 JSON 配置</p>
+                                </div>
+                            </div>
+                            <div class="sett-card__body">
+                                <!-- Toggle chips row -->
+                                <div class="sett-env-toggles">
+                                    <label class="sett-env-chip" title="禁用非必要流量 (CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC)">
+                                        <input type="checkbox" id="env-disable-nonessential" checked>
+                                        <span class="sett-env-chip__track"></span>
+                                        <span class="sett-env-chip__label" data-i18n="env_disable_nonessential">禁用非必要流量</span>
+                                    </label>
+                                    <label class="sett-env-chip" title="启用 Tool Search (ENABLE_TOOL_SEARCH)">
+                                        <input type="checkbox" id="env-enable-tool-search" checked>
+                                        <span class="sett-env-chip__track"></span>
+                                        <span class="sett-env-chip__label" data-i18n="env_enable_tool_search">Tool Search</span>
+                                    </label>
+                                    <label class="sett-env-chip" title="禁用 Attribution Header">
+                                        <input type="checkbox" id="env-disable-attribution" checked>
+                                        <span class="sett-env-chip__track"></span>
+                                        <span class="sett-env-chip__label" data-i18n="env_disable_attribution">禁用 Attribution</span>
+                                    </label>
+                                    <label class="sett-env-chip" title="禁用 Thinking (CLAUDE_CODE_DISABLE_THINKING)">
+                                        <input type="checkbox" id="env-disable-thinking">
+                                        <span class="sett-env-chip__track"></span>
+                                        <span class="sett-env-chip__label" data-i18n="env_disable_thinking">禁用 Thinking</span>
+                                    </label>
+                                </div>
+
+                                <!-- Numeric env params -->
+                                <div class="sett-field-row sett-field-row--4">
+                                    <div class="field">
+                                        <label for="env-max-output-tokens" data-i18n="env_max_output_tokens">Max Output Tokens</label>
+                                        <input type="number" id="env-max-output-tokens" placeholder="131072">
+                                    </div>
+                                    <div class="field">
+                                        <label for="env-max-mcp-tokens" data-i18n="env_max_mcp_tokens">Max MCP Tokens</label>
+                                        <input type="number" id="env-max-mcp-tokens" placeholder="200000">
+                                    </div>
+                                    <div class="field">
+                                        <label for="env-api-timeout" data-i18n="env_api_timeout">API Timeout (ms)</label>
+                                        <input type="number" id="env-api-timeout" placeholder="600000">
+                                    </div>
+                                    <div class="field">
+                                        <label for="env-mcp-timeout" data-i18n="env_mcp_timeout">MCP Timeout (ms)</label>
+                                        <input type="number" id="env-mcp-timeout" placeholder="600000">
+                                    </div>
+                                </div>
+
+                                <!-- JSON editor -->
+                                <div class="sett-env-json-block field" id="field-claude-env-template">
+                                    <div class="sett-env-json-header">
+                                        <label for="claude-env-template-input" data-i18n="sett_claude_env_template">Claude Code 环境变量模板 (JSON)</label>
+                                        <button class="btn-secondary btn-sm" id="btn-edit-json" type="button">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                            <span data-i18n="btn_edit_settings_json">编辑 settings.json</span>
+                                        </button>
+                                    </div>
+                                    <textarea id="claude-env-template-input" class="sett-env-textarea" rows="8" spellcheck="false" placeholder='{ "KEY": "VALUE" }'></textarea>
+                                    <span class="field-error-text" data-i18n="err_claude_env_json">必须是 JSON 对象，键和值都必须是字符串</span>
+                                </div>
+                            </div>
+                        </div>
+
+                            </div>
+                        </details>
+
+                        <!-- ── Sync Status Bar ── -->
+                        <div class="sett-sync-bar" id="config-sync-strip">
+                            <div class="sync-chip">
+                                <span class="sync-dot"></span>
+                                <span data-i18n="sync_profile">Profile</span>
+                                <strong id="sync-profile-name"></strong>
+                            </div>
+                            <div class="sync-chip">
+                                <span class="sync-dot"></span>
+                                <span data-i18n="sync_listen">Listen</span>
+                                <strong id="sync-listen-address"></strong>
+                            </div>
+                            <div class="sync-chip">
+                                <span class="sync-dot inactive" id="sync-cli-dot"></span>
+                                <span data-i18n="sync_cli">CLI</span>
+                                <strong id="sync-cli-state"></strong>
+                            </div>
+                            <div class="sync-chip">
+                                <span class="sync-dot inactive" id="sync-vscode-dot"></span>
+                                <span data-i18n="sync_vscode">VS Code</span>
+                                <strong id="sync-vscode-state"></strong>
+                            </div>
+                            <div class="sync-chip">
+                                <span class="sync-dot inactive" id="sync-claude-dot"></span>
+                                <span data-i18n="sync_claude">Claude Desktop</span>
+                                <strong id="sync-claude-state"></strong>
+                            </div>
+                        </div>
+
+                        <!-- ── Action Bar ── -->
+                        <div class="sett-action-bar config-actions" id="config-actions">
+                            <div class="sett-action-bar__spacer"></div>
+                            <button class="btn-secondary" id="cancel-config-btn" type="button" data-i18n="btn_cancel_changes">取消更改</button>
+                            <button class="btn-primary" id="save-all-config-btn" type="button" data-i18n="btn_save_config">保存并应用配置</button>
+                        </div>
+
+                        <p class="sett-hint" data-i18n="hint_save">保存后同步更新 config.json 并立即应用生效；思考强度会自动适配模型能力，不支持的模型将不发送额外 thinking 字段。</p>
+
+                    </div>
+                </section>
+
+                <!-- ========== Traffic / History ========== -->
+                <section class="view" id="view-history">
+                  <div class="td-wrap">
+                    <div class="td-top-bar">
+                      <div class="td-time-range" id="time-range-selector"></div>
+                      <span class="td-title">📊 流量监控仪表盘</span>
+                      <span class="td-ts" id="td-timestamp"></span>
+                    </div>
+                    <div class="td-loading" style="display:flex;align-items:center;justify-content:center;padding:60px 0;color:var(--text-3);font-size:14px;gap:8px;"><span class="td-spinner"></span> 加载中...</div>
+                    <div class="td-loaded" style="display:none;">
+                      <div class="td-stats-row" id="traffic-stats-row"></div>
+                      <div class="td-charts-row">
+                        <div class="td-chart-main">
+                          <div class="td-chart-hdr">📈 Token 消耗趋势 · Y轴自适应</div>
+                          <div class="td-chart-body"><canvas id="chart-token-trend" height="220"></canvas></div>
+                        </div>
+                        <div class="td-chart-side">
+                          <div class="td-chart-hdr">🧩 模型 Token 占比 · 多巴胺环形</div>
+                          <div class="td-chart-body td-chart-body-donut"><canvas id="chart-model-donut"></canvas></div>
+                        </div>
+                      </div>
+                      <div class="td-charts-row">
+                        <div class="td-chart-main">
+                          <div class="td-chart-hdr">📊 每日请求量 · Y轴自适应</div>
+                          <div class="td-chart-body"><canvas id="chart-request-trend" height="180"></canvas></div>
+                        </div>
+                        <div class="td-chart-side">
+                          <div class="td-chart-hdr">📱 客户端来源</div>
+                          <div class="td-chart-body">
+                            <table class="td-client-table"><thead><tr><th>来源</th><th class="tar">请求数</th><th class="tar">占比</th></tr></thead><tbody id="client-table-body"></tbody></table>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="td-section">
+                        <div class="td-section-hdr"><span>📋 模型 Token 消耗明细</span><span class="td-section-sub">按模型分组 · 多巴胺配色</span></div>
+                        <div class="td-section-body">
+                          <table class="td-model-table">
+                            <thead><tr><th style="width:24%;">模型</th><th class="tar" style="width:8%;">请求数</th><th class="tar" style="width:10%;">Input</th><th class="tar" style="width:10%;">Output</th><th class="tar" style="width:8%;">Cache</th><th class="tar" style="width:10%;">总计</th><th style="width:18%;">占比</th><th class="tar" style="width:10%;">Cost</th></tr></thead>
+                            <tbody id="model-table-body"></tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="view" id="view-traffic-detail">
+                  <div class="td-wrap">
+                    <div class="td-top-bar">
+                      <span class="td-title">📋 流量明细</span>
+                      <span class="td-ts" id="detail-timestamp"></span>
+                      <div class="td-detail-controls">
+                        <div class="td-time-range" id="detail-time-range"></div>
+                        <select id="filter-model" class="td-select"><option value="">全部模型</option></select>
+                        <select id="filter-status" class="td-select">
+                          <option value="">全部状态</option>
+                          <option value="success">✅ 成功</option>
+                          <option value="4xx">⚠️ 4xx</option>
+                          <option value="5xx">❌ 5xx</option>
+                        </select>
+                        <button class="td-btn td-btn-sm" id="btn-refresh-detail">⟳ 刷新</button>
+                        <button class="td-btn td-btn-sm" id="btn-export-csv">⬇ 导出</button>
+                        <button class="td-btn td-btn-sm td-btn-danger" id="btn-clear-history">🗑 清除</button>
+                      </div>
+                    </div>
+                    <div class="td-table-wrap">
+                      <table class="td-history-table">
+                        <thead><tr>
+                          <th style="width:13%;">时间</th>
+                          <th style="width:15%;">模型</th>
+                          <th style="width:5%;">状态</th>
+                          <th class="tar" style="width:8%;">Input</th>
+                          <th class="tar" style="width:8%;">Output</th>
+                          <th class="tar" style="width:8%;">Cache</th>
+                          <th class="tar" style="width:8%;">总计</th>
+                          <th class="tar" style="width:7%;">延迟</th>
+                          <th style="width:9%;">来源</th>
+                          <th style="width:19%;">错误</th>
+                        </tr></thead>
+                        <tbody id="detail-table-body">
+                          <tr><td colspan="10" style="text-align:center;color:var(--text-3);padding:24px;">加载中...</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div class="td-pagination" id="detail-pagination"></div>
+                  </div>
+                </section>
+
+                <!-- ========== Hub Multi-Device ========== -->
+                <section class="view" id="view-hub">
+                    <!-- 连接状态条 + 操作按钮 -->
+                    <div class="hub-status-bar">
+                        <span id="hub-status-dot" class="hub-status-dot"></span>
+                        <span id="hub-status-text" class="hub-status-text" data-i18n="hub_disconnected">未连接</span>
+                        <span class="hub-device-id-label" id="hub-device-id-label"></span>
+                        <div class="hub-actions">
+                            <button class="btn-secondary btn-sm" id="hub-refresh-btn" type="button">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                <span data-i18n="hub_refresh">刷新</span>
+                            </button>
+                            <button class="btn-primary btn-sm" id="hub-sync-now-btn" type="button" data-i18n="hub_sync_now">立即同步</button>
+                        </div>
+                    </div>
+
+                    <!-- 汇总统计 -->
+                    <div class="dashboard-grid">
+                        <div class="stat-card stat-card-wide">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="hub_total_tokens">多设备 Token 总计</span>
+                                <h3 class="stat-value mono" id="hub-total-tokens">-</h3>
+                                <span class="stat-label" style="font-size:0.8rem;" id="hub-today-tokens"></span>
+                            </div>
+                        </div>
+                        <div class="stat-card stat-card-wide">
+                            <div class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
+                            <div class="stat-info">
+                                <span class="stat-label" data-i18n="hub_total_cost">多设备费用总计</span>
+                                <h3 class="stat-value mono" id="hub-total-cost">-</h3>
+                                <span class="stat-label" style="font-size:0.8rem;" id="hub-today-cost"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 设备列表 -->
+                    <div class="card hub-section">
+                        <div class="hub-section-header">
+                            <h3 data-i18n="hub_device_list">在线设备</h3>
+                            <span class="hub-device-count" id="hub-device-count">0</span>
+                        </div>
+                        <div id="hub-devices-list" class="hub-devices-list">
+                            <span class="hub-empty-hint" data-i18n="hub_no_devices">暂无设备数据</span>
+                        </div>
+                    </div>
+
+                    <!-- 模型用量分布 -->
+                    <div class="card hub-section">
+                        <div class="hub-section-header">
+                            <h3 data-i18n="hub_model_breakdown">模型用量分布（全部设备）</h3>
+                        </div>
+                        <canvas id="hub-model-chart" height="200"></canvas>
+                    </div>
+                </section>
+
+                <!-- ========== Sessions ========== -->
+                <section class="view" id="view-sessions">
+                    <!-- 时间段切换 + 汇总 -->
+                    <div class="s-period-bar">
+                        <div class="s-period-tabs">
+                            <button class="s-period-btn active" data-period="today" data-i18n="sessions_period_today">今日</button>
+                            <button class="s-period-btn" data-period="month" data-i18n="sessions_period_month">本月</button>
+                            <button class="s-period-btn" data-period="all" data-i18n="sessions_period_all">全部</button>
+                        </div>
+                        <div class="s-summary" id="s-summary">
+                            <span><strong class="s-summary-num" id="sessions-count">0</strong> 个会话</span>
+                            <span class="s-summary-sep">·</span>
+                            <span><strong class="s-summary-num" id="sessions-total-tokens">0</strong> tokens</span>
+                            <span class="s-summary-sep">·</span>
+                            <span>≈ $<strong class="s-summary-num" id="sessions-total-cost">0.00</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- 搜索 + 筛选 + 排序（紧凑） -->
+                    <div class="s-control-bar">
+                        <div class="s-search-wrap">
+                            <svg class="s-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" id="sessions-search" class="s-search-input" placeholder="搜索会话 ID 或模型...">
+                        </div>
+                        <select id="sessions-model-filter" class="s-select">
+                            <option value="" data-i18n="sessions_filter_all">全部模型</option>
+                        </select>
+                        <select id="sessions-sort" class="s-select">
+                            <option value="time-desc" data-i18n="sessions_sort_time_desc">最新</option>
+                            <option value="time-asc" data-i18n="sessions_sort_time_asc">最早</option>
+                            <option value="tokens-desc" data-i18n="sessions_sort_tokens_desc">Token 最多</option>
+                            <option value="tokens-asc" data-i18n="sessions_sort_tokens_asc">Token 最少</option>
+                            <option value="cost-desc" data-i18n="sessions_sort_cost_desc">费用最高</option>
+                        </select>
+                        <label class="s-toggle" title="显示对话内容/仅用量">
+                            <input type="checkbox" id="sessions-content-toggle">
+                            <span class="s-toggle-track"></span>
+                            <span class="s-toggle-label" data-i18n="sessions_show_content">内容</span>
+                        </label>
+                    </div>
+
+                    <!-- 模型分布图（折叠） -->
+                    <div class="s-chart-collapse" id="sessions-chart-container" style="display:none;">
+                        <div class="s-chart-header" id="s-chart-toggle">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="s-chart-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+                            <span data-i18n="sessions_model_chart">模型分布</span>
+                            <span class="s-chart-count" id="s-chart-model-count"></span>
+                        </div>
+                        <div class="s-chart-body" id="s-chart-body">
+                            <canvas id="sessions-model-chart" height="140"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 会话列表（紧凑行） -->
+                    <div id="sessions-list" class="s-list"></div>
+
+                    <!-- 会话详情弹窗 -->
+                    <div class="modal-overlay" id="sessionDetailOverlay" aria-hidden="true">
+                        <div class="modal-card session-detail-modal" role="dialog" aria-modal="true">
+                            <div class="modal-header">
+                                <h3 id="session-detail-title">会话详情</h3>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <button class="sd-sort-btn" id="sd-sort-btn" type="button" data-i18n="sd_sort_time">按时间</button>
+                                    <button class="modal-close" id="sessionDetailClose" aria-label="Close">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="modal-body" id="session-detail-body">
+                                <div id="session-detail-loading" style="text-align:center;padding:40px;color:var(--text-2);">加载中...</div>
+                                <div id="session-detail-content" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <footer class="footer-bar">
+                <span id="footer-text"></span>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Close Confirm Dialog Modal -->
+    <div class="modal-overlay" id="closeDialogOverlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="closeDialogTitle">
+            <div class="modal-icon-wrap">
+                <svg class="modal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+            </div>
+            <h3 class="modal-title" id="closeDialogTitle" data-i18n="close_dialog_title">关闭窗口</h3>
+            <p class="modal-msg" id="closeDialogMsg" data-i18n="close_dialog_msg">隐藏到托盘会继续代理请求；退出程序会停止本地代理。</p>
+            <div class="modal-actions">
+                <button class="btn-primary" id="closeDialogExit" data-i18n="close_dialog_exit">退出并停止代理</button>
+                <button class="btn-secondary" id="closeDialogMinimize"
+                    data-i18n="close_dialog_minimize">隐藏到托盘并继续代理</button>
+                <button class="btn-ghost" id="closeDialogCancel" data-i18n="close_dialog_cancel">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- About App Dialog Modal -->
+    <div class="modal-overlay" id="aboutDialogOverlay" aria-hidden="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="aboutDialogTitle">
+            <div class="modal-icon-wrap about-icon">
+                <svg class="modal-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+            </div>
+            <div class="about-version-badge" id="about-version"></div>
+            <h3 class="modal-title" id="aboutDialogTitle">ocgt</h3>
+            <p class="modal-msg" id="aboutDialogDesc" data-i18n="about_desc">专为 Claude Code 与 OpenCode Go 打造的极简桌面控制面板与代理
+            </p>
+            <div class="about-meta">
+                <div class="about-meta-row"><span data-i18n="about_author">作者</span><span>ethan-blue</span></div>
+                <div class="about-meta-row"><span data-i18n="about_license">许可证</span><span>MIT Licensed</span></div>
+                <div class="about-meta-row"><span data-i18n="about_project">项目地址</span><span
+                        class="mono about-project-url">github.com/ethan-blue/open-code-go-tools</span></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn-primary" id="aboutDialogClose" data-i18n="about_close">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Model Dialog Modal -->
+    <div class="modal-overlay" id="customModelModalOverlay" aria-hidden="true">
+        <div class="modal-card modal-card-wide custom-model-modal" role="dialog" aria-modal="true"
+            aria-labelledby="customModelTitle">
+            <div class="modal-header">
+                <h3 id="customModelTitle" data-i18n="custom_model_title">添加自定义模型</h3>
+                <button class="modal-close" id="customModelClose" aria-label="Close modal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body custom-model-body">
+                <p class="raw-json-desc custom-model-desc" data-i18n="custom_model_desc">输入上游支持的模型 ID，保存后会写入当前 Profile。</p>
+                <label class="custom-model-label" for="customModelInput" data-i18n="custom_model_label">模型名称</label>
+                <input id="customModelInput" class="custom-model-input" type="text" autocomplete="off"
+                    spellcheck="false" maxlength="128" data-i18n-placeholder="custom_model_placeholder"
+                    placeholder="例如 qwen3.6-plus 或 vendor/model-name">
+                <div id="customModelError" class="field-error-text custom-model-error" hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="customModelCancelBtn" type="button"
+                    data-i18n="custom_model_cancel">取消</button>
+                <button class="btn-primary" id="customModelConfirmBtn" type="button"
+                    data-i18n="custom_model_confirm">使用此模型</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings / Preferences Center Panel -->
+    <div class="settings-panel-overlay" id="settingsPanelOverlay" aria-hidden="true">
+        <div class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsPanelTitle">
+            <div class="settings-panel-header">
+                <h2 class="settings-panel-title" id="settingsPanelTitle" data-i18n="pref_title">偏好设置</h2>
+                <button class="settings-panel-close" id="settingsPanelClose" aria-label="Close settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-panel-body">
+                <!-- Appearance -->
+                <div class="settings-panel-section">
+                    <div class="sp-section-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="5" />
+                            <line x1="12" y1="1" x2="12" y2="3" />
+                            <line x1="12" y1="21" x2="12" y2="23" />
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                            <line x1="1" y1="12" x2="3" y2="12" />
+                            <line x1="21" y1="12" x2="23" y2="12" />
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                        </svg>
+                    </div>
+                    <div class="sp-section-content">
+                        <div class="sp-section-label" data-i18n="pref_appearance">外观</div>
+                        <div class="sp-section-desc" data-i18n="pref_appearance_desc">主题模式与界面语言</div>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_theme">主题模式</span>
+                    <div class="sp-theme-toggle" id="themeToggleGroup">
+                        <button class="sp-theme-btn active" data-theme-value="light" id="themeLightBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="5" />
+                                <line x1="12" y1="1" x2="12" y2="3" />
+                                <line x1="12" y1="21" x2="12" y2="23" />
+                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                                <line x1="1" y1="12" x2="3" y2="12" />
+                                <line x1="21" y1="12" x2="23" y2="12" />
+                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                            </svg>
+                            <span data-i18n="pref_theme_light">浅色</span>
+                        </button>
+                        <button class="sp-theme-btn" data-theme-value="dark" id="themeDarkBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                            </svg>
+                            <span data-i18n="pref_theme_dark">深色</span>
+                        </button>
+                        <button class="sp-theme-btn" data-theme-value="system" id="themeSystemBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <rect x="2" y="3" width="20" height="14" rx="2" />
+                                <line x1="8" y1="21" x2="16" y2="21" />
+                                <line x1="12" y1="17" x2="12" y2="21" />
+                            </svg>
+                            <span data-i18n="pref_theme_system">跟随系统</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_accent_color">主题色</span>
+                    <div class="sp-accent-dots" aria-label="Accent color">
+                        <button class="sp-accent-dot" type="button" data-accent-hue="174" title="Teal"
+                            aria-label="Teal" style="background:hsl(174, 70%, 55%)"></button>
+                        <button class="sp-accent-dot" type="button" data-accent-hue="212" title="Blue"
+                            aria-label="Blue" style="background:hsl(212, 70%, 55%)"></button>
+                        <button class="sp-accent-dot" type="button" data-accent-hue="260" title="Purple"
+                            aria-label="Purple" style="background:hsl(260, 70%, 55%)"></button>
+                        <button class="sp-accent-dot" type="button" data-accent-hue="25" title="Orange"
+                            aria-label="Orange" style="background:hsl(25, 70%, 55%)"></button>
+                        <button class="sp-accent-dot" type="button" data-accent-hue="330" title="Pink"
+                            aria-label="Pink" style="background:hsl(330, 70%, 55%)"></button>
+                        <input class="sp-accent-custom" id="accentCustomInput" type="number" min="0" max="360"
+                            step="1" placeholder="0-360" aria-label="Custom accent hue">
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_language">界面语言</span>
+                    <div class="select-wrap select-wrap-sm">
+                        <select id="pref-lang-select">
+                            <option value="zh">中文</option>
+                            <option value="en">English</option>
+                        </select>
+                        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <!-- Behavior -->
+                <div class="settings-panel-section">
+                    <div class="sp-section-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                        </svg>
+                    </div>
+                    <div class="sp-section-content">
+                        <div class="sp-section-label" data-i18n="pref_behavior">行为</div>
+                        <div class="sp-section-desc" data-i18n="pref_behavior_desc">关闭窗口与系统交互</div>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="sett_close_behavior">关闭窗口行为</span>
+                    <div class="select-wrap select-wrap-sm">
+                        <select id="close-behavior-input">
+                            <option value="prompt" data-i18n="opt_close_prompt">每次询问</option>
+                            <option value="minimize" data-i18n="opt_close_minimize">隐藏到托盘，代理继续运行</option>
+                            <option value="exit" data-i18n="opt_close_exit">退出程序，停止代理</option>
+                        </select>
+                        <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <!-- Logs -->
+                <div class="settings-panel-section">
+                    <div class="sp-section-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                    </div>
+                    <div class="sp-section-content">
+                        <div class="sp-section-label" data-i18n="pref_logs">日志</div>
+                        <div class="sp-section-desc" data-i18n="pref_logs_desc">日志保存路径与保留周期</div>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_log_save">GUI 日志保存</span>
+                    <label class="sp-switch">
+                        <input type="checkbox" id="log-enabled-input" checked>
+                        <span class="sp-switch-track"></span>
+                    </label>
+                </div>
+                <div class="settings-panel-row settings-panel-row-stack">
+                    <label class="sp-row-label" for="log-directory-input" data-i18n="pref_log_dir">日志目录</label>
+                    <div class="settings-panel-inline">
+                        <input type="text" id="log-directory-input" placeholder="默认: ~/.ocgt/logs">
+                        <button class="btn-secondary btn-sm" id="open-log-dir-btn" type="button" data-i18n="btn_open_log_dir">打开</button>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <span class="sp-row-label" data-i18n="pref_log_retention">保留天数</span>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input class="sp-number-input" type="number" id="log-retention-input" min="0" max="365" step="1" placeholder="14" style="width:80px;">
+                        <span id="retention-hint" style="font-size:12px;color:var(--text-muted,#8b949e);">0 = 无限制</span>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <button class="btn-primary btn-sm" id="save-log-prefs-btn" type="button" data-i18n="btn_save_log_prefs">保存日志设置</button>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <!-- Hub Sync -->
+                <div class="settings-panel-section">
+                    <div class="sp-section-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/>
+                            <rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="8" height="8" rx="1"/>
+                        </svg>
+                    </div>
+                    <div class="sp-section-content">
+                        <div class="sp-section-label" data-i18n="pref_hub_title">跨设备同步</div>
+                        <div class="sp-section-desc" data-i18n="pref_hub_desc">将使用统计同步到 Hub，在多台设备间查看汇总数据</div>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="hub-enabled">
+                        <span class="toggle-track"></span>
+                        <span data-i18n="pref_hub_enable">启用同步</span>
+                    </label>
+                </div>
+                <div class="settings-panel-row" id="hub-config-fields" style="flex-direction:column;padding-left:52px;">
+                    <div class="hub-settings-grid">
+                        <div class="hub-settings-field">
+                            <label class="sp-row-label" data-i18n="pref_hub_url">Hub 地址</label>
+                            <input type="text" id="hub-url" placeholder="http://192.168.1.100:17321" class="hub-settings-input">
+                        </div>
+                        <div class="hub-settings-field">
+                            <label class="sp-row-label" data-i18n="pref_hub_secret">同步密钥</label>
+                            <input type="password" id="hub-secret" placeholder="(留空不修改)" class="hub-settings-input">
+                        </div>
+                        <div class="hub-settings-field">
+                            <label class="sp-row-label" data-i18n="pref_hub_device_name">设备名称</label>
+                            <input type="text" id="hub-device-name" placeholder="家里台式机" class="hub-settings-input">
+                        </div>
+                        <div class="hub-settings-field">
+                            <label class="sp-row-label" data-i18n="pref_hub_interval">推送间隔（秒）</label>
+                            <input type="number" id="hub-interval" value="120" min="30" max="1800" class="hub-settings-input">
+                        </div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+                        <span id="hub-config-status" style="font-size:0.85rem;color:var(--text-2);"></span>
+                    </div>
+                </div>
+                <div class="settings-panel-row" style="flex-direction:row;gap:8px;">
+                    <button class="btn-primary btn-sm" id="save-hub-config-btn" type="button" data-i18n="pref_hub_save">保存同步设置</button>
+                </div>
+
+                <div class="sp-divider"></div>
+
+                <!-- Danger zone -->
+                <div class="settings-panel-section">
+                    <div class="sp-section-icon sp-section-icon-danger">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path
+                                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                    </div>
+                    <div class="sp-section-content">
+                        <div class="sp-section-label" data-i18n="pref_danger">重置与关于</div>
+                        <div class="sp-section-desc" data-i18n="pref_danger_desc">恢复默认设置或查看版本信息</div>
+                    </div>
+                </div>
+                <div class="settings-panel-row">
+                    <button class="btn-ghost btn-danger-ghost btn-sm" id="reset-defaults-btn" type="button"
+                        data-i18n="btn_reset_defaults">重置为默认值</button>
+                    <button class="btn-ghost btn-sm" id="about-app-btn" type="button" data-i18n="btn_about_app">关于
+                        ocgt</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw JSON Editor Modal -->
+    <div class="modal-overlay" id="rawJsonModalOverlay" aria-hidden="true">
+        <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="rawJsonModalTitle">
+            <div class="modal-header">
+                <h3 id="rawJsonModalTitle" data-i18n="raw_json_title">编辑 Claude Code settings.json</h3>
+                <button class="modal-close" id="rawJsonModalClose" aria-label="Close modal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="raw-json-desc" data-i18n="raw_json_desc">高级入口：只修改 ~/.claude/settings.json。保存前请确认 JSON 格式有效。</p>
+                <textarea id="rawJsonTextarea" class="code-editor raw-json-editor"></textarea>
+                <div id="rawJsonError" class="field-error-text raw-json-error" hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="rawJsonCancelBtn" type="button" data-i18n="raw_json_cancel">取消</button>
+                <button class="btn-primary" id="rawJsonSaveBtn" type="button" data-i18n="raw_json_save">保存 settings.json</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+  <script src="traffic.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,61 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -14,6 +14,7 @@
+ import { NotificationDrawer } from '@/components/NotificationDrawer'
+ import { UpgradeModal } from '@/components/UpgradeModal'
+ import { OnboardingWizard } from '@/components/OnboardingWizard'
++import { CommandPalette } from '@/components/CommandPalette'
+ 
+ import Dashboard from '@/pages/Dashboard'
+ import SettingsPage from '@/pages/SettingsPage'
+@@ -46,6 +47,7 @@
+   const [showNotifications, setShowNotifications] = useState(false)
+   const [showUpgrade, setShowUpgrade] = useState(false)
+   const [showOnboarding, setShowOnboarding] = useState(false)
++  const [showPalette, setShowPalette] = useState(false)
+   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'system')
+   const [accentHue, setAccentHue] = useState(() => Number(localStorage.getItem('accent-hue')) || 174)
+   const [appVersion, setAppVersion] = useState('v4.0.0')
+@@ -118,6 +120,17 @@
+     return () => window.removeEventListener('keydown', handleKeyDown)
+   }, [showShortcuts])
+ 
++  useEffect(() => {
++    const handleKeyDown = (e: KeyboardEvent) => {
++      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
++        e.preventDefault()
++        setShowPalette(p => !p)
++      }
++    }
++    window.addEventListener('keydown', handleKeyDown)
++    return () => window.removeEventListener('keydown', handleKeyDown)
++  }, [])
++
+   const refreshUsage = async () => {
+     try {
+       const u = await apiGet('/ocgt/api/dashboard/usage')
+@@ -282,14 +295,14 @@
+                 <span>{activeProfile || 'local'}</span><span className="sep">/</span>
+                 <b>{currentMeta.title}</b>
+               </div>
+-              <button type="button" className="search" onClick={() => setShowShortcuts(true)}>
++              <button type="button" className="search" onClick={() => setShowPalette(true)}>
+                 <Search width={14} height={14} />
+                 <span className="ph">{currentMeta.subtitle}</span>
+-                <span className="kbd">?</span>
++                <span className="kbd">⌘K</span>
+               </button>
+               <div className="tools">
+-                <button className="iconbtn" type="button" title="Help (?)"><HelpCircle width={15} height={15} /></button>
++                <button className="iconbtn" type="button" title="Help (?)" onClick={() => setShowShortcuts(true)}><HelpCircle width={15} height={15} /></button>
+                 <button className="iconbtn" type="button" title="Refresh" onClick={initProxy}><RefreshCw width={15} height={15} /></button>
+                 <button className="iconbtn" type="button" title="Notifications" onClick={() => setShowNotifications(true)}><Bell width={15} height={15} /></button>
+                 <button className="iconbtn" type="button" title="Settings" onClick={() => setShowPrefs(true)}><Settings width={15} height={15} /></button>
+@@ -415,6 +428,7 @@
+       <NotificationDrawer open={showNotifications} onClose={() => setShowNotifications(false)} />
+       <UpgradeModal open={showUpgrade} onClose={() => setShowUpgrade(false)} currentVersion={appVersion} newVersion="v4.0.0" />
+       <OnboardingWizard open={showOnboarding} onClose={() => setShowOnboarding(false)} />
++      <CommandPalette isOpen={showPalette} onClose={() => setShowPalette(false)} />
+     </>
+   )
+ }

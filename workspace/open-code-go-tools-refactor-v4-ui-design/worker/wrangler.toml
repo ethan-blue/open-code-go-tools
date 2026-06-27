@@ -1,0 +1,11 @@
+name = "ocgt-hub"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "HubDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["HubDO"]

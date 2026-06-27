@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Wails GUI (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows/amd64
+            name: ocgt-windows-amd64.exe
+            path: build/bin/ocgt.exe
+          - os: macos-latest
+            platform: darwin/universal
+            name: ocgt-macos-universal.app
+            path: build/bin/ocgt.app
+          - os: ubuntu-22.04
+            platform: linux/amd64
+            name: ocgt-linux-amd64
+            path: build/bin/ocgt
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config libayatana-appindicator3-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+
+      - name: Build Wails GUI Binary
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          wails build -platform ${{ matrix.platform }} -clean -ldflags "-s -w -X github.com/ethan-blue/open-code-go-tools/internal/version.Version=${VERSION}"
+
+      - name: Archive macOS app
+        if: runner.os == 'macOS'
+        run: |
+          cd build/bin
+          tar -czvf ocgt-macos-universal.tar.gz ocgt.app
+
+      - name: Prepare Assets
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            mv build/bin/ocgt-macos-universal.tar.gz dist/ocgt-macos-universal.tar.gz
+          else
+            mv "${{ matrix.path }}" "dist/${{ matrix.name }}"
+          fi
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform != 'darwin/universal' && matrix.name || 'ocgt-macos-universal.tar.gz' }}
+          path: dist/*
+          retention-days: 1
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Extract release notes from RELEASE_NOTES.md
+        id: notes
+        run: |
+          # Extract the latest version section (everything from the first version
+          # heading to the "历史版本 / Previous Releases" marker)
+          awk '
+            /^# .+ocgt v[0-9]/ && !started { started=1 }
+            started && (/Previous Releases/ || /历史版本/) { exit }
+            started { print }
+          ' RELEASE_NOTES.md > release_body.md
+          echo "Extracted $(wc -l < release_body.md) lines"
+
+      - name: Create GitHub Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ocgt ${{ github.ref_name }} GUI
+          body_path: release_body.md
+          files: |
+            dist/*
+          generate_release_notes: false

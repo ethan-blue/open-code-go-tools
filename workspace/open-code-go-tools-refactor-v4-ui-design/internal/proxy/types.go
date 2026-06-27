@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/hub"
+	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 	"github.com/ethan-blue/open-code-go-tools/internal/session"
 )
@@ -91,6 +92,11 @@ type Server struct {
 	sessionsCache    []session.SessionStats
 	sessionsCacheAt  time.Time
 	sessionsCacheTTL time.Duration
+
+	// Provider store for managing upstream providers
+	providerStore *providers.Store
+	configDir     string
+	storeOnce     sync.Once
 }
 
 func (s *Server) SetConfigPath(path string) {

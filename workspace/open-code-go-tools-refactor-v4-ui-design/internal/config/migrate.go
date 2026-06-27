@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // MigrateLegacyConfig splits old config.json into config.json + profiles.json
@@ -86,7 +85,7 @@ func MigrateLegacyConfig(oldPath string) error {
 	}
 
 	// 5. Save both files
-	if err := Save(cfg, ""); err != nil {
+	if err := cfg.Save(""); err != nil {
 		return fmt.Errorf("failed to save new config.json: %w", err)
 	}
 	if err := SaveProfiles(profiles, ""); err != nil {

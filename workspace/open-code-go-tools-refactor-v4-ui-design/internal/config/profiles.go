@@ -22,20 +22,6 @@ type Preset struct {
 	ModelAliases map[string]string `json:"model_aliases,omitempty"`
 }
 
-// Profile holds per-profile user configuration
-type Profile struct {
-	APIKeyEnv        string            `json:"api_key_env"`
-	APIKey           string            `json:"api_key,omitempty"`
-	DefaultModel     string            `json:"default_model,omitempty"`
-	ModelAliases     map[string]string `json:"model_aliases,omitempty"`
-	MessageModels    []string          `json:"message_models,omitempty"`
-	FallbackChain    []string          `json:"fallback_chain,omitempty"`
-	Headers          map[string]string `json:"headers,omitempty"`
-	AuthMode         string            `json:"auth_mode,omitempty"`
-	QuotaCookie      string            `json:"quota_cookie,omitempty"`
-	QuotaWorkspaceID string            `json:"quota_workspace_id,omitempty"`
-}
-
 // BuiltInPresets are the default configuration presets
 var BuiltInPresets = map[string]Preset{
 	"default": {

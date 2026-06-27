@@ -55,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/messages/count_tokens", s.countTokens)
 	mux.HandleFunc("/v1/messages", s.messages)
 	mux.HandleFunc("/v1/chat/completions", s.chatCompletions)
+	mux.HandleFunc("/v1/responses", s.responses)
 	mux.HandleFunc("/claude-desktop/v1/models", s.models)
 	mux.HandleFunc("/claude-desktop/v1/messages/count_tokens", s.countTokens)
 	mux.HandleFunc("/claude-desktop/v1/messages", s.messages)
@@ -2012,4 +2013,73 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", usage)
 		writeJSON(w, resp.StatusCode, result)
 	}
+}
+
+// responses handles OpenAI Responses API /v1/responses requests (for Codex).
+func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
+		return
+	}
+	profile, _, err := s.profileFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if int64(len(data)) > MaxBodySize {
+		writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("request body too large (max %d bytes)", MaxBodySize))
+		return
+	}
+	var payload responsesRequest
+	if err := json.Unmarshal(data, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(payload.Model) == "" {
+		writeError(w, http.StatusBadRequest, errors.New("model is required"))
+		return
+	}
+
+	// Convert Responses API input to Anthropic messages format
+	var messages []anthropicMsg
+	switch v := payload.Input.(type) {
+	case string:
+		messages = append(messages, anthropicMsg{Role: "user", Content: v})
+	case []any:
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				role, _ := m["role"].(string)
+				content, _ := m["content"].(string)
+				if role != "" && content != "" {
+					messages = append(messages, anthropicMsg{Role: role, Content: content})
+				}
+			}
+		}
+	}
+	if len(messages) == 0 {
+		writeError(w, http.StatusBadRequest, errors.New("input must contain at least one message"))
+		return
+	}
+
+	payload.Model = profile.ResolveModel(payload.Model)
+	start := time.Now()
+	client := clientSourceFromRequest(r)
+	_ = client
+
+	if payload.Stream {
+		anthReq := anthropicRequest{Model: payload.Model, Messages: messages, Stream: true}
+		s.forwardAnthropicMessages(w, r, profile, anthReq, data)
+		_ = start
+		return
+	}
+
+	// Non-streaming: forward to chat completions and convert response
+	chatReq := anthropicRequest{Model: payload.Model, Messages: messages}
+	s.forwardChatCompletions(w, r, profile, chatReq)
+	_ = start
 }

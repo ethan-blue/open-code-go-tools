@@ -245,6 +245,37 @@ type anthropicErrorResponse struct {
 	Error anthropicError `json:"error"`
 }
 
+// OpenAI Responses API types (for Codex compatibility)
+type responsesRequest struct {
+	Model  string `json:"model"`
+	Input  any    `json:"input"` // string or array of input items
+	Stream bool   `json:"stream,omitempty"`
+}
+
+type responsesResponse struct {
+	ID     string           `json:"id"`
+	Object string           `json:"object"`
+	Model  string           `json:"model"`
+	Output []responsesItem  `json:"output"`
+	Usage  responsesUsage   `json:"usage"`
+}
+
+type responsesItem struct {
+	Type    string            `json:"type"`
+	Role    string            `json:"role,omitempty"`
+	Content []responsesContent `json:"content,omitempty"`
+}
+
+type responsesContent struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+type responsesUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+}
+
 func New(cfg config.Config, webAssets ...*embed.FS) (*Server, error) {
 	var assets *embed.FS
 	if len(webAssets) > 0 {

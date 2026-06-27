@@ -102,6 +102,10 @@ export function SaveLogPreferences(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveLogPreferences'](arg1, arg2, arg3);
 }
 
+export function SavePlugins(arg1) {
+  return window['go']['main']['App']['SavePlugins'](arg1);
+}
+
 export function SavePreferences(arg1) {
   return window['go']['main']['App']['SavePreferences'](arg1);
 }
@@ -118,14 +122,6 @@ export function SetAuthEnabled(arg1) {
   return window['go']['main']['App']['SetAuthEnabled'](arg1);
 }
 
-export function SavePlugins(arg1) {
-  return window['go']['main']['App']['SavePlugins'](arg1);
-}
-
-export function TestUpstreamConnection(arg1, arg2) {
-  return window['go']['main']['App']['TestUpstreamConnection'](arg1, arg2);
-}
-
 export function SetupClaudeDesktop() {
   return window['go']['main']['App']['SetupClaudeDesktop']();
 }
@@ -140,4 +136,8 @@ export function ShowAboutDialog() {
 
 export function SyncConfiguredIntegrations() {
   return window['go']['main']['App']['SyncConfiguredIntegrations']();
+}
+
+export function TestUpstreamConnection(arg1, arg2) {
+  return window['go']['main']['App']['TestUpstreamConnection'](arg1, arg2);
 }

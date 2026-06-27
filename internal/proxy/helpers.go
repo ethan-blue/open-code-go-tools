@@ -453,6 +453,16 @@ func (rl *rpmLimiter) allow(clientIP string) bool {
 	return false
 }
 
+// securityHeadersMiddleware adds security headers to responses
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // getClientIP extracts the client IP from the request, returning a canonical
 // form so that the same host always produces the same rate-limit key.
 func getClientIP(r *http.Request) string {

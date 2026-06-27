@@ -24,6 +24,8 @@ import (
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
+	"github.com/ethan-blue/open-code-go-tools/internal/fileutil"
+	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 	"github.com/ethan-blue/open-code-go-tools/internal/session"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
@@ -65,22 +67,32 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ocgt/api/syslog", s.apiSyslog)
 	mux.HandleFunc("/ocgt/api/version", s.apiVersion)
 	mux.HandleFunc("/ocgt/api/config/raw", s.apiRawConfig)
+	mux.HandleFunc("/ocgt/api/config/export", s.apiConfigExport)
+	mux.HandleFunc("/ocgt/api/config/import", s.apiConfigImport)
 	mux.HandleFunc("/ocgt/api/quota", s.apiQuota)
 	mux.HandleFunc("/ocgt/api/quota/refresh", s.apiRefreshQuota)
 	mux.HandleFunc("/ocgt/api/sessions", s.apiSessions)
 	mux.HandleFunc("/ocgt/api/hub/sync", s.apiHubSync)
 	s.registerStatsRoutes(mux)
 
+	// Providers API
+	s.registerProvidersRoutes(mux)
+
+	// Copilot API
+	mux.HandleFunc("/ocgt/api/copilot/ask", s.apiCopilotAsk)
+	mux.HandleFunc("/ocgt/api/copilot/insights", s.apiCopilotInsights)
+	mux.HandleFunc("/ocgt/api/copilot/action/{id}", s.apiCopilotAction)
+
+	// System info API (hardware detection for onboarding)
+	mux.HandleFunc("/ocgt/api/system-info", s.apiSystemInfo)
+
 	mux.HandleFunc("/", s.serveStatic)
 
-	// Apply middlewares in order: rate limit -> auth -> logging
+	// Apply middlewares in order: security -> rate limit -> auth -> logging
 	handler := requestLogger(mux)
 
 	// Enforce auth — use configured token, or auto-generated one from ListenAndServe
-	token := s.config.LocalAuthToken
-	if token == "" {
-		token = s.autoAuthToken
-	}
+	token := s.LocalToken()
 	if token != "" {
 		handler = authMiddleware(token, handler)
 	}
@@ -93,6 +105,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	handler = rateLimitMiddleware(s.rateLimiter, handler)
 	handler = rpmLimitMiddleware(s.rpmLimiter, handler)
+	handler = securityHeadersMiddleware(handler)
 
 	return handler
 }
@@ -379,6 +392,56 @@ func (s *Server) FetchUpstreamModels(ctx context.Context) (map[string]any, error
 		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
 	}
 	return normalizeModels(body, profile), nil
+}
+
+// TestConnection fetches /v1/models from the given upstream URL using the
+// provided API key.  This is a one-shot probe that does NOT modify the
+// running server config — safe for testing draft (unsaved) credentials.
+func (s *Server) TestConnection(ctx context.Context, upstream, apiKey string) (map[string]any, error) {
+	if strings.TrimSpace(upstream) == "" {
+		return nil, fmt.Errorf("upstream URL is required")
+	}
+	// Normalise: add scheme if missing
+	u := strings.TrimSpace(upstream)
+	if !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+		u = "https://" + u
+	}
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return nil, fmt.Errorf("invalid upstream URL: %w", err)
+	}
+	target := *parsed
+	target.Path = singleJoin(target.Path, "/v1/models")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Host = parsed.Host
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Anthropic-Version", "2023-06-01")
+	if strings.TrimSpace(apiKey) != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("X-Api-Key", apiKey)
+	}
+
+	// Use the server's shared transport (keeps TLS settings etc.)
+	client := s.clientSnapshot()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connection failed: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("upstream returned HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	// Build a minimal profile just for normalisation
+	draftProfile := config.Profile{APIKey: apiKey}
+	return normalizeModels(body, draftProfile), nil
 }
 
 func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
@@ -1598,11 +1661,11 @@ func (s *Server) apiRawConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		// Formatting and saving
 		formatted, _ := json.MarshalIndent(js, "", "  ")
-		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		if err := os.WriteFile(configPath, formatted, 0644); err != nil {
+		if err := fileutil.AtomicWriteFile(configPath, formatted, 0600); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -1614,12 +1677,110 @@ func (s *Server) apiRawConfig(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("Method not allowed"))
 }
 
+// apiConfigExport handles GET /ocgt/api/config/export — returns config + providers as a single backup bundle.
+func (s *Server) apiConfigExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+
+	home, _ := os.UserHomeDir()
+	configPath := filepath.Join(home, ".claude", "settings.json")
+
+	bundle := map[string]any{
+		"version":    version.Version,
+		"exportedAt": time.Now().Format(time.RFC3339),
+	}
+
+	// Read settings.json
+	if data, err := os.ReadFile(configPath); err == nil {
+		var settings map[string]any
+		if json.Unmarshal(data, &settings) == nil {
+			bundle["config"] = settings
+		}
+	}
+
+	// Read providers
+	if s.providerStore == nil {
+		s.providerStore = providers.NewStore(s.configDir)
+		if err := s.providerStore.Load(); err != nil {
+			log.Printf("providers: load error during export: %v", err)
+		}
+	}
+	// Mask API keys in export
+	list := s.providerStore.List()
+	for i := range list {
+		list[i].APIKey = providers.MaskAPIKey(list[i].APIKey)
+	}
+	bundle["providers"] = list
+
+	writeJSON(w, http.StatusOK, bundle)
+}
+
+// apiConfigImport handles POST /ocgt/api/config/import — restores config from a backup bundle.
+func (s *Server) apiConfigImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize+1))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if int64(len(data)) > MaxBodySize {
+		writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("request body too large (max %d bytes)", MaxBodySize))
+		return
+	}
+
+	var bundle map[string]json.RawMessage
+	if err := json.Unmarshal(data, &bundle); err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid JSON: %w", err))
+		return
+	}
+
+	home, _ := os.UserHomeDir()
+	configPath := filepath.Join(home, ".claude", "settings.json")
+
+	// Restore config section
+	if raw, ok := bundle["config"]; ok {
+		formatted, _ := json.MarshalIndent(json.RawMessage(raw), "", "  ")
+		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		if err := fileutil.AtomicWriteFile(configPath, formatted, 0600); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+}
+
 func (s *Server) apiVersion(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method %s not supported", r.Method))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"version": version.Version})
+}
+
+// apiSystemInfo returns system information for hardware-aware onboarding.
+func (s *Server) apiSystemInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method %s not supported", r.Method))
+		return
+	}
+	info := map[string]any{
+		"os":            runtime.GOOS,
+		"arch":          runtime.GOARCH,
+		"num_cpu":       runtime.NumCPU(),
+		"go_version":    runtime.Version(),
+		"num_goroutine": runtime.NumGoroutine(),
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 // SetQuotaData sets the cached quota data from an external caller (e.g. Wails frontend).
@@ -1706,20 +1867,7 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 原有逻辑：返回会话列表（带缓存）
-	s.sessionsCacheMu.RLock()
-	cached := s.sessionsCache
-	cachedAt := s.sessionsCacheAt
-	s.sessionsCacheMu.RUnlock()
-
-	if cached != nil && time.Since(cachedAt) < s.sessionsCacheTTL {
-		writeJSON(w, http.StatusOK, session.SessionsResponse{
-			Sessions: cached,
-			Total:    len(cached),
-		})
-		return
-	}
-
+	// 原有逻辑：返回会话列表
 	sessions, err := session.ReadAllSessions(projectsRoot)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -1728,12 +1876,6 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	if sessions == nil {
 		sessions = []session.SessionStats{}
 	}
-
-	s.sessionsCacheMu.Lock()
-	s.sessionsCache = sessions
-	s.sessionsCacheAt = time.Now()
-	s.sessionsCacheMu.Unlock()
-
 	writeJSON(w, http.StatusOK, session.SessionsResponse{
 		Sessions: sessions,
 		Total:    len(sessions),

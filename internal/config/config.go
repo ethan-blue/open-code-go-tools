@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethan-blue/open-code-go-tools/internal/fileutil"
 )
 
 const (
@@ -45,6 +47,7 @@ type Config struct {
 	RateLimitBurst          int                `json:"rate_limit_burst,omitempty"`        // Rate limit: max burst size per IP
 	RateLimitPerMinute      int                `json:"rate_limit_per_minute,omitempty"`   // Quota protection: max requests per minute (0 = unlimited)
 	ClaudeEnv               map[string]string  `json:"claude_env,omitempty"`              // User-editable Claude Code env template
+	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
 }
 
 // Profile holds configuration for a specific API backend.
@@ -114,6 +117,12 @@ func Example() Config {
 		RateLimitPerSecond:      DefaultRateLimitPerSecond,
 		RateLimitBurst:          DefaultRateLimitBurst,
 		ClaudeEnv:               DefaultClaudeEnv(defaultProfile),
+		Plugins: map[string]bool{
+			"web_search":   true,
+			"auto_compress": false,
+			"session_save":  true,
+			"git_sync":      false,
+		},
 		ActiveProfile:           "opencode-go",
 		Profiles: map[string]Profile{
 			"opencode-go": defaultProfile,
@@ -150,6 +159,12 @@ func Load(path string) (Config, error) {
 		if err != nil {
 			return Config{}, fmt.Errorf("failed to determine config path: %w", err)
 		}
+	}
+
+	// Auto-migrate legacy config.json → config.json + profiles.json
+	if err := EnsureMigration(); err != nil {
+		// Non-fatal: log but continue with legacy format
+		fmt.Printf("warning: config migration failed: %v\n", err)
 	}
 
 	data, err := os.ReadFile(path)
@@ -189,7 +204,7 @@ func WriteExample(path string, overwrite bool) (string, error) {
 	if err != nil {
 		return path, err
 	}
-	return path, atomicWriteFile(path, append(data, '\n'), 0o600)
+	return path, fileutil.AtomicWriteFile(path, append(data, '\n'), 0o600)
 }
 
 func (c Config) Save(path string) error {
@@ -231,7 +246,7 @@ func (c Config) Save(path string) error {
 	if err != nil {
 		return err
 	}
-	return atomicWriteFile(path, append(data, '\n'), 0o600)
+	return fileutil.AtomicWriteFile(path, append(data, '\n'), 0o600)
 }
 
 func (c *Config) Migrate() {

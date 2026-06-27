@@ -1,0 +1,39 @@
+/* ═══════════════════════════════════════
+   Offline @font-face declarations
+   Geist v1.7.2 · Instrument Serif v5
+   ═══════════════════════════════════════ */
+
+/* ── Geist Sans (variable weight) ── */
+@font-face {
+  font-family: 'Geist';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist/geist-variable.woff2') format('woff2');
+}
+
+/* ── Geist Mono (variable weight) ── */
+@font-face {
+  font-family: 'Geist Mono';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/fonts/geist-mono/geist-mono-variable.woff2') format('woff2');
+}
+
+/* ── Instrument Serif ── */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif/instrument-serif-regular.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/instrument-serif/instrument-serif-italic.woff2') format('woff2');
+}

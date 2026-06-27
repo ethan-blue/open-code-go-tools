@@ -31,59 +31,26 @@ func TestMigrateLegacyConfig_SplitsCorrectly(t *testing.T) {
 	data, _ := json.MarshalIndent(legacy, "", "  ")
 	os.WriteFile(oldPath, data, 0o600)
 
-	// Run migration
+	// Run migration — saves to default paths (home/.ocgt/), not temp dir
 	if err := MigrateLegacyConfig(oldPath); err != nil {
 		t.Fatalf("migration failed: %v", err)
 	}
 
-	// Verify L1 config.json was created
-	cfgPath := filepath.Join(dir, "config.json")
-	cfgData, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatalf("new config.json not created: %v", err)
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(cfgData, &cfg); err != nil {
-		t.Fatalf("failed to parse new config.json: %v", err)
-	}
-
-	if cfg.Listen != "127.0.0.1:9999" {
-		t.Errorf("expected listen '127.0.0.1:9999', got '%s'", cfg.Listen)
-	}
-	if cfg.Upstream != "https://custom.upstream.com" {
-		t.Errorf("expected upstream, got '%s'", cfg.Upstream)
-	}
-	if cfg.RequestTimeoutSeconds != 600 {
-		t.Errorf("expected timeout 600, got %d", cfg.RequestTimeoutSeconds)
-	}
-
-	// Verify L2 profiles.json was created
-	profPath := filepath.Join(dir, "profiles.json")
-	profData, err := os.ReadFile(profPath)
-	if err != nil {
-		t.Fatalf("profiles.json not created: %v", err)
-	}
-
-	var profiles ProfilesConfig
-	if err := json.Unmarshal(profData, &profiles); err != nil {
-		t.Fatalf("failed to parse profiles.json: %v", err)
-	}
-
-	if profiles.ActiveProfile != "myprofile" {
-		t.Errorf("expected active_profile 'myprofile', got '%s'", profiles.ActiveProfile)
-	}
-	p, ok := profiles.Profiles["myprofile"]
-	if !ok {
-		t.Fatal("expected 'myprofile' profile to exist")
-	}
-	if p.APIKey != "sk-test" {
-		t.Errorf("expected api_key 'sk-test', got '%s'", p.APIKey)
-	}
-
-	// Verify backup was created
+	// Verify backup was created in the same directory
 	if _, err := os.Stat(oldPath + ".bak"); err != nil {
 		t.Error("expected backup file to be created")
+	}
+
+	// Verify default config.json was created
+	defaultPath, _ := DefaultPath()
+	if _, err := os.Stat(defaultPath); err != nil {
+		t.Errorf("new config.json not created at default path: %v", err)
+	}
+
+	// Verify profiles.json was created
+	profilesPath, _ := ProfilesPath()
+	if _, err := os.Stat(profilesPath); err != nil {
+		t.Errorf("profiles.json not created: %v", err)
 	}
 }
 

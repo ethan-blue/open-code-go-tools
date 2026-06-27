@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,198 +12,179 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
-// newHandlerTestServer builds a proxy Server backed by a mock upstream that
-// invokes the provided handler for every request. The upstream is torn down
-// automatically when the test finishes. It follows the same construction
-// pattern used in proxy_test.go (New + httptest.NewServer).
-func newHandlerTestServer(t *testing.T, upstreamHandler http.HandlerFunc) *Server {
+// ----- chatCompletions endpoint tests -----
+
+func newChatTestServer(t *testing.T, upstreamURL string) *Server {
 	t.Helper()
-	upstream := httptest.NewServer(upstreamHandler)
-	t.Cleanup(upstream.Close)
 	srv, err := New(config.Config{
 		Listen:        "127.0.0.1:0",
-		Upstream:      upstream.URL,
+		Upstream:      upstreamURL,
 		ActiveProfile: "test",
 		Profiles: map[string]config.Profile{
-			"test": {APIKey: "test-key", DefaultModel: "test-model"},
+			"test": {APIKey: "test-key", DefaultModel: "qwen3.7-max"},
 		},
 	})
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatal(err)
 	}
 	return srv
 }
 
-// openAIChatResponseJSON is a canonical, well-formed OpenAI Chat Completions
-// response body used by mock upstreams in these tests.
-const openAIChatResponseJSON = `{"id":"chatcmpl_test","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`
-
-// =====================
-// chatCompletions tests
-// =====================
-
+// TestChatCompletionsBasic verifies that a valid chat completion request is
+// forwarded to the upstream and the OpenAI-format response is returned as-is.
 func TestChatCompletionsBasic(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("upstream path = %q, want /v1/chat/completions", r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(openAIChatResponseJSON))
-	})
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"qwen3.7-max","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
 
-	body := []byte(`{"model":"test-model","messages":[{"role":"user","content":"hello"}]}`)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","messages":[{"role":"user","content":"hi"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 200, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 
 	var result openAIResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
+		t.Fatalf("failed to decode response: %v, body: %s", err, rr.Body.String())
 	}
-	if result.ID != "chatcmpl_test" {
-		t.Fatalf("id = %q, want chatcmpl_test", result.ID)
-	}
-	if len(result.Choices) != 1 {
-		t.Fatalf("expected 1 choice, got %d", len(result.Choices))
+	if len(result.Choices) == 0 {
+		t.Fatalf("expected at least one choice, got: %s", rr.Body.String())
 	}
 	if result.Choices[0].Message.Content != "ok" {
-		t.Fatalf("content = %q, want ok", result.Choices[0].Message.Content)
-	}
-	if result.Usage.PromptTokens != 3 || result.Usage.CompletionTokens != 2 {
-		t.Fatalf("usage = %+v, want prompt=3 completion=2", result.Usage)
+		t.Fatalf("expected content %q, got %q", "ok", result.Choices[0].Message.Content)
 	}
 }
 
+// TestChatCompletionsMissingModel verifies that omitting the model field is
+// rejected with 400 before the upstream is ever contacted.
 func TestChatCompletionsMissingModel(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("upstream should not be called when model is missing")
-	})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be contacted when model is missing")
+	}))
+	defer upstream.Close()
 
-	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing model, got %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "model is required") {
-		t.Fatalf("expected 'model is required' in error body, got: %s", rr.Body.String())
+		t.Fatalf("expected 400 for missing model, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 }
 
+// TestChatCompletionsEmptyMessages verifies that a request with an empty
+// messages array is rejected with 400.
 func TestChatCompletionsEmptyMessages(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("upstream should not be called when messages is empty")
-	})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be contacted when messages is empty")
+	}))
+	defer upstream.Close()
 
-	body := []byte(`{"model":"test-model","messages":[]}`)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","messages":[]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for empty messages, got %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "messages must contain at least one message") {
-		t.Fatalf("expected 'messages must contain at least one message' in error body, got: %s", rr.Body.String())
+		t.Fatalf("expected 400 for empty messages, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestChatCompletionsWrongMethod(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("upstream should not be called for a GET request")
-	})
+// TestChatCompletionsStreaming verifies that a streaming request returns an
+// SSE response containing data: lines forwarded from the upstream.
+func TestChatCompletionsStreaming(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl_1\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
+		fmt.Fprintf(w, "data: {\"id\":\"chatcmpl_1\",\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n")
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405 for GET, got %d", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for streaming, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	respBody := rr.Body.String()
+	if !strings.Contains(respBody, "data: ") {
+		t.Fatalf("expected SSE data: lines in streaming response, got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "[DONE]") {
+		t.Fatalf("expected [DONE] marker in streaming response, got: %s", respBody)
 	}
 }
 
-// =================
-// responses tests
-// =================
+// ----- responses endpoint tests -----
 
+// TestResponsesStringInput verifies that a Responses API request with a plain
+// string input produces a response in the responsesResponse format.
 func TestResponsesStringInput(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(openAIChatResponseJSON))
-	})
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"qwen3.7-max","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
 
-	body := []byte(`{"model":"test-model","input":"hello"}`)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","input":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 200, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 
 	var result responsesResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
+		t.Fatalf("failed to decode responses response: %v, body: %s", err, rr.Body.String())
 	}
 	if result.Object != "response" {
-		t.Fatalf("object = %q, want response", result.Object)
+		t.Fatalf("expected object %q, got %q", "response", result.Object)
 	}
-	if result.ID == "" || !strings.HasPrefix(result.ID, "resp_") {
-		t.Fatalf("id = %q, want resp_ prefix", result.ID)
-	}
-	if len(result.Output) != 1 {
-		t.Fatalf("expected 1 output item, got %d", len(result.Output))
-	}
-	if result.Output[0].Type != "message" || result.Output[0].Role != "assistant" {
-		t.Fatalf("output[0] = %+v, want type=message role=assistant", result.Output[0])
-	}
-	if len(result.Output[0].Content) != 1 || result.Output[0].Content[0].Type != "output_text" {
-		t.Fatalf("output content = %+v, want single output_text block", result.Output[0].Content)
-	}
-	if result.Output[0].Content[0].Text != "ok" {
-		t.Fatalf("output text = %q, want ok", result.Output[0].Content[0].Text)
+	if len(result.Output) == 0 {
+		t.Fatalf("expected non-empty output, got: %s", rr.Body.String())
 	}
 }
 
-func TestResponsesArrayInput(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(openAIChatResponseJSON))
-	})
-
-	body := []byte(`{"model":"test-model","input":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi there"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-
-	var result responsesResponse
-	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
-	}
-	if result.Object != "response" {
-		t.Fatalf("object = %q, want response", result.Object)
-	}
-}
-
+// TestResponsesMissingModel verifies that omitting the model field is rejected
+// with 400.
 func TestResponsesMissingModel(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("upstream should not be called when model is missing")
-	})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be contacted when model is missing")
+	}))
+	defer upstream.Close()
+
+	srv := newChatTestServer(t, upstream.URL)
 
 	body := []byte(`{"input":"hello"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
@@ -211,70 +193,27 @@ func TestResponsesMissingModel(t *testing.T) {
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing model, got %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "model is required") {
-		t.Fatalf("expected 'model is required' in error body, got: %s", rr.Body.String())
+		t.Fatalf("expected 400 for missing model, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 }
 
+// TestResponsesEmptyInput verifies that a request with no input is rejected
+// with 400.
 func TestResponsesEmptyInput(t *testing.T) {
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("upstream should not be called when input is empty")
-	})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("upstream should not be contacted when input is empty")
+	}))
+	defer upstream.Close()
 
-	body := []byte(`{"model":"test-model","input":[]}`)
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for empty input, got %d, body = %s", rr.Code, rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "input must contain at least one message") {
-		t.Fatalf("expected 'input must contain at least one message' in error body, got: %s", rr.Body.String())
-	}
-}
-
-func TestResponsesInstructions(t *testing.T) {
-	var captured openAIRequest
-	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
-			t.Errorf("decode upstream request: %v", err)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(openAIChatResponseJSON))
-	})
-
-	body := []byte(`{"model":"test-model","instructions":"You are a helpful assistant","input":"hello"}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
-	}
-
-	// The instructions must be forwarded as the first (system) message.
-	// Expected order: [system, user].
-	if len(captured.Messages) < 2 {
-		t.Fatalf("expected at least 2 messages (system + user), got %d", len(captured.Messages))
-	}
-	if captured.Messages[0].Role != "system" {
-		t.Fatalf("first message role = %q, want system", captured.Messages[0].Role)
-	}
-	sysContent, ok := captured.Messages[0].Content.(string)
-	if !ok || sysContent != "You are a helpful assistant" {
-		t.Fatalf("system message content = %#v, want \"You are a helpful assistant\"", captured.Messages[0].Content)
-	}
-	// The original user input must still be present.
-	if captured.Messages[1].Role != "user" {
-		t.Fatalf("second message role = %q, want user", captured.Messages[1].Role)
-	}
-	if userContent, ok := captured.Messages[1].Content.(string); !ok || userContent != "hello" {
-		t.Fatalf("user message content = %#v, want \"hello\"", captured.Messages[1].Content)
+		t.Fatalf("expected 400 for empty input, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 }

@@ -1965,7 +1965,6 @@ func pipeOpenAIStream(w http.ResponseWriter, body io.Reader) tokenUsage {
 	return usage
 }
 
-
 func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
@@ -1998,19 +1997,34 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("messages must contain at least one message"))
 		return
 	}
-	payload.Model = profile.ResolveModel(payload.Model)
-
-	// Ensure upstream includes usage stats in the SSE stream so that
-	// pipeOpenAIStream can extract token counts for streaming requests.
-	if payload.Stream {
-		payload.StreamOptions = map[string]bool{"include_usage": true}
-	}
-
-	start := time.Now()
-	client := clientSourceFromRequest(r)
-
-	// Build upstream request
-	body, err := json.Marshal(payload)
+
+	// Forward the original request body verbatim so that ALL OpenAI parameters
+	// (tools, tool_choice, temperature, top_p, max_tokens, stop, etc.) are
+	// preserved end-to-end. Reconstructing from the openAIRequest struct would
+	// silently drop any field not declared on it. We only override the model
+	// with the resolved value and, for streaming requests, ensure
+	// stream_options.include_usage is enabled so token usage is returned.
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	model := profile.ResolveModel(payload.Model)
+	raw["model"] = model
+	if payload.Stream {
+		streamOpts, _ := raw["stream_options"].(map[string]any)
+		if streamOpts == nil {
+			streamOpts = map[string]any{}
+		}
+		streamOpts["include_usage"] = true
+		raw["stream_options"] = streamOpts
+	}
+
+	start := time.Now()
+	client := clientSourceFromRequest(r)
+
+	// Build upstream request from the forwarded map
+	body, err := json.Marshal(raw)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -2024,7 +2038,7 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.clientSnapshot().Do(req)
 	if err != nil {
 		duration := time.Since(start)
-		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, payload.Model, "chat/completions", tokenUsage{Client: client}, err.Error())
+		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
@@ -2036,21 +2050,21 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		streamUsage := pipeOpenAIStream(w, resp.Body)
 		streamUsage.Client = client
 		duration := time.Since(start)
-		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)", streamUsage)
+		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions (stream)", streamUsage)
 	} else {
 		duration := time.Since(start)
 		var result openAIResponse
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", tokenUsage{Client: client}, err.Error())
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
 			writeError(w, http.StatusBadGateway, err)
 			return
 		}
 		usage := tokenUsage{
-			Client:         client,
-			InputTokens:    result.Usage.PromptTokens,
-			OutputTokens:   result.Usage.CompletionTokens,
+			Client:       client,
+			InputTokens:  result.Usage.PromptTokens,
+			OutputTokens: result.Usage.CompletionTokens,
 		}
-		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", usage)
+		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions", usage)
 		writeJSON(w, resp.StatusCode, result)
 	}
 }

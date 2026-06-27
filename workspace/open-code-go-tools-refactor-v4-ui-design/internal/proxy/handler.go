@@ -1998,12 +1998,18 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("messages must contain at least one message"))
 		return
 	}
-	payload.Model = profile.ResolveModel(payload.Model)
-
-	start := time.Now()
-	client := clientSourceFromRequest(r)
-
-	// Build upstream request
+	payload.Model = profile.ResolveModel(payload.Model)
+
+	// Ensure upstream includes usage stats in the SSE stream so that
+	// pipeOpenAIStream can extract token counts for streaming requests.
+	if payload.Stream {
+		payload.StreamOptions = map[string]bool{"include_usage": true}
+	}
+
+	start := time.Now()
+	client := clientSourceFromRequest(r)
+
+	// Build upstream request
 	body, err := json.Marshal(payload)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

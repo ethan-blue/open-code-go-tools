@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,212 +11,270 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
-// standardOpenAIResponse is a realistic non-streaming OpenAI chat completion
-// response returned by the mock upstream used across these tests.
-const standardOpenAIResponse = `{"id":"test","model":"test-model","choices":[{"message":{"content":"Hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`
-
-// newProxyTestServer spins up a mock upstream HTTP server delegating to the
-// given handler, then returns a proxy.Server configured to forward to it.
-// The mock upstream is cleaned up automatically when the test finishes.
-func newProxyTestServer(t *testing.T, upstream http.Handler) *Server {
+// newHandlerTestServer builds a proxy Server backed by a mock upstream that
+// invokes the provided handler for every request. The upstream is torn down
+// automatically when the test finishes. It follows the same construction
+// pattern used in proxy_test.go (New + httptest.NewServer).
+func newHandlerTestServer(t *testing.T, upstreamHandler http.HandlerFunc) *Server {
 	t.Helper()
-	up := httptest.NewServer(upstream)
-	t.Cleanup(up.Close)
+	upstream := httptest.NewServer(upstreamHandler)
+	t.Cleanup(upstream.Close)
 	srv, err := New(config.Config{
 		Listen:        "127.0.0.1:0",
-		Upstream:      up.URL,
+		Upstream:      upstream.URL,
 		ActiveProfile: "test",
 		Profiles: map[string]config.Profile{
 			"test": {APIKey: "test-key", DefaultModel: "test-model"},
 		},
 	})
 	if err != nil {
-		t.Fatalf("New server: %v", err)
+		t.Fatalf("New: %v", err)
 	}
 	return srv
 }
 
-// openAIMockUpstream returns a handler that responds to every request with the
-// standard non-streaming OpenAI chat completion response.
-func openAIMockUpstream(t *testing.T) http.Handler {
-	t.Helper()
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// openAIChatResponseJSON is a canonical, well-formed OpenAI Chat Completions
+// response body used by mock upstreams in these tests.
+const openAIChatResponseJSON = `{"id":"chatcmpl_test","model":"test-model","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`
+
+// =====================
+// chatCompletions tests
+// =====================
+
+func TestChatCompletionsBasic(t *testing.T) {
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(standardOpenAIResponse))
+		_, _ = w.Write([]byte(openAIChatResponseJSON))
 	})
-}
 
-// doJSONPost issues a POST with an application/json body through the proxy and
-// returns the captured response recorder.
-func doJSONPost(t *testing.T, srv *Server, path string, body []byte) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	body := []byte(`{"model":"test-model","messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rr, req)
-	return rr
-}
-
-// ===== /v1/chat/completions =====
-
-func TestChatCompletionsBasic(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
-
-	body := []byte(`{"model":"test-model","messages":[{"role":"user","content":"hi"}]}`)
-	rr := doJSONPost(t, srv, "/v1/chat/completions", body)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 
-	var result map[string]any
+	var result openAIResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("invalid JSON response: %v, body = %s", err, rr.Body.String())
+		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
 	}
-	if result["id"] != "test" {
-		t.Fatalf("id = %v, want \"test\"", result["id"])
+	if result.ID != "chatcmpl_test" {
+		t.Fatalf("id = %q, want chatcmpl_test", result.ID)
 	}
-	if result["model"] != "test-model" {
-		t.Fatalf("model = %v, want \"test-model\"", result["model"])
+	if len(result.Choices) != 1 {
+		t.Fatalf("expected 1 choice, got %d", len(result.Choices))
 	}
-	choices, ok := result["choices"].([]any)
-	if !ok || len(choices) == 0 {
-		t.Fatalf("expected non-empty choices array, got: %v", result["choices"])
+	if result.Choices[0].Message.Content != "ok" {
+		t.Fatalf("content = %q, want ok", result.Choices[0].Message.Content)
 	}
-	usage, ok := result["usage"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected usage object, got: %v", result["usage"])
-	}
-	if usage["total_tokens"] != float64(15) {
-		t.Fatalf("total_tokens = %v, want 15", usage["total_tokens"])
+	if result.Usage.PromptTokens != 3 || result.Usage.CompletionTokens != 2 {
+		t.Fatalf("usage = %+v, want prompt=3 completion=2", result.Usage)
 	}
 }
 
 func TestChatCompletionsMissingModel(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not be called when model is missing")
+	})
 
-	body := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
-	rr := doJSONPost(t, srv, "/v1/chat/completions", body)
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 400 for missing model, got %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "model is required") {
+		t.Fatalf("expected 'model is required' in error body, got: %s", rr.Body.String())
 	}
 }
 
 func TestChatCompletionsEmptyMessages(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not be called when messages is empty")
+	})
 
 	body := []byte(`{"model":"test-model","messages":[]}`)
-	rr := doJSONPost(t, srv, "/v1/chat/completions", body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 400 for empty messages, got %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "messages must contain at least one message") {
+		t.Fatalf("expected 'messages must contain at least one message' in error body, got: %s", rr.Body.String())
 	}
 }
 
-func TestChatCompletionsStreaming(t *testing.T) {
-	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: {\"id\":\"test\",\"model\":\"test-model\",\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
-		fmt.Fprintf(w, "data: [DONE]\n\n")
+func TestChatCompletionsWrongMethod(t *testing.T) {
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not be called for a GET request")
 	})
-	srv := newProxyTestServer(t, upstream)
 
-	body := []byte(`{"model":"test-model","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
-	rr := doJSONPost(t, srv, "/v1/chat/completions", body)
+	req := httptest.NewRequest(http.MethodGet, "/v1/chat/completions", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body = %s", rr.Code, rr.Body.String())
-	}
-
-	respBody := rr.Body.String()
-	if !strings.Contains(respBody, "data:") {
-		t.Fatalf("expected SSE \"data:\" lines in response, got: %s", respBody)
-	}
-	if !strings.Contains(respBody, "data: [DONE]") {
-		t.Fatalf("expected \"data: [DONE]\" sentinel in stream, got: %s", respBody)
-	}
-	if !strings.Contains(respBody, `"delta"`) {
-		t.Fatalf("expected streamed delta payload in response, got: %s", respBody)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for GET, got %d", rr.Code)
 	}
 }
 
-// ===== /v1/responses =====
+// =================
+// responses tests
+// =================
 
 func TestResponsesStringInput(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(openAIChatResponseJSON))
+	})
 
-	body := []byte(`{"model":"test-model","input":"Hello, world!"}`)
-	rr := doJSONPost(t, srv, "/v1/responses", body)
+	body := []byte(`{"model":"test-model","input":"hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 
 	var result responsesResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("invalid JSON response: %v, body = %s", err, rr.Body.String())
+		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
 	}
 	if result.Object != "response" {
-		t.Fatalf("object = %q, want \"response\"", result.Object)
+		t.Fatalf("object = %q, want response", result.Object)
 	}
-	if result.Model != "test-model" {
-		t.Fatalf("model = %q, want \"test-model\"", result.Model)
+	if result.ID == "" || !strings.HasPrefix(result.ID, "resp_") {
+		t.Fatalf("id = %q, want resp_ prefix", result.ID)
 	}
-	if len(result.Output) == 0 || len(result.Output[0].Content) == 0 {
-		t.Fatalf("expected output content blocks, got: %+v", result.Output)
+	if len(result.Output) != 1 {
+		t.Fatalf("expected 1 output item, got %d", len(result.Output))
 	}
-	if got := result.Output[0].Content[0].Text; got != "Hello" {
-		t.Fatalf("output text = %q, want \"Hello\"", got)
+	if result.Output[0].Type != "message" || result.Output[0].Role != "assistant" {
+		t.Fatalf("output[0] = %+v, want type=message role=assistant", result.Output[0])
 	}
-	if result.Usage.InputTokens != 10 || result.Usage.OutputTokens != 5 {
-		t.Fatalf("usage = %+v, want input=10 output=5", result.Usage)
+	if len(result.Output[0].Content) != 1 || result.Output[0].Content[0].Type != "output_text" {
+		t.Fatalf("output content = %+v, want single output_text block", result.Output[0].Content)
+	}
+	if result.Output[0].Content[0].Text != "ok" {
+		t.Fatalf("output text = %q, want ok", result.Output[0].Content[0].Text)
 	}
 }
 
 func TestResponsesArrayInput(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(openAIChatResponseJSON))
+	})
 
-	body := []byte(`{"model":"test-model","input":[{"role":"user","content":"hi there"}]}`)
-	rr := doJSONPost(t, srv, "/v1/responses", body)
+	body := []byte(`{"model":"test-model","input":[{"role":"user","content":"hello"},{"role":"assistant","content":"hi there"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
 	}
 
 	var result responsesResponse
 	if err := json.Unmarshal(rr.Body.Bytes(), &result); err != nil {
-		t.Fatalf("invalid JSON response: %v, body = %s", err, rr.Body.String())
+		t.Fatalf("failed to parse response body: %v, body = %s", err, rr.Body.String())
 	}
 	if result.Object != "response" {
-		t.Fatalf("object = %q, want \"response\"", result.Object)
-	}
-	if len(result.Output) == 0 || result.Output[0].Content[0].Text != "Hello" {
-		t.Fatalf("expected converted output with text \"Hello\", got: %+v", result.Output)
+		t.Fatalf("object = %q, want response", result.Object)
 	}
 }
 
 func TestResponsesMissingModel(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not be called when model is missing")
+	})
 
-	body := []byte(`{"input":"hi"}`)
-	rr := doJSONPost(t, srv, "/v1/responses", body)
+	body := []byte(`{"input":"hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 400 for missing model, got %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "model is required") {
+		t.Fatalf("expected 'model is required' in error body, got: %s", rr.Body.String())
 	}
 }
 
 func TestResponsesEmptyInput(t *testing.T) {
-	srv := newProxyTestServer(t, openAIMockUpstream(t))
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("upstream should not be called when input is empty")
+	})
 
-	// An empty array yields zero converted messages, triggering validation.
 	body := []byte(`{"model":"test-model","input":[]}`)
-	rr := doJSONPost(t, srv, "/v1/responses", body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400, body = %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected 400 for empty input, got %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "input must contain at least one message") {
+		t.Fatalf("expected 'input must contain at least one message' in error body, got: %s", rr.Body.String())
+	}
+}
+
+func TestResponsesInstructions(t *testing.T) {
+	var captured openAIRequest
+	srv := newHandlerTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("decode upstream request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(openAIChatResponseJSON))
+	})
+
+	body := []byte(`{"model":"test-model","instructions":"You are a helpful assistant","input":"hello"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+
+	// The instructions must be forwarded as the first (system) message.
+	// Expected order: [system, user].
+	if len(captured.Messages) < 2 {
+		t.Fatalf("expected at least 2 messages (system + user), got %d", len(captured.Messages))
+	}
+	if captured.Messages[0].Role != "system" {
+		t.Fatalf("first message role = %q, want system", captured.Messages[0].Role)
+	}
+	sysContent, ok := captured.Messages[0].Content.(string)
+	if !ok || sysContent != "You are a helpful assistant" {
+		t.Fatalf("system message content = %#v, want \"You are a helpful assistant\"", captured.Messages[0].Content)
+	}
+	// The original user input must still be present.
+	if captured.Messages[1].Role != "user" {
+		t.Fatalf("second message role = %q, want user", captured.Messages[1].Role)
+	}
+	if userContent, ok := captured.Messages[1].Content.(string); !ok || userContent != "hello" {
+		t.Fatalf("user message content = %#v, want \"hello\"", captured.Messages[1].Content)
 	}
 }

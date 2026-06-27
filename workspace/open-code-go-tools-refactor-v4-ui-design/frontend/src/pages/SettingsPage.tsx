@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useCallback, useRef, type ReactNode } from '
 import { wails, apiGet, apiFetch, isWails } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
+import { ConfigPresets } from '@/components/ConfigPresets'
 import { PreferencesSection } from './settings/PreferencesSection'
 import { EnvironmentSection } from './settings/EnvironmentSection'
 import { ModelSection } from './settings/ModelSection'
@@ -511,6 +512,13 @@ const THINKING_OPTIONS = [
      <button className="btn btn-sm btn-primary" onClick={handleSave} disabled={saving || !isDirty}>{saving ? '...' : t('btn_save_config')}</button>
     </div>
    </div>
+
+   <ConfigPresets onSelect={(preset) => {
+     set('defaultModel', preset.defaultModel)
+     set('sonnetAlias', preset.modelAliases.sonnet || '')
+     set('haikuAlias', preset.modelAliases.haiku || '')
+     set('opusAlias', preset.modelAliases.opus || '')
+   }} />
 
    <div className="layout">
     <nav className="sec-nav">

@@ -1,5 +1,5 @@
 import { memo, useState, useEffect } from 'react'
-import { X, ArrowRight, ArrowLeft, Server, Cpu, Terminal, Check } from 'lucide-react'
+import { X, ArrowRight, ArrowLeft, Server, Cpu, Terminal, Check, Monitor } from 'lucide-react'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { wails, apiGet } from '@/lib/wails'
@@ -34,6 +34,7 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
   const [installCodex, setInstallCodex] = useState(false)
   const [saving, setSaving] = useState(false)
   const [modelList, setModelList] = useState<string[]>(FALLBACK_MODELS)
+  const [systemInfo, setSystemInfo] = useState<{ os: string; arch: string; num_cpu: number } | null>(null)
 
   useEffect(() => {
     wails.FetchUpstreamModels()
@@ -48,12 +49,16 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
   }, [open, onClose])
 
   useEffect(() => {
-    if (open) { apiGet('/ocgt/api/status').then((s) => { if (s?.upstream) setUpstream(s.upstream) }).catch(() => {}) }
+    if (open) {
+      apiGet('/ocgt/api/status').then((s) => { if (s?.upstream) setUpstream(s.upstream) }).catch(() => {})
+      apiGet('/ocgt/api/system-info').then((info) => { if (info) setSystemInfo(info) }).catch(() => {})
+    }
   }, [open])
 
   if (!open) return null
 
   const steps = [
+    { icon: Monitor, title: t('onboarding_step0_title') || 'System Detection' },
     { icon: Server, title: t('onboarding_step1_title')  },
     { icon: Cpu, title: t('onboarding_step2_title')  },
     { icon: Terminal, title: t('onboarding_step3_title')  },
@@ -100,15 +105,23 @@ export const OnboardingWizard = memo(function OnboardingWizard({ open, onClose }
 
         <div className="mb" style={{ minHeight: 280 }}>
           {step === 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="field">
-                <label>{t('sett_upstream')}</label>
-                <input className="input" value={upstream} onChange={(e) => setUpstream(e.target.value)} style={{ fontFamily: 'var(--mono)', fontSize: 12 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+              <div style={{ textAlign: 'center' }}>
+                <h2 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>{t('onboarding_welcome') || 'Welcome to Open Code Go'}</h2>
+                <p className="muted">{t('onboarding_detecting') || 'Detecting system...'}</p>
               </div>
-              <div className="field">
-                <label>{t('sett_api_key')}</label>
-                <input className="input" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={t('placeholder_api_key')} />
-              </div>
+              {systemInfo && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', maxWidth: 300 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderRadius: 8 }}>
+                    <span className="muted">CPU</span>
+                    <span className="mono">{systemInfo.num_cpu} cores</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--surface)', borderRadius: 8 }}>
+                    <span className="muted">OS</span>
+                    <span className="mono">{systemInfo.os} / {systemInfo.arch}</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {step === 1 && (

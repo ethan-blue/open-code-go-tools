@@ -227,6 +227,10 @@ const zh = {
   backup_restore_success: '备份恢复成功', backup_restore_failed: '备份恢复失败',
   backup_create_success: '备份创建成功', backup_create_failed: '备份创建失败',
   backup_download_success: '备份已下载', backup_delete: '删除备份',
+  backup_json_only: '仅支持 .json 备份文件',
+  backup_drag_release: '释放文件以导入备份',
+  backup_drag_hint: '拖入 JSON 备份文件，或点击此区域浏览',
+  backup_section_desc: '备份文件将导出所有的 API Key、网络代理设置、默认模型与规则配置以及已安装插件的启用状态。恢复备份会彻底覆盖当前的本地配置文件。请妥善保存您的备份文件。',
   // About section
   sett_section_about: '关于', sett_section_about_desc: '版本信息、链接与致谢',
   sett_version: '版本', sett_version_desc: '当前发布版本',
@@ -675,6 +679,10 @@ const en: Dict = {
   backup_restore_success: 'Backup restored successfully', backup_restore_failed: 'Backup restore failed',
   backup_create_success: 'Backup created successfully', backup_create_failed: 'Backup creation failed',
   backup_download_success: 'Backup downloaded', backup_delete: 'Delete Backup',
+  backup_json_only: 'Only .json backup files are supported',
+  backup_drag_release: 'Release to import backup',
+  backup_drag_hint: 'Drag & drop a JSON backup file here, or click to browse',
+  backup_section_desc: 'Backup files export all API Keys, proxy settings, default models, rule configurations, and plugin states. Restoring a backup will completely overwrite the current local configuration. Please keep your backup files safe.',
   // About section
   sett_section_about: 'About', sett_section_about_desc: 'Version info, links, and credits',
   sett_version: 'Version', sett_version_desc: 'Current release version',

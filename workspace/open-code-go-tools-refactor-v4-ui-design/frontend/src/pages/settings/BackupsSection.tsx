@@ -27,7 +27,7 @@ export function BackupsSection() {
 
   const processFile = async (file: File) => {
     if (!file.name.endsWith('.json')) {
-      toast('仅支持 .json 备份文件 / Only .json backup files are supported', 'error')
+      toast(t('backup_json_only'), 'error')
       return
     }
     if (!confirm(t('backup_restore_confirm'))) return
@@ -151,10 +151,10 @@ export function BackupsSection() {
               <polyline points="9 15 12 12 15 15" />
             </svg>
             <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--ink-800)', margin: '0 0 4px' }}>
-              {dragging ? '释放文件以导入备份' : '拖入 JSON 备份文件，或点击此区域浏览'}
+              {dragging ? t('backup_drag_release') : t('backup_drag_hint')}
             </p>
             <p style={{ fontSize: 11, color: 'var(--ink-400)', margin: 0 }}>
-              Drag & drop a JSON backup file here, or click to browse
+              {t('backup_drag_hint')}
             </p>
           </div>
 
@@ -167,7 +167,7 @@ export function BackupsSection() {
             lineHeight: 1.5,
             borderLeft: '2px solid var(--line-strong)'
           }}>
-            备份文件将导出所有的 API Key、网络代理设置、默认模型与规则配置以及已安装插件的启用状态。恢复备份会彻底覆盖当前的本地配置文件。请妥善保存您的备份文件。
+            {t('backup_section_desc')}
           </div>
           
         </div>

@@ -1921,6 +1921,51 @@ func (s *Server) apiHubSync(w http.ResponseWriter, r *http.Request) {
 }
 
 // chatCompletions handles OpenAI-compatible /v1/chat/completions requests (for Codex).
+// pipeOpenAIStream tees the upstream OpenAI SSE response, streams it to the
+// client, and parses usage from chunks that contain a usage field.
+func pipeOpenAIStream(w http.ResponseWriter, body io.Reader) tokenUsage {
+	var usage tokenUsage
+	flusher, _ := w.(http.Flusher)
+
+	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		// Write line to client
+		_, _ = fmt.Fprintln(w, line)
+		if flusher != nil {
+			flusher.Flush()
+		}
+
+		// Parse usage from data lines
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "data: ") {
+			payload := strings.TrimPrefix(trimmed, "data: ")
+			if payload == "[DONE]" {
+				continue
+			}
+			var chunk openAIChunk
+			if json.Unmarshal([]byte(payload), &chunk) == nil {
+				if chunk.Usage.PromptTokens > 0 || chunk.Usage.CompletionTokens > 0 {
+					usage.InputTokens = chunk.Usage.PromptTokens
+					usage.OutputTokens = chunk.Usage.CompletionTokens
+					if chunk.Usage.PromptTokensDetails != nil {
+						usage.CacheReadTokens = chunk.Usage.PromptTokensDetails.CachedTokens
+					}
+					if chunk.Usage.CacheReadInputTokens > 0 {
+						usage.CacheReadTokens = chunk.Usage.CacheReadInputTokens
+					}
+					if chunk.Usage.CacheCreationInputTokens > 0 {
+						usage.CacheCreationTokens = chunk.Usage.CacheCreationInputTokens
+					}
+				}
+			}
+		}
+	}
+	return usage
+}
+
+
 func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
@@ -1979,26 +2024,15 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	duration := time.Since(start)
 	if payload.Stream {
-		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)", tokenUsage{Client: client})
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(resp.StatusCode)
-		flusher, ok := w.(http.Flusher)
-		if ok {
-			buf := make([]byte, 4096)
-			for {
-				n, err := resp.Body.Read(buf)
-				if n > 0 {
-					w.Write(buf[:n])
-					flusher.Flush()
-				}
-				if err != nil {
-					break
-				}
-			}
-		}
+		streamUsage := pipeOpenAIStream(w, resp.Body)
+		streamUsage.Client = client
+		duration := time.Since(start)
+		s.addHistoryEntryWithUsage(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions (stream)", streamUsage)
 	} else {
+		duration := time.Since(start)
 		var result openAIResponse
 		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, payload.Model, "chat/completions", tokenUsage{Client: client}, err.Error())

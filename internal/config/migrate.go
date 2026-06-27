@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 // MigrateLegacyConfig splits old config.json into config.json + profiles.json
@@ -84,19 +85,24 @@ func MigrateLegacyConfig(oldPath string) error {
 		json.Unmarshal(v, &profiles.ClaudeEnv)
 	}
 
-	// 5. Save both files
-	if err := cfg.Save(""); err != nil {
-		return fmt.Errorf("failed to save new config.json: %w", err)
-	}
-	if err := SaveProfiles(profiles, ""); err != nil {
-		return fmt.Errorf("failed to save profiles.json: %w", err)
-	}
-
-	// 6. Rename old config.json → config.json.bak
+	// 5. Backup old config first (before saving new one, since Save reads existing)
+	dir := filepath.Dir(oldPath)
 	backupPath := oldPath + ".bak"
 	if err := os.Rename(oldPath, backupPath); err != nil {
-		// Non-fatal: log but don't fail
-		fmt.Printf("warning: failed to backup legacy config: %v\n", err)
+		return fmt.Errorf("failed to backup legacy config: %w", err)
+	}
+
+	// 6. Save new config.json and profiles.json
+	cfgPath := filepath.Join(dir, "config.json")
+	profPath := filepath.Join(dir, "profiles.json")
+
+	if err := cfg.Save(cfgPath); err != nil {
+		// Try to restore backup on failure
+		os.Rename(backupPath, oldPath)
+		return fmt.Errorf("failed to save new config.json: %w", err)
+	}
+	if err := SaveProfiles(profiles, profPath); err != nil {
+		return fmt.Errorf("failed to save profiles.json: %w", err)
 	}
 
 	return nil

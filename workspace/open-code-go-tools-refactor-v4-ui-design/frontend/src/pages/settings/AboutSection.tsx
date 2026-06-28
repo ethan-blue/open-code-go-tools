@@ -20,9 +20,9 @@ export function AboutSection() {
   }, [])
 
   return (
-    <section className="set-section" id="set-10">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>10 · {t('sett_section_about')}</h3><div className="sub">{t('sett_section_about_desc')}</div></div>
+        <div><h3>{t('sett_section_about')}</h3><div className="sub">{t('sett_section_about_desc')}</div></div>
       </div>
       <div className="set-card">
         <div className="set-row">

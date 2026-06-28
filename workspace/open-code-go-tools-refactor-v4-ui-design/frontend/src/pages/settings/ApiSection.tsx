@@ -99,9 +99,9 @@ export function ApiSection({ form, set, saved }: Props) {
   }, [t, form.upstream, form.apiKey])
 
   return (
-    <section className="set-section" id="set-01">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>01 · {t('sett_s01_title')}</h3><div className="sub">{t('sett_s01_sub')}</div></div>
+        <div><h3>{t('sett_s01_title')}</h3><div className="sub">{t('sett_s01_sub')}</div></div>
         {form.upstream !== saved.upstream && <span className="dirty">dirty</span>}
       </div>
       <div className="set-card">
@@ -112,7 +112,7 @@ export function ApiSection({ form, set, saved }: Props) {
               <span className="prefix">https://</span>
               <input className="input with-prefix" value={form.upstream} onChange={(e) => set('upstream', e.target.value.replace(/^https?:\/\//i, ''))} placeholder="api.anthropic.com" />
             </div>
-            <span className="hint">api.anthropic.com · gateway.ai.cloudflare.com · generativelanguage.googleapis.com</span>
+            <span className="hint">api.anthropic.com	gateway.ai.cloudflare.com	generativelanguage.googleapis.com</span>
           </div>
         </div>
         <div className="set-row">

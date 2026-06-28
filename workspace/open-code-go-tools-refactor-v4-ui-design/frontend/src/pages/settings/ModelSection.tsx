@@ -15,9 +15,9 @@ export function ModelSection({ form, set, modelOptions }: Props) {
   const { toast } = useToast()
 
   return (
-    <section className="set-section" id="set-02">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>02 · {t('sett_s02_title')}</h3><div className="sub">{t('sett_s02_sub')}</div></div>
+        <div><h3>{t('sett_s02_title')}</h3><div className="sub">{t('sett_s02_sub')}</div></div>
         {isWails() && (
           <button className="btn btn-sm btn-ghost" onClick={async () => {
             try {

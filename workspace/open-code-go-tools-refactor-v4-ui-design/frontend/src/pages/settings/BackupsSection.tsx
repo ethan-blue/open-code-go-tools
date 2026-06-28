@@ -68,10 +68,10 @@ export function BackupsSection() {
   }
 
   return (
-    <section className="set-section" id="set-09">
+    <section className="set-section" >
       <div className="head">
         <div>
-          <h3>09 · {t('sett_section_backups')}</h3>
+          <h3>{t('sett_section_backups')}</h3>
           <div className="sub">{t('sett_section_backups_desc')}</div>
         </div>
       </div>

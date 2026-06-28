@@ -14,9 +14,9 @@ export function EnvironmentSection({ form, set, errors }: Props) {
   const { toast } = useToast()
 
   return (
-    <section className="set-section" id="set-04">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>04 · {t('sett_s04_title')}</h3><div className="sub">{t('sett_s04_sub')}</div></div>
+        <div><h3>{t('sett_s04_title')}</h3><div className="sub">{t('sett_s04_sub')}</div></div>
       </div>
       <div className="set-card">
         <div className="set-row">

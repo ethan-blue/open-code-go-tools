@@ -25,9 +25,9 @@ export function PreferencesSection({ form, set, theme, setTheme, accentHue, setA
   const { t } = useI18n()
 
   return (
-    <section className="set-section" id="set-05">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>05 · {t('sett_s05_title')}</h3><div className="sub">{t('sett_s05_sub')}</div></div>
+        <div><h3>{t('sett_s05_title')}</h3><div className="sub">{t('sett_s05_sub')}</div></div>
       </div>
       <div className="set-card">
         <div className="set-row">

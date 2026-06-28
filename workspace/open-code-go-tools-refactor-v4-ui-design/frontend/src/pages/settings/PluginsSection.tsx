@@ -63,10 +63,10 @@ export function PluginsSection({ form, set }: PluginsSectionProps) {
   }
 
   return (
-    <section className="set-section" id="set-08">
+    <section className="set-section" >
       <div className="head">
         <div>
-          <h3>08 · {t('sett_section_plugins')}</h3>
+          <h3>{t('sett_section_plugins')}</h3>
           <div className="sub">{t('sett_section_plugins_desc')}</div>
         </div>
       </div>

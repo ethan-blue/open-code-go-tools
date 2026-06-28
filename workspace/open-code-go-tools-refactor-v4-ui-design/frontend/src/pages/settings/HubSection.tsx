@@ -23,9 +23,9 @@ export function HubSection({
   const { t } = useI18n()
 
   return (
-    <section className="set-section" id="set-06">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>06 · {t('sett_s06_title')}</h3><div className="sub">{t('sett_s06_sub')}</div></div>
+        <div><h3>{t('sett_s06_title')}</h3><div className="sub">{t('sett_s06_sub')}</div></div>
       </div>
       <div className="set-card">
         <div className="set-row">

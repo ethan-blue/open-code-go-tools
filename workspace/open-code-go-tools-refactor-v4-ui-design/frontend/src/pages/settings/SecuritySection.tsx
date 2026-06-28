@@ -51,10 +51,10 @@ export function SecuritySection({ form, set }: Props) {
   const { t } = useI18n()
 
   return (
-    <section className="set-section" id="set-07">
+    <section className="set-section" >
       <div className="head">
-        <div><h3>07 · {t('sett_section_security')}</h3><div className="sub">{t('sett_section_security_desc')}</div></div>
-        {(form.authEnabled || form.rateLimitingEnabled) && <span className="tag green">{form.authEnabled ? 'Auth' : ''}{form.authEnabled && form.rateLimitingEnabled ? ' · ' : ''}{form.rateLimitingEnabled ? 'Rate Limit' : ''}</span>}
+        <div><h3>{t('sett_section_security')}</h3><div className="sub">{t('sett_section_security_desc')}</div></div>
+        {(form.authEnabled || form.rateLimitingEnabled) && <span className="tag green">{form.authEnabled ? 'Auth' : ''}{form.authEnabled && form.rateLimitingEnabled ? '	' : ''}{form.rateLimitingEnabled ? 'Rate Limit' : ''}</span>}
       </div>
       <div className="set-card">
         <SettingToggle label={t('sett_auth_enabled')} desc={t('sett_auth_desc')} checked={form.authEnabled} onChange={() => set('authEnabled', !form.authEnabled)} ariaLabel={t('sett_auth_enabled')} />

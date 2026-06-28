@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Settings, Terminal, BarChart3,
-  MessagesSquare, X, Activity, Server,
+  MessagesSquare, Activity, Server,
   Sun, Moon, Monitor, Bot, Bell, Search,
-  RefreshCw, UserCircle,
-  Home, HelpCircle, Menu,
+  RefreshCw, UserCircle, Shield, Puzzle, Cloud, Sliders,
+  Home, HelpCircle, Menu, ChevronDown, FileText, HardDrive, Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { I18nProvider, useI18n } from '@/i18n'
@@ -17,18 +17,35 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { AccountPopover } from '@/components/AccountPopover'
 
+// Runtime pages
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
-const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
-const QuickConnect = lazy(() => import('@/pages/QuickConnect'))
 const TrafficMonitor = lazy(() => import('@/pages/TrafficMonitor'))
 const Sessions = lazy(() => import('@/pages/Sessions'))
 const Copilot = lazy(() => import('@/pages/Copilot'))
-const Hub = lazy(() => import('@/pages/Hub'))
-const Providers = lazy(() => import('@/pages/Providers'))
 const TrafficDetail = lazy(() => import('@/pages/TrafficDetail'))
 import type { DetailRecord } from '@/pages/TrafficDetail'
+// Resource pages
+const QuickConnect = lazy(() => import('@/pages/QuickConnect'))
+const Providers = lazy(() => import('@/pages/Providers'))
+// Config pages (L3)
+const ProfilesPage = lazy(() => import('@/pages/config/ProfilesPage'))
+const ModelMappingPage = lazy(() => import('@/pages/config/ModelMappingPage'))
+const RuntimeRulesPage = lazy(() => import('@/pages/config/RuntimeRulesPage'))
+const SecurityLimitsPage = lazy(() => import('@/pages/config/SecurityLimitsPage'))
+const PluginsPage = lazy(() => import('@/pages/config/PluginsPage'))
+const HubSyncPage = lazy(() => import('@/pages/config/HubSyncPage'))
+// App pages (L4)
+const PreferencesPage = lazy(() => import('@/pages/app/PreferencesPage'))
+const LogsTelemetryPage = lazy(() => import('@/pages/app/LogsTelemetryPage'))
+const BackupsPage = lazy(() => import('@/pages/app/BackupsPage'))
+const AboutPage = lazy(() => import('@/pages/app/AboutPage'))
 
-type ViewId = 'dashboard' | 'providers' | 'settings' | 'terminal' | 'history' | 'detail' | 'sessions' | 'copilot' | 'hub'
+type ViewId =
+  | 'dashboard' | 'history' | 'sessions' | 'copilot'
+  | 'terminal' | 'providers'
+  | 'profiles' | 'model-mapping' | 'runtime-rules' | 'security' | 'plugins' | 'hub'
+  | 'preferences' | 'logs' | 'backups' | 'about'
+  | 'detail'
 
 const ACCENT_PRESETS = [
   { hue: 174, name: 'Teal' },
@@ -42,8 +59,8 @@ function AppShell() {
   const { t, lang, setLang } = useI18n()
   const [activeView, _setActiveView] = useState<ViewId>(() => {
     const saved = localStorage.getItem('last-view');
-    const validViews = ['dashboard','settings','terminal','history','sessions','copilot','hub','providers'];
-    return (saved && validViews.includes(saved)) ? saved as ViewId : 'dashboard';
+    const validViews: ViewId[] = ['dashboard','history','sessions','copilot','terminal','providers','profiles','model-mapping','runtime-rules','security','plugins','hub','preferences','logs','backups','about'];
+    return (saved && validViews.includes(saved as ViewId)) ? saved as ViewId : 'dashboard';
   })
   
   const setActiveView = useCallback((view: ViewId) => {
@@ -132,7 +149,7 @@ function AppShell() {
       rt.EventsOn('show-close-dialog', () => setShowCloseDialog(true))
       rt.EventsOn('show-about-dialog', () => setShowAbout(true))
       rt.EventsOn('proxy-error', (msg: string) => { setProxyStatus('offline'); setLoadingMsg(msg) })
-      rt.EventsOn('nav-to-settings', () => setActiveView('settings'))
+      rt.EventsOn('nav-to-settings', () => setActiveView('preferences'))
       return () => {
         rt.EventsOff('show-close-dialog')
         rt.EventsOff('show-about-dialog')
@@ -172,7 +189,7 @@ function AppShell() {
       if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setShowPrefs(true) }
       if (e.ctrlKey || e.metaKey) {
         const idx = parseInt(e.key) - 1
-        const views: ViewId[] = ['dashboard', 'terminal', 'history', 'sessions', 'copilot', 'hub', 'settings']
+        const views: ViewId[] = ['dashboard', 'terminal', 'history', 'sessions', 'copilot', 'providers', 'profiles', 'preferences']
         if (idx >= 0 && idx < views.length) { e.preventDefault(); setActiveView(views[idx]) }
       }
     }
@@ -191,26 +208,50 @@ function AppShell() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  const NAV_ITEMS = [
-    { id: 'dashboard' as ViewId, label: t('nav_dashboard'), icon: LayoutDashboard, shortcut: '1' },
-    { id: 'terminal' as ViewId, label: t('nav_terminal'), icon: Terminal, shortcut: '2' },
-    { id: 'history' as ViewId, label: t('nav_history'), icon: BarChart3, shortcut: '3' },
-    { id: 'sessions' as ViewId, label: t('nav_sessions'), icon: MessagesSquare, shortcut: '4' },
-    { id: 'copilot' as ViewId, label: t('nav_copilot'), icon: Bot, shortcut: '5' },
-    { id: 'hub' as ViewId, label: t('nav_hub'), icon: Activity, shortcut: '6' },
-    { id: 'providers' as ViewId, label: t('nav_providers'), icon: Server, shortcut: '7' },
-    { id: 'settings' as ViewId, label: t('nav_settings'), icon: Settings, shortcut: '8' },
+  const NAV_GROUPS = [
+    { label: 'Runtime', items: [
+      { id: 'dashboard' as ViewId, label: t('nav_dashboard'), icon: LayoutDashboard, shortcut: '1' },
+      { id: 'history' as ViewId, label: t('nav_history'), icon: BarChart3, shortcut: '3' },
+      { id: 'sessions' as ViewId, label: t('nav_sessions'), icon: MessagesSquare, shortcut: '4' },
+      { id: 'copilot' as ViewId, label: t('nav_copilot'), icon: Bot, shortcut: '5' },
+    ]},
+    { label: 'Resources', items: [
+      { id: 'terminal' as ViewId, label: t('nav_terminal'), icon: Terminal, shortcut: '2' },
+      { id: 'providers' as ViewId, label: t('nav_providers'), icon: Server, shortcut: '6' },
+    ]},
+    { label: 'Config', items: [
+      { id: 'profiles' as ViewId, label: 'Profiles', icon: UserCircle, shortcut: '7' },
+      { id: 'model-mapping' as ViewId, label: t('sett_s02_title'), icon: Sliders },
+      { id: 'runtime-rules' as ViewId, label: t('sett_s04_title'), icon: Activity },
+      { id: 'security' as ViewId, label: t('sett_section_security'), icon: Shield },
+      { id: 'plugins' as ViewId, label: t('sett_section_plugins'), icon: Puzzle },
+      { id: 'hub' as ViewId, label: t('nav_hub'), icon: Cloud },
+    ]},
+    { label: 'App', items: [
+      { id: 'preferences' as ViewId, label: t('sett_s05_title'), icon: Settings, shortcut: '8' },
+      { id: 'logs' as ViewId, label: t('sett_log_title'), icon: FileText },
+      { id: 'backups' as ViewId, label: t('sett_section_backups'), icon: HardDrive },
+      { id: 'about' as ViewId, label: t('sett_section_about'), icon: Info },
+    ]},
   ]
 
   const VIEW_META: Record<ViewId, { title: string; subtitle: string }> = {
     dashboard: { title: t('title_dashboard'), subtitle: t('subtitle_dashboard') },
-    settings: { title: t('title_settings'), subtitle: t('subtitle_settings') },
     terminal: { title: t('title_terminal'), subtitle: t('subtitle_terminal') },
     history: { title: t('title_history'), subtitle: t('subtitle_history') },
     sessions: { title: t('title_sessions'), subtitle: t('subtitle_sessions') },
     copilot: { title: t('title_copilot'), subtitle: t('subtitle_copilot') },
     hub: { title: t('title_hub'), subtitle: t('subtitle_hub') },
     providers: { title: t('title_providers'), subtitle: t('subtitle_providers') },
+    profiles: { title: 'Profiles', subtitle: 'Manage configuration profiles' },
+    'model-mapping': { title: t('sett_s02_title'), subtitle: t('sett_s02_sub') },
+    'runtime-rules': { title: t('sett_s04_title'), subtitle: t('sett_s04_sub') },
+    security: { title: t('sett_section_security'), subtitle: t('sett_section_security_desc') },
+    plugins: { title: t('sett_section_plugins'), subtitle: t('sett_section_plugins_desc') },
+    preferences: { title: t('sett_s05_title'), subtitle: t('sett_s05_sub') },
+    logs: { title: t('sett_log_title'), subtitle: t('sett_log_desc') },
+    backups: { title: t('sett_section_backups'), subtitle: t('sett_section_backups_desc') },
+    about: { title: t('sett_section_about'), subtitle: t('sett_section_about_desc') },
     detail: { title: 'Request Detail', subtitle: 'A single request, unfolded' },
   }
   const currentMeta = VIEW_META[activeView]
@@ -300,45 +341,29 @@ function AppShell() {
               <div className="name">OCGT</div>
               <span className="v">v4.0</span>
             </div>
-            <button className="ws" type="button" onClick={() => setActiveView('settings')}>
+            <button className="ws" type="button" onClick={() => setActiveView('profiles')}>
               <div className="avatar">{(activeProfile || 'L')[0].toUpperCase()}</div>
               <div className="meta"><b>{activeProfile || 'local'}</b><span>{profiles.length} profile{profiles.length !== 1 ? 's' : ''}</span></div>
-              <UserCircle className="chev" width={14} height={14} />
+              <ChevronDown className="chev" width={14} height={14} />
             </button>
-            <div className="section-label">{t('sidebar_workspace')}</div>
-            <nav role="navigation" aria-label={t('sidebar_workspace')}>
-              {NAV_ITEMS.map((item) => {
-                const Icon = item.icon
-                const active = activeView === item.id
-                return (
-                  <a key={item.id} href="#" data-view={item.id} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} onClick={(e) => { e.preventDefault(); setActiveView(item.id); setShowSidebar(false) }}>
-                    <Icon className="icn" />
-                    {item.label}
-                    {item.id === 'history' && trafficCount > 0 && <span className="badge">{trafficCount >= 1000 ? `${(trafficCount / 1000).toFixed(1)}k` : trafficCount}</span>}
-                    {item.id === 'copilot' && <span className="badge" style={{ background: 'linear-gradient(135deg,var(--link),var(--violet))', color: '#fff' }}>AI</span>}
-                  </a>
-                )
-              })}
-            </nav>
-            {profiles.length > 0 && (
-              <>
-                <div className="section-label">{t('sidebar_profiles')}</div>
-                <nav role="navigation" aria-label={t('sidebar_profiles')}>
-                  {profiles.map((p) => (
-                    <a key={p} href="#" className={p === activeProfile ? 'active' : ''} onClick={(e) => {
-                      e.preventDefault()
-                      apiFetch('/ocgt/api/profiles/active', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: p }) })
-                        .then(() => { setActiveProfile(p); initProxy() })
-                        .catch(() => {})
-                    }}>
-                      <svg className="icn" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="3" /></svg>
-                      {p}
-                      {p === activeProfile && <span className="badge">live</span>}
-                    </a>
-                  ))}
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label}>
+                <div className="section-label">{group.label}</div>
+                <nav role="navigation" aria-label={group.label}>
+                  {group.items.map((item) => {
+                    const Icon = item.icon
+                    const active = activeView === item.id
+                    return (
+                      <a key={item.id} href="#" data-view={item.id} className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} onClick={(e) => { e.preventDefault(); setActiveView(item.id); setShowSidebar(false) }}>
+                        <Icon className="icn" />
+                        {item.label}
+                        {item.id === 'history' && trafficCount > 0 && <span className="badge">{trafficCount >= 1000 ? `${(trafficCount / 1000).toFixed(1)}k` : trafficCount}</span>}
+                      </a>
+                    )
+                  })}
                 </nav>
-              </>
-            )}
+              </div>
+            ))}
           </aside>
 
           <main id="main">
@@ -351,14 +376,11 @@ function AppShell() {
               <button type="button" className="search" onClick={() => setShowPalette(true)}>
                 <Search width={14} height={14} />
                 <span className="ph">{t('cmd_placeholder')}</span>
-                <span className="kbd">⌘K</span>
+                <span className="kbd">Ctrl+K</span>
               </button>
               <div className="tools">
                 <button className="iconbtn" type="button" title={t('btn_help')} aria-label={t('btn_help')} onClick={() => setShowShortcuts(true)}><HelpCircle width={15} height={15} /></button>
                 <button className="iconbtn" type="button" title={t('btn_notifications')} aria-label={t('btn_notifications')} onClick={() => setShowNotifications(true)}><Bell width={15} height={15} /></button>
-                <button className="iconbtn" type="button" title={t('btn_theme')} aria-label={t('btn_theme')} onClick={() => {
-                  const next = theme === 'dark' ? 'light' : 'dark'; applyTheme(next)
-                }}>{theme === 'dark' ? <Sun width={15} height={15} /> : <Moon width={15} height={15} />}</button>
                 <button className="me" type="button" onClick={() => setShowAccountPopover(!showAccountPopover)}>
                   <span className="av">{(activeProfile || 'U')[0].toUpperCase()}</span>
                   <span>{activeProfile || 'User'}</span>
@@ -369,14 +391,22 @@ function AppShell() {
               <Suspense fallback={<div className="loading-page"><div className="spin" /></div>}>
               <div key={activeView} className="fade-enter page">
                 {activeView === 'dashboard' && <ErrorBoundary><Dashboard /></ErrorBoundary>}
-                {activeView === 'settings' && <ErrorBoundary><SettingsPage /></ErrorBoundary>}
                 {activeView === 'terminal' && <ErrorBoundary><QuickConnect /></ErrorBoundary>}
                 {activeView === 'history' && <ErrorBoundary><TrafficMonitor /></ErrorBoundary>}
                 {activeView === 'detail' && <ErrorBoundary><TrafficDetail record={selectedRequest} onBack={() => setActiveView('history')} /></ErrorBoundary>}
                 {activeView === 'sessions' && <ErrorBoundary><Sessions /></ErrorBoundary>}
                 {activeView === 'copilot' && <ErrorBoundary><Copilot /></ErrorBoundary>}
-                {activeView === 'hub' && <ErrorBoundary><Hub /></ErrorBoundary>}
                 {activeView === 'providers' && <ErrorBoundary><Providers /></ErrorBoundary>}
+                {activeView === 'profiles' && <ErrorBoundary><ProfilesPage /></ErrorBoundary>}
+                {activeView === 'model-mapping' && <ErrorBoundary><ModelMappingPage /></ErrorBoundary>}
+                {activeView === 'runtime-rules' && <ErrorBoundary><RuntimeRulesPage /></ErrorBoundary>}
+                {activeView === 'security' && <ErrorBoundary><SecurityLimitsPage /></ErrorBoundary>}
+                {activeView === 'plugins' && <ErrorBoundary><PluginsPage /></ErrorBoundary>}
+                {activeView === 'hub' && <ErrorBoundary><HubSyncPage /></ErrorBoundary>}
+                {activeView === 'preferences' && <ErrorBoundary><PreferencesPage /></ErrorBoundary>}
+                {activeView === 'logs' && <ErrorBoundary><LogsTelemetryPage /></ErrorBoundary>}
+                {activeView === 'backups' && <ErrorBoundary><BackupsPage /></ErrorBoundary>}
+                {activeView === 'about' && <ErrorBoundary><AboutPage /></ErrorBoundary>}
               </div>
               </Suspense>
             </div>
@@ -437,7 +467,7 @@ function AppShell() {
               <h3 style={{ marginLeft: 8 }}>ocgt</h3>
               <span className="dim" style={{ marginLeft: 8, fontSize: 11 }}>{appVersion}</span>
               <span className="spacer" />
-              <button className="x" aria-label="Close" onClick={() => setShowAbout(false)}><X width={16} height={16} /></button>
+              <button className="x" aria-label="Close" onClick={() => setShowAbout(false)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
             <div className="mb">
               <p style={{ color: 'var(--ink-600)', fontSize: 13, margin: '0 0 12px' }}>{t('about_desc')}</p>
@@ -460,7 +490,7 @@ function AppShell() {
             <div className="mh">
               <h3>{t('pref_title')}</h3>
               <span className="spacer" />
-              <button className="x" aria-label="Close" onClick={() => setShowPrefs(false)}><X width={16} height={16} /></button>
+              <button className="x" aria-label="Close" onClick={() => setShowPrefs(false)}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
             </div>
             <div className="mb">
               <div className="prefs-section">

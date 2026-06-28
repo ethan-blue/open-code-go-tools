@@ -2,7 +2,6 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { AccountPopover } from '../AccountPopover'
 
-// Mock the i18n hook
 vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: (key: string) => key,
@@ -22,50 +21,44 @@ describe('AccountPopover', () => {
 
   it('renders when open', () => {
     render(<AccountPopover {...defaultProps} />)
-    expect(screen.getByText('test-user')).toBeInTheDocument()
+    expect(screen.getByText('sett_s05_title')).toBeInTheDocument()
   })
 
   it('does not render when closed', () => {
     render(<AccountPopover {...defaultProps} open={false} />)
-    expect(screen.queryByText('test-user')).not.toBeInTheDocument()
-  })
-
-  it('displays user avatar with first letter', () => {
-    render(<AccountPopover {...defaultProps} />)
-    expect(screen.getByText('T')).toBeInTheDocument()
+    expect(screen.queryByText('sett_s05_title')).not.toBeInTheDocument()
   })
 
   it('displays menu items', () => {
     render(<AccountPopover {...defaultProps} />)
-    expect(screen.getByText('nav_settings')).toBeInTheDocument()
-    expect(screen.getByText('cmd_toggle_theme')).toBeInTheDocument()
+    expect(screen.getByText('sett_s05_title')).toBeInTheDocument()
+    expect(screen.getByText('sett_theme_label')).toBeInTheDocument()
     expect(screen.getByText('shortcuts_title')).toBeInTheDocument()
     expect(screen.getByText('dash_refresh')).toBeInTheDocument()
   })
 
-  it('calls onNavigate when Settings is clicked', () => {
+  it('calls onNavigate when Preferences is clicked', () => {
     const onNavigate = vi.fn()
     render(<AccountPopover {...defaultProps} onNavigate={onNavigate} />)
 
-    fireEvent.click(screen.getByText('nav_settings'))
+    fireEvent.click(screen.getByText('sett_s05_title'))
 
-    expect(onNavigate).toHaveBeenCalledWith('settings')
+    expect(onNavigate).toHaveBeenCalledWith('preferences')
   })
 
-  it('calls onThemeToggle when theme toggle is clicked', () => {
-    const onThemeToggle = vi.fn()
-    render(<AccountPopover {...defaultProps} onThemeToggle={onThemeToggle} />)
+  it('calls onNavigate to preferences when Theme is clicked', () => {
+    const onNavigate = vi.fn()
+    render(<AccountPopover {...defaultProps} onNavigate={onNavigate} />)
 
-    fireEvent.click(screen.getByText('cmd_toggle_theme'))
+    fireEvent.click(screen.getByText('sett_theme_label'))
 
-    expect(onThemeToggle).toHaveBeenCalled()
+    expect(onNavigate).toHaveBeenCalledWith('preferences')
   })
 
   it('calls onClose when clicking outside', () => {
     const onClose = vi.fn()
-    const { container } = render(<AccountPopover {...defaultProps} onClose={onClose} />)
+    render(<AccountPopover {...defaultProps} onClose={onClose} />)
 
-    // Click outside the popover
     fireEvent.mouseDown(document.body)
 
     expect(onClose).toHaveBeenCalled()

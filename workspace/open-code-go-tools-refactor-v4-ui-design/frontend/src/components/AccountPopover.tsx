@@ -36,20 +36,13 @@ export function AccountPopover({ open, onClose, onNavigate, profile, onThemeTogg
 
   return (
     <div className="popover on" ref={ref}>
-      <div className="head">
-        <div className="av">{(profile || 'U')[0].toUpperCase()}</div>
-        <div>
-          <b>{profile || 'User'}</b>
-          <span>{t('account_local_profile')}</span>
-        </div>
-      </div>
-      <div className="it" role="button" tabIndex={0} onClick={() => { onNavigate('settings'); onClose() }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('settings'); onClose() } }}>
+      <div className="it" role="button" tabIndex={0} onClick={() => { onNavigate('preferences'); onClose() }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('preferences'); onClose() } }}>
         <Settings width={14} height={14} className="ic" />
-        {t('nav_settings')}
+        {t('sett_s05_title')}
       </div>
-      <div className="it" role="button" tabIndex={0} onClick={() => { onThemeToggle(); onClose() }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onThemeToggle(); onClose() } }}>
+      <div className="it" role="button" tabIndex={0} onClick={() => { onNavigate('preferences'); onClose() }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onNavigate('preferences'); onClose() } }}>
         <Palette width={14} height={14} className="ic" />
-        {t('cmd_toggle_theme')}
+        {t('sett_theme_label')}
       </div>
       <div className="it" role="button" tabIndex={0} onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('show-shortcuts')) }} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClose(); window.dispatchEvent(new CustomEvent('show-shortcuts')) } }}>
         <Keyboard width={14} height={14} className="ic" />

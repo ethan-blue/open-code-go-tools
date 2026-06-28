@@ -350,39 +350,22 @@ const THINKING_OPTIONS = [
    e.timeoutSeconds = t('err_timeout_range')
   }
   // Only validate rate-limit inputs when the toggle is enabled. When disabled
-
   // we send empty strings and let the backend keep its values, so the inputs
-
   // are irrelevant. When enabled the values must be within the backend's valid
-
   // range (per-second/burst >= 1, per-minute >= 0) or the save will be rejected.
-
   if (form.rateLimitingEnabled) {
-
    const rps = parseInt(form.rateLimitPerSecond)
-
    if (isNaN(rps) || rps < 1 || rps > 10000) {
-
     e.rateLimitPerSecond = t('err_rate_limit_range')
-
    }
-
    const burst = parseInt(form.rateLimitBurst)
-
    if (isNaN(burst) || burst < 1 || burst > 100000) {
-
     e.rateLimitBurst = t('err_rate_burst_range')
-
    }
-
    const rpm = parseInt(form.rateLimitPerMinute)
-
    if (isNaN(rpm) || rpm < 0 || rpm > 100000) {
-
     e.rateLimitPerMinute = t('err_rate_minute_range')
-
    }
-
   }
   if (form.upstream && !/^https?:\/\/.+/.test(form.upstream)) {
    e.upstream = t('err_upstream_url')
@@ -420,23 +403,14 @@ const THINKING_OPTIONS = [
    const envJSON = buildEnvJSON()
 
    // Rate limiting: when the toggle is OFF, send empty strings so the Go
-
    // backend keeps its existing/valid values. The backend rejects 0 for
-
    // per-second/burst (rate_limit must be >= 1, see config.Validate) and
-
    // re-defaults 0 to the built-in 100/200 at load time, so 0 cannot
-
    // represent "disabled". We only persist the form values when the user has
-
    // explicitly enabled custom rate limits — validate() guarantees those are
-
    // within range, so they won't trip the backend's bounds check.
-
    const rps = form.rateLimitingEnabled ? form.rateLimitPerSecond : ''
-
    const burst = form.rateLimitingEnabled ? form.rateLimitBurst : ''
-
    const rpm = form.rateLimitingEnabled ? form.rateLimitPerMinute : ''
 
    const checkResult = (val: unknown) => {
@@ -479,33 +453,21 @@ const THINKING_OPTIONS = [
    }
 
    // Persist log preferences whenever they differ from what is currently saved,
-
    // so that disabling logging/telemetry (or clearing the dir) is actually
-
    // written back instead of being skipped because the values look "default".
-
    const logDirty = form.logEnabled !== saved.logEnabled
-
     || form.logDir !== saved.logDir
-
     || form.logRetention !== saved.logRetention
-
    if (logDirty) {
-
     const logErr = await wails.SaveLogPreferences(form.logEnabled, form.logDir, parseInt(form.logRetention) || 7)
-
     const logFail = checkResult(logErr)
-
     if (logFail) throw new Error(logFail)
-
    }
 
-   // Persist plugins via dedicated Wails call
-   const pluginErr = await wails.SavePlugins(JSON.stringify(form.plugins))
-   const pluginFail = checkResult(pluginErr)
+   // Persist plugins via dedicated Wails call
+   const pluginErr = await wails.SavePlugins(JSON.stringify(form.plugins))
+   const pluginFail = checkResult(pluginErr)
    if (pluginFail) throw new Error(pluginFail)
-
-
 
    // Save UI preferences (theme, accent, language, closeBehavior)
 

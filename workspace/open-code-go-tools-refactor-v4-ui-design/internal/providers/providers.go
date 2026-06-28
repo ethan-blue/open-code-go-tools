@@ -29,7 +29,11 @@ type Provider struct {
 	ErrorCount   int64    `json:"errorCount"`
 	AvgLatency   float64  `json:"avgLatency"`
 	CreatedAt    int64    `json:"createdAt"`
-	SortIndex    int      `json:"sortIndex,omitempty"`
+	SortIndex         int      `json:"sortIndex,omitempty"`
+	Line              string   `json:"line,omitempty"`
+	Protocol          string   `json:"protocol,omitempty"`
+	RateLimitPerSecond int     `json:"rateLimitPerSecond,omitempty"`
+	RateLimitBurst    int      `json:"rateLimitBurst,omitempty"`
 }
 
 // Store manages provider CRUD operations with file-backed persistence.

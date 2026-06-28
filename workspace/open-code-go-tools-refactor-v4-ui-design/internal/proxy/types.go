@@ -94,9 +94,21 @@ type Server struct {
 	sessionsCacheTTL time.Duration
 
 	// Provider store for managing upstream providers
+
 	providerStore *providers.Store
+
 	configDir     string
+
 	storeOnce     sync.Once
+
+
+
+	// retryBackoffBase is the base duration for exponential backoff on retries.
+
+	// Defaults to 500ms. Tests can set it to 0 for instant retries.
+
+	retryBackoffBase time.Duration
+
 }
 
 func (s *Server) SetConfigPath(path string) {
@@ -245,23 +257,40 @@ type anthropicErrorResponse struct {
 	Error anthropicError `json:"error"`
 }
 
-// OpenAI Responses API types (for Codex compatibility)
-type responsesRequest struct {
-	Model           string        `json:"model"`
-	Input           any           `json:"input"` // string or array of input items
-	Stream          bool          `json:"stream,omitempty"`
-	Instructions    string        `json:"instructions,omitempty"`
-	Tools           []responsesTool `json:"tools,omitempty"`
-	Temperature     *float64      `json:"temperature,omitempty"`
-	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
-}
-
-// responsesTool represents a tool definition in the Responses API format.
-type responsesTool struct {
-	Type        string         `json:"type"`
-	Name        string         `json:"name,omitempty"`
-	Description string         `json:"description,omitempty"`
-	Parameters  map[string]any `json:"parameters,omitempty"`
+// OpenAI Responses API types (for Codex compatibility)
+
+type responsesRequest struct {
+
+	Model           string        `json:"model"`
+
+	Input           any           `json:"input"` // string or array of input items
+
+	Stream          bool          `json:"stream,omitempty"`
+
+	Instructions    string        `json:"instructions,omitempty"`
+
+	Tools           []responsesTool `json:"tools,omitempty"`
+
+	Temperature     *float64      `json:"temperature,omitempty"`
+
+	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
+
+}
+
+
+
+// responsesTool represents a tool definition in the Responses API format.
+
+type responsesTool struct {
+
+	Type        string         `json:"type"`
+
+	Name        string         `json:"name,omitempty"`
+
+	Description string         `json:"description,omitempty"`
+
+	Parameters  map[string]any `json:"parameters,omitempty"`
+
 }
 
 type responsesResponse struct {
@@ -310,8 +339,9 @@ func New(cfg config.Config, webAssets ...*embed.FS) (*Server, error) {
 		reasoningByTool:     map[string]string{},
 		consecutiveFailures: map[string]int{},
 		trippedUntil:        map[string]time.Time{},
-		webAssets:           assets,
-		sessionsCacheTTL:    30 * time.Second,
+		webAssets:           assets,
+		sessionsCacheTTL:    30 * time.Second,
+		retryBackoffBase:    500 * time.Millisecond,
 	}, nil
 }
 

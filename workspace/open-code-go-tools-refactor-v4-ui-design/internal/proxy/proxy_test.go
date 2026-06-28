@@ -513,8 +513,13 @@ func TestConcurrentReasoningCache(t *testing.T) {
 // ----- Count tokens endpoint -----
 
 func TestCountTokensEndpoint(t *testing.T) {
+
+	// Use a mock upstream since /count_tokens is handled locally.
+
 	srv, err := New(config.Config{
+
 		Listen:        "127.0.0.1:0",
+
 		Upstream:      "https://opencode.ai/zen/go",
 		ActiveProfile: "test",
 		Profiles: map[string]config.Profile{
@@ -571,27 +576,52 @@ func TestUpstreamErrorForwarding(t *testing.T) {
 	defer upstream.Close()
 
 	srv, err := New(config.Config{
+
 		Listen:        "127.0.0.1:0",
+
 		Upstream:      upstream.URL,
+
 		ActiveProfile: "test",
+
 		Profiles: map[string]config.Profile{
+
 			"test": {APIKey: "test-key", DefaultModel: "kimi-k2.6"},
+
 		},
+
 	})
+
 	if err != nil {
+
 		t.Fatal(err)
+
 	}
+
+	srv.retryBackoffBase = 0 // disable backoff for fast test
+
+
 
 	body := []byte(`{"model":"kimi-k2.6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
 	req.Header.Set("Content-Type", "application/json")
+
 	rr := httptest.NewRecorder()
+
 	srv.Handler().ServeHTTP(rr, req)
 
+
+
 	if rr.Code != http.StatusTooManyRequests {
+
 		t.Fatalf("expected 429, got %d", rr.Code)
+
 	}
+
 }
+
+
 
 func TestUpstreamErrorHistoryIncludesReason(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -602,26 +632,49 @@ func TestUpstreamErrorHistoryIncludesReason(t *testing.T) {
 	defer upstream.Close()
 
 	srv, err := New(config.Config{
+
 		Listen:        "127.0.0.1:0",
+
 		Upstream:      upstream.URL,
+
 		ActiveProfile: "test",
+
 		Profiles: map[string]config.Profile{
+
 			"test": {APIKey: "test-key", DefaultModel: "kimi-k2.6"},
+
 		},
+
 	})
+
 	if err != nil {
+
 		t.Fatal(err)
+
 	}
+
+	srv.retryBackoffBase = 0 // disable backoff for fast test
+
+
 
 	body := []byte(`{"model":"kimi-k2.6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
 	req.Header.Set("Content-Type", "application/json")
+
 	rr := httptest.NewRecorder()
+
 	srv.Handler().ServeHTTP(rr, req)
 
+
+
 	if rr.Code != http.StatusBadGateway {
+
 		t.Fatalf("expected 502, got %d", rr.Code)
+
 	}
+
 	// 6次重试耗尽 → 只记录1条最终错误（不再为每次重试分别记录）
 	if len(srv.history) != 1 {
 		t.Fatalf("history len = %d (expected 1 for all retries exhausted, final log only)", len(srv.history))
@@ -848,18 +901,34 @@ func TestUpstreamConnectionFailure(t *testing.T) {
 		},
 	})
 	if err != nil {
+
 		t.Fatal(err)
+
 	}
+
+	srv.retryBackoffBase = 0 // disable backoff for fast test
+
 	body := []byte(`{"model":"kimi-k2.6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
 	req.Header.Set("Content-Type", "application/json")
+
 	rr := httptest.NewRecorder()
+
 	srv.Handler().ServeHTTP(rr, req)
 
+
+
 	if rr.Code != http.StatusBadGateway {
+
 		t.Fatalf("expected 502 for upstream failure, got %d", rr.Code)
+
 	}
+
 }
+
+
 
 // ----- Profile header via query param -----
 
@@ -1602,22 +1671,40 @@ func TestMaxBodySizeIsReasonable(t *testing.T) {
 // ----- Multiple upstream errors test -----
 
 func TestUpstreamErrorNoBody(t *testing.T) {
+
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 		w.WriteHeader(http.StatusInternalServerError)
+
 	}))
+
 	defer upstream.Close()
 
+
+
 	srv, err := New(config.Config{
+
 		Listen:        "127.0.0.1:0",
+
 		Upstream:      upstream.URL,
+
 		ActiveProfile: "test",
+
 		Profiles: map[string]config.Profile{
+
 			"test": {APIKey: "test-key", DefaultModel: "kimi-k2.6"},
+
 		},
+
 	})
+
 	if err != nil {
+
 		t.Fatal(err)
+
 	}
+
+	srv.retryBackoffBase = 0 // disable backoff for fast test
 
 	body := []byte(`{"model":"kimi-k2.6","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
@@ -1767,23 +1854,24 @@ func TestRetryMechanism(t *testing.T) {
 			},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	body := []byte(`{"model":"flakey-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 after retries, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	if attemptCount != 3 {
-		t.Fatalf("expected 3 attempts (2 fails + 1 success), got %d", attemptCount)
-	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.retryBackoffBase = 0 // disable backoff for fast test
+
+	body := []byte(`{"model":"flakey-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 after retries, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if attemptCount != 3 {
+		t.Fatalf("expected 3 attempts (2 fails + 1 success), got %d", attemptCount)
+	}
 }
 
 func TestCircuitBreaker(t *testing.T) {

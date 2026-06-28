@@ -210,7 +210,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			log.Printf("[Retry] Request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
 
 			if attempt < maxRetries {
-				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
+				backoff := s.retryBackoffBase * time.Duration(1<<attempt)
 				log.Printf("[Retry] Backoff %v then retry %d/%d for model %s", backoff, attempt+2, maxRetries+1, model)
 				time.Sleep(backoff)
 				continue
@@ -239,7 +239,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			log.Printf("[Retry] Model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
 
 			if attempt < maxRetries {
-				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
+				backoff := s.retryBackoffBase * time.Duration(1<<attempt)
 				log.Printf("[Retry] Backoff %v then retry %d/%d for model %s", backoff, attempt+2, maxRetries+1, model)
 				time.Sleep(backoff)
 				continue

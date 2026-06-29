@@ -82,7 +82,7 @@ func runWailsGui() {
 
 	// Configure Wails options
 	err = wails.Run(&options.App{
-		Title:             "ocgt Control Panel / 控制面板",
+		Title:             "OpenCode Go",
 		Width:             1100,
 		Height:            850,
 		Frameless:         true, // use our custom #titlebar (App.tsx) instead of the OS chrome
@@ -177,7 +177,9 @@ func cmdServe(args []string) error {
 	if *profileName != "" {
 		cfg.ActiveProfile = *profileName
 	} else if envProfile := strings.TrimSpace(os.Getenv("OCGT_PROFILE")); envProfile != "" {
-		cfg.ActiveProfile = envProfile
+		if _, ok := cfg.Profiles[envProfile]; ok {
+			cfg.ActiveProfile = envProfile
+		}
 	}
 	if *listen != "" {
 		cfg.Listen = *listen
@@ -325,7 +327,7 @@ func cmdClaudeDesktopEnv(args []string) error {
 
 		}
 
-		fmt.Println("✓ Claude Code desktop settings written to ~/.claude/settings.json")
+		fmt.Println("鉁?Claude Code desktop settings written to ~/.claude/settings.json")
 
 		fmt.Println("  Restart Claude Code desktop app for changes to take effect.")
 
@@ -431,14 +433,14 @@ func cmdHub(args []string) error {
 	if err := srv.Start(); err != nil {
 		return err
 	}
-	log.Printf("[hub] 独立 Hub 监听于 %s", srv.Addr())
+	log.Printf("[hub] 鐙珛 Hub 鐩戝惉浜?%s", srv.Addr())
 
 	// Wait for interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	<-ctx.Done()
 
-	log.Println("[hub] 正在关闭...")
+	log.Println("[hub] 姝ｅ湪鍏抽棴...")
 	return srv.Stop()
 }
 
@@ -598,8 +600,7 @@ Commands:
   version       print version
 
 Typical flow:
-  双击运行可启动网页控制面板，或者使用 CLI：
-  ocgt init
+  鍙屽嚮杩愯鍙惎鍔ㄧ綉椤垫帶鍒堕潰鏉匡紝鎴栬€呬娇鐢?CLI锛?  ocgt init
   ocgt serve
   ocgt claude-env
 `)

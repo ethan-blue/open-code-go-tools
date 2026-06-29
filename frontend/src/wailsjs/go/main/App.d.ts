@@ -5,6 +5,8 @@ export function ClearClaudeDesktop():Promise<string>;
 
 export function ClearClaudeDesktopApp():Promise<string>;
 
+export function ClearCodex():Promise<string>;
+
 export function ClearSystemEnv():Promise<string>;
 
 export function FetchQuota():Promise<Record<string, any>>;
@@ -30,6 +32,8 @@ export function InstallVSCodeEnv():Promise<string>;
 export function IsClaudeDesktopAppConfigured():Promise<boolean>;
 
 export function IsClaudeDesktopConfigured():Promise<boolean>;
+
+export function IsCodexConfigured():Promise<boolean>;
 
 export function IsSystemEnvConfigured():Promise<boolean>;
 
@@ -64,6 +68,8 @@ export function SetAuthEnabled(arg1:boolean):Promise<string>;
 export function SetupClaudeDesktop():Promise<string>;
 
 export function SetupClaudeDesktopApp():Promise<string>;
+
+export function SetupCodex():Promise<string>;
 
 export function ShowAboutDialog():Promise<void>;
 

@@ -1,0 +1,58 @@
+{
+  "providers": [
+    {
+      "id": "test-claude",
+      "name": "OpenCode Go",
+      "baseUrl": "http://127.0.0.1:14107",
+      "apiKey": "test-key",
+      "models": [
+        "qwen3.7-max"
+      ],
+      "defaultModel": "qwen3.7-max",
+      "priority": 0,
+      "enabled": true,
+      "health": "unknown",
+      "requestCount": 0,
+      "errorCount": 0,
+      "avgLatency": 0,
+      "createdAt": 1782649518352,
+      "line": "claude",
+      "protocol": "openai-chat",
+      "env": {
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "qwen3.7-max",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": "qwen3.7-max",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": "qwen3.7-max",
+        "ANTHROPIC_SMALL_FAST_MODEL": "qwen3.7-max",
+        "API_TIMEOUT_MS": "600000",
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "131072",
+        "CLAUDE_CODE_SUBAGENT_MODEL": "qwen3.7-max",
+        "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+        "ENABLE_TOOL_SEARCH": "true",
+        "MAX_MCP_OUTPUT_TOKENS": "200000",
+        "MCP_TIMEOUT": "600000",
+        "MCP_TOOL_TIMEOUT": "600000"
+      }
+    },
+    {
+      "id": "test-codex",
+      "name": "OpenCode Go",
+      "baseUrl": "http://127.0.0.1:14107",
+      "apiKey": "test-key",
+      "models": [
+        "qwen3.7-max"
+      ],
+      "defaultModel": "qwen3.7-max",
+      "priority": 0,
+      "enabled": true,
+      "health": "unknown",
+      "requestCount": 0,
+      "errorCount": 0,
+      "avgLatency": 0,
+      "createdAt": 1782649518364,
+      "line": "codex",
+      "protocol": "openai-responses"
+    }
+  ]
+}

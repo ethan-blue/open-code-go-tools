@@ -5,6 +5,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ocgt - Claude API Proxy Dashboard Center</title>
+    <style>
+        html,
+        body,
+        #root {
+            min-height: 100%;
+        }
+
+        html,
+        body {
+            margin: 0;
+            background: #f8fafc;
+        }
+    </style>
     <script>
         (function () {
             const savedTheme = localStorage.getItem('theme');
@@ -13,6 +26,11 @@
                 ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
                 : (requestedTheme === 'dark' ? 'dark' : 'light');
             document.documentElement.setAttribute('data-theme', resolvedTheme);
+            const shellBg = resolvedTheme === 'dark' ? '#0b0d10' : '#f8fafc';
+            document.documentElement.style.backgroundColor = shellBg;
+            if (document.body) {
+                document.body.style.backgroundColor = shellBg;
+            }
 
             const savedAccent = localStorage.getItem('accent-hue');
             if (savedAccent !== null && savedAccent !== '') {

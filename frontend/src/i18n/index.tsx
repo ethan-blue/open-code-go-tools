@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+﻿import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 
 const zh = {
   nav_dashboard: '系统状态', nav_settings: '配置管理', nav_terminal: '快速连接', nav_history: '流量监控',
@@ -949,4 +949,5 @@ export function useI18n() {
 }
 
 export type { Dict }
+
 

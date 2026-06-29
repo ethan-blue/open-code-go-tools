@@ -1,13 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Terminal, Code2, Bot, Monitor, Plus, Copy, Check } from 'lucide-react'
+import { Terminal, Bot, Monitor, Copy, Check } from 'lucide-react'
 import { wails, apiGet } from '@/lib/wails'
 import { errMessage } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
-import type { AgentLine } from '@/lib/types'
 
 interface IntegrationStatus { cli: boolean; vscode: boolean; claudeDesktopApp: boolean; codex: boolean }
 interface ClientStats { [key: string]: number }
+type ClientLine = 'claude' | 'codex'
+
+function clientBucket(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.includes('codex')) return 'codex'
+  if (lower.includes('vscode') || lower.includes('vs code')) return 'vscode'
+  if (lower.includes('desktop') || lower.includes('claude app')) return 'desktop'
+  if (lower.includes('cli') || lower.includes('claude code')) return 'cli'
+  return lower
+}
 
 interface Client {
   id: string
@@ -18,19 +27,21 @@ interface Client {
   version: string
   desc: string
   installed: boolean
-  line: AgentLine
+  line: ClientLine
+  reqs?: number
   isNew?: boolean
-  actions: string[]
+  action: 'open' | 'edit' | 'docs'
 }
 
 export default function QuickConnect() {
   const { t } = useI18n()
   const { toast } = useToast()
-  const [lineFilter, setLineFilter] = useState<'all' | AgentLine>('all')
   const [intStatus, setIntStatus] = useState<IntegrationStatus>({ cli: false, vscode: false, claudeDesktopApp: false, codex: false })
   const [clientStats, setClientStats] = useState<ClientStats>({})
   const [localToken, setLocalToken] = useState('')
   const [copyFeedback, setCopyFeedback] = useState(false)
+  const [configReady, setConfigReady] = useState(true)
+  const [lineFilter, setLineFilter] = useState<ClientLine>('claude')
 
   const checkIntegrations = useCallback(async () => {
     try {
@@ -47,21 +58,36 @@ export default function QuickConnect() {
   const loadStats = useCallback(async () => {
     try {
       const stats = await apiGet('/ocgt/api/stats/summary?days=1')
-      if (stats?.by_client) { const m: ClientStats = {}; stats.by_client.forEach((c: { name: string; requests: number }) => { m[c.name.toLowerCase()] = c.requests }); setClientStats(m) }
+      if (stats?.by_client) {
+        const m: ClientStats = {}
+        stats.by_client.forEach((c: { name: string; requests: number }) => { m[clientBucket(c.name)] = c.requests })
+        setClientStats(m)
+      }
     } catch {}
   }, [])
 
+  const loadConfigStatus = useCallback(async () => {
+    try {
+      const status = await apiGet('/ocgt/api/status')
+      const line = status?.providers?.[lineFilter]
+      // ponytail: entry gate only; backend install actions still own real validation.
+      setConfigReady(!!line?.api_key_configured && !!line?.default_model)
+    } catch {
+      setConfigReady(false)
+    }
+  }, [lineFilter])
+
   useEffect(() => {
-    checkIntegrations(); loadStats()
+    checkIntegrations(); loadStats(); loadConfigStatus()
     wails.GetLocalToken().then(token => setLocalToken(token || '')).catch(() => {})
-    const timer = setInterval(() => { checkIntegrations(); loadStats() }, 12000)
+    const timer = setInterval(() => { checkIntegrations(); loadStats(); loadConfigStatus() }, 12000)
     return () => clearInterval(timer)
-  }, [checkIntegrations, loadStats])
+  }, [checkIntegrations, loadStats, loadConfigStatus])
 
   const handleInstall = async (type: string) => {
     try {
       let result: string
-      switch (type) { case 'cli': result = await wails.InstallClaudeUserEnv(); break; case 'vscode': result = await wails.InstallVSCodeEnv(); break; case 'codex': result = await wails.SetupCodex(); break; case 'desktop': result = await wails.SetupClaudeDesktopApp(); break; default: return }
+      switch (type) { case 'claude': case 'cli': result = await wails.InstallClaudeUserEnv(); break; case 'codex': result = await wails.SetupCodex(); break; case 'desktop': result = await wails.SetupClaudeDesktopApp(); break; default: return }
       if (result === 'success') { toast(t('qc_install_ok'), 'success'); setTimeout(checkIntegrations, 350) }
       else { toast(t('qc_install_fail') + ': ' + result, 'error') }
     } catch (err: unknown) { toast(t('qc_install_fail') + ': ' + errMessage(err), 'error') }
@@ -71,7 +97,16 @@ export default function QuickConnect() {
     if (!confirm(t('prov_confirm_delete'))) return
     try {
       let result: string
-      switch (type) { case 'cli': result = await wails.ClearSystemEnv(); break; case 'vscode': result = await wails.RemoveVSCodeEnv(); break; case 'codex': result = await wails.ClearCodex(); break; case 'desktop': result = await wails.ClearClaudeDesktopApp(); break; default: return }
+      switch (type) {
+        case 'claude':
+        case 'cli':
+          result = await wails.ClearSystemEnv()
+          if (result === 'success') await wails.RemoveVSCodeEnv().catch(() => 'success')
+          break
+        case 'codex': result = await wails.ClearCodex(); break
+        case 'desktop': result = await wails.ClearClaudeDesktopApp(); break
+        default: return
+      }
       if (result === 'success') { toast(t('qc_remove_ok'), 'success'); setTimeout(checkIntegrations, 350) }
       else { toast(t('qc_remove_fail') + ': ' + result, 'error') }
     } catch (err: unknown) { toast(t('qc_remove_fail') + ': ' + errMessage(err), 'error') }
@@ -83,28 +118,32 @@ export default function QuickConnect() {
   }, [localToken])
 
   const allClients: Client[] = [
-    { id: 'cli', icon: Terminal, iconBg: 'dark', iconText: 'CC', name: 'Claude Code', version: 'cli · v0.9.4', desc: t('qc_claude_code_desc'), installed: intStatus.cli, line: 'claude', actions: ['open', 'remove'] },
-    { id: 'vscode', icon: Code2, iconBg: 'light', name: 'VS Code', version: 'extension · workspace', desc: t('qc_vscode_desc'), installed: intStatus.vscode, line: 'claude', actions: ['open', 'remove'] },
-    { id: 'desktop', icon: Monitor, iconBg: 'light', name: 'Claude Desktop', version: 'app · MCP server', desc: t('qc_desktop_desc'), installed: intStatus.claudeDesktopApp, line: 'claude', actions: ['docs', 'install'] },
-    { id: 'cursor', icon: Code2, iconBg: 'light', name: 'Cursor', version: 'editor · beta', desc: t('qc_cursor_desc'), installed: false, line: 'claude', isNew: true, actions: ['docs', 'install'] },
-    { id: 'codex', icon: Bot, iconBg: 'dark', iconText: 'CX', name: 'Codex CLI', version: 'cli · v1.2.0', desc: t('qc_codex_desc'), installed: intStatus.codex, line: 'codex', actions: ['edit', 'remove'] },
+    {
+      id: 'claude',
+      icon: Terminal,
+      iconBg: 'dark',
+      iconText: 'CC',
+      name: 'Claude Code / VS Code',
+      version: 'shared Claude config',
+      desc: t('qc_claude_code_desc'),
+      installed: intStatus.cli || intStatus.vscode,
+      line: 'claude',
+      reqs: (clientStats.cli || 0) + (clientStats.vscode || 0),
+      action: 'open',
+    },
+    { id: 'desktop', icon: Monitor, iconBg: 'light', name: 'Claude Desktop', version: '3P profile', desc: t('qc_desktop_desc'), installed: intStatus.claudeDesktopApp, line: 'claude', action: 'docs' },
+    { id: 'codex', icon: Bot, iconBg: 'dark', iconText: 'CX', name: 'Codex CLI', version: 'cli', desc: t('qc_codex_desc'), installed: intStatus.codex, line: 'codex', action: 'edit' },
   ]
-
-  const LINE_COLORS: Record<AgentLine, string> = { claude: '#d97706', codex: '#16a34a' }
-  const LINE_LABELS: Record<AgentLine, string> = { claude: 'Claude 系', codex: 'Codex 系' }
-  // Build groups: either a single filtered line, or both (in fixed order) when 'all'.
-  const groups: AgentLine[] = lineFilter === 'all' ? ['claude', 'codex'] : [lineFilter]
+  const visibleClients = allClients.filter(client => client.line === lineFilter)
 
   const renderClientCard = (client: Client) => {
     const Icon = client.icon
-    const reqs = clientStats[client.id] || 0
-    const lineColor = LINE_COLORS[client.line]
+    const reqs = client.reqs ?? clientStats[client.id] ?? 0
     return (
       <div className={`conn-card${client.isNew ? ' is-new-corner' : ''}`} key={client.id}>
         <div className="head">
           <div className={`ic-lg ${client.iconBg === 'light' ? 'alt' : ''}`}>
             {client.iconText ? <span style={{ fontSize: 13, fontWeight: 600 }}>{client.iconText}</span> : <Icon width={20} height={20} />}
-            <span className="line-chip" style={{ background: lineColor }} title={LINE_LABELS[client.line]} />
           </div>
           <div style={{ minWidth: 0 }}>
             <h3>{client.name}</h3>
@@ -118,12 +157,9 @@ export default function QuickConnect() {
         </div>
         <div className="meta">
           <span className="spacer" />
-          {client.actions[0] === 'open' && client.installed && <button className="btn btn-sm btn-ghost" onClick={() => wails.OpenConfigLocation()}>{t('qc_open_config')}</button>}
-          {client.actions[0] === 'edit' && client.installed && <button className="btn btn-sm btn-ghost" onClick={() => wails.OpenConfigLocation()}>{t('qc_edit_config')}</button>}
-          {client.actions[0] === 'docs' && <button className="btn btn-sm btn-ghost" onClick={() => { try { (window as any).runtime.BrowserOpenURL('https://github.com/ethan-blue/open-code-go-tools') } catch {} }}>{t('qc_docs')}</button>}
-          {client.actions[1] === 'remove' && client.installed
+          {client.installed
             ? <button className="btn btn-sm" onClick={() => handleRemove(client.id)}>{t('qc_remove')}</button>
-            : client.actions[1] === 'install' ? <button className="btn btn-sm btn-primary" onClick={() => handleInstall(client.id)}>{t('qc_install')}</button> : null}
+            : <button className="btn btn-sm btn-primary" onClick={() => handleInstall(client.id)}>{t('qc_install')}</button>}
         </div>
       </div>
     )
@@ -132,32 +168,32 @@ export default function QuickConnect() {
   return (
     <div id="page-connect">
       <div className="page">
-        <div style={{ marginBottom: 18, display: 'flex', justifyContent: 'flex-end' }}>
-          <div className="segmented">
-            <button className={lineFilter === 'all' ? 'on' : ''} onClick={() => setLineFilter('all')}>{t('qc_filter_all')}</button>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+          <div className="segmented" aria-label="Client line">
             <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => setLineFilter('claude')}>Claude</button>
             <button className={lineFilter === 'codex' ? 'on' : ''} onClick={() => setLineFilter('codex')}>Codex</button>
           </div>
         </div>
 
-        {groups.map(line => {
-          const cards = allClients.filter(c => c.line === line)
-          if (cards.length === 0) return null
-          return (
-            <div className="conn-group" key={line}>
-              <div className="conn-group-head">
-                <span className="line-dot" style={{ background: LINE_COLORS[line] }} />
-                {LINE_LABELS[line]}
-                <span className="count">· {cards.length}</span>
+        {!configReady && (
+          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+            <div className="row between" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <b style={{ fontSize: 13 }}>{t('status_api_key_not_configured')}</b>
+                <p className="muted tiny" style={{ marginTop: 4 }}>Configure provider credentials and model mapping before installing client integrations.</p>
               </div>
-              <div className="conn-grid">
-                {cards.map(renderClientCard)}
+              <div className="row gap-2">
+                <button className="btn btn-sm btn-primary" onClick={() => window.dispatchEvent(new CustomEvent('nav-to', { detail: 'providers' }))}>{t('nav_providers')}</button>
               </div>
             </div>
-          )
-        })}
+          </div>
+        )}
 
-        {/* Local access token — reuses card styling for visual consistency */}
+        <div className="conn-grid">
+          {visibleClients.map(renderClientCard)}
+        </div>
+
+        {/* Local access token reuses card styling for visual consistency. */}
         <section className="conn-group">
           <div className="conn-group-head">
             <Copy width={12} height={12} />
@@ -170,7 +206,7 @@ export default function QuickConnect() {
                 <p style={{ margin: '4px 0 0' }}>{t('sett_token_hint')}</p>
               </div>
               <div className="input-wrap" style={{ flex: '1 1 320px', maxWidth: 420 }}>
-                <input className="input" readOnly value={localToken || '••••••••'} type={localToken ? 'password' : 'text'} />
+                <input className="input" readOnly value={localToken || '********'} type={localToken ? 'password' : 'text'} />
                 <button className="suffix-btn" onClick={handleCopyToken} title={t('btn_copy')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 8px' }}>
                   {copyFeedback ? <Check size={14} className="text-green" /> : <Copy size={14} />}
                 </button>

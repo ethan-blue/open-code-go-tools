@@ -17,32 +17,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   };
 
   const navigateItems = [
-    { id: 'dashboard', label: t('cmd_goto_dashboard'), icon: '→', shortcut: 'Ctrl+1', action: () => navTo('dashboard') },
-    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '→', shortcut: 'Ctrl+2', action: () => navTo('history') },
-    { id: 'sessions', label: t('cmd_goto_sessions'), icon: '→', shortcut: 'Ctrl+3', action: () => navTo('sessions') },
-    { id: 'settings', label: t('cmd_open_settings'), icon: '→', shortcut: 'Ctrl+,', action: () => navTo('settings') },
-    { id: 'providers', label: t('cmd_goto_providers'), icon: '→', shortcut: 'Ctrl+4', action: () => navTo('providers') },
-    { id: 'hub', label: t('cmd_goto_hub'), icon: '→', shortcut: 'Ctrl+5', action: () => navTo('hub') },
-    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '→', shortcut: 'Ctrl+6', action: () => navTo('terminal') },
-    { id: 'copilot', label: t('cmd_copilot'), icon: '→', shortcut: 'Ctrl+7', action: () => navTo('copilot') }
+    { id: 'dashboard', label: t('cmd_goto_dashboard'), icon: '->', shortcut: 'Ctrl+1', action: () => navTo('dashboard') },
+    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '->', shortcut: 'Ctrl+2', action: () => navTo('terminal') },
+    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '->', shortcut: 'Ctrl+3', action: () => navTo('history') },
+    { id: 'sessions', label: t('cmd_goto_sessions'), icon: '->', shortcut: 'Ctrl+4', action: () => navTo('sessions') },
+    { id: 'copilot', label: t('cmd_copilot'), icon: '->', shortcut: 'Ctrl+5', action: () => navTo('copilot') },
+    { id: 'providers', label: t('cmd_goto_providers'), icon: '->', shortcut: 'Ctrl+6', action: () => navTo('providers') },
+    { id: 'settings', label: t('cmd_open_settings'), icon: '->', shortcut: 'Ctrl+,', action: () => navTo('preferences') },
   ];
 
   const actionItems = [
-    { id: 'restart', label: t('cmd_restart_proxy'), icon: '⏻', shortcut: '⌃R', action: () => { if ((window as any).runtime) { (window as any).runtime.EventsEmit('restart-proxy'); } } },
-    { id: 'profile', label: t('cmd_switch_profile'), icon: '↻', shortcut: 'Ctrl+P', action: () => {
-      window.dispatchEvent(new CustomEvent('nav-to', { detail: 'settings' }));
-    } },
-    { id: 'export', label: t('cmd_export_traffic'), icon: '⤓', shortcut: 'Ctrl+E', action: () => {
-      // Export traffic defaults to navigating to history where export lives
-      window.dispatchEvent(new CustomEvent('nav-to', { detail: 'history' }));
-    } },
-    { id: 'theme', label: t('cmd_toggle_theme'), icon: '◐', shortcut: 'Ctrl+T', action: () => {
-        const current = localStorage.getItem('theme') || 'system';
-        const next = current === 'dark' ? 'light' : 'dark';
-        localStorage.setItem('theme', next);
-        document.documentElement.setAttribute('data-theme', next);
-        window.dispatchEvent(new CustomEvent('theme-changed', { detail: next }));
-    } }
+    { id: 'export', label: t('cmd_export_traffic'), icon: 'dl', shortcut: 'Ctrl+E', action: () => navTo('history') },
   ];
 
   const allItems = [...navigateItems, ...actionItems].filter(item =>

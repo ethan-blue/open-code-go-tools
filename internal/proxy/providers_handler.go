@@ -5,8 +5,10 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 
+	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 )
 
@@ -19,8 +21,92 @@ func (s *Server) ensureStore() *providers.Store {
 		if err := s.providerStore.Load(); err != nil {
 			log.Printf("providers: load error: %v", err)
 		}
+		s.seedDefaultProviders()
 	})
 	return s.providerStore
+}
+
+func (s *Server) seedDefaultProviders() {
+	if s.providerStore == nil {
+		return
+	}
+	profile, name, err := s.config.Profile("")
+	if err != nil {
+		return
+	}
+	modelSet := map[string]bool{}
+	for _, model := range profile.ModelAliases {
+		if model != "" {
+			modelSet[model] = true
+		}
+	}
+	for _, model := range append(profile.MessageModels, profile.FallbackChain...) {
+		if model != "" {
+			modelSet[model] = true
+		}
+	}
+	if profile.DefaultModel != "" {
+		modelSet[profile.DefaultModel] = true
+	}
+	models := make([]string, 0, len(modelSet))
+	for model := range modelSet {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	claudeEnv := config.DefaultClaudeEnv(profile)
+	if len(s.config.ClaudeEnv) > 0 {
+		claudeEnv = copyStringMap(s.config.ClaudeEnv)
+	}
+
+	defaults := []providers.Provider{
+		{
+			ID:                    name + "-claude",
+			Name:                  "OpenCode Go",
+			BaseURL:               s.config.Upstream,
+			APIKey:                profile.APIKey,
+			Models:                models,
+			DefaultModel:          profile.DefaultModel,
+			MessageModels:         append([]string(nil), profile.MessageModels...),
+			Priority:              0,
+			Enabled:               true,
+			Health:                "unknown",
+			Line:                  "claude",
+			Protocol:              "openai-chat",
+			RequestTimeoutSeconds: s.config.RequestTimeoutSeconds,
+			ThinkingBudgetTokens:  s.config.MaxThinkingBudgetTokens,
+			AuthMode:              profile.AuthMode,
+			ModelAliases:          copyStringMap(profile.ModelAliases),
+			Headers:               copyStringMap(profile.Headers),
+			Env:                   claudeEnv,
+		},
+		{
+			ID:                    name + "-codex",
+			Name:                  "OpenCode Go",
+			BaseURL:               s.config.Upstream,
+			APIKey:                profile.APIKey,
+			Models:                models,
+			DefaultModel:          profile.DefaultModel,
+			Priority:              0,
+			Enabled:               true,
+			Health:                "unknown",
+			Line:                  "codex",
+			Protocol:              "openai-responses",
+			RequestTimeoutSeconds: s.config.RequestTimeoutSeconds,
+			ThinkingBudgetTokens:  s.config.MaxThinkingBudgetTokens,
+			AuthMode:              profile.AuthMode,
+			ModelAliases:          copyStringMap(profile.ModelAliases),
+			Headers:               copyStringMap(profile.Headers),
+		},
+	}
+
+	for _, p := range defaults {
+		if s.providerStore.HasLine(p.Line) {
+			continue
+		}
+		if err := s.providerStore.Create(p); err != nil {
+			log.Printf("providers: seed default error: %v", err)
+		}
+	}
 }
 
 // apiProvidersList handles GET /ocgt/api/providers
@@ -142,8 +228,7 @@ func (s *Server) apiProvidersToggle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	store := s.ensureStore()
-	enabled, err := store.Toggle(path)
-	if err != nil {
+	if err := store.Activate(path); err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
@@ -152,7 +237,7 @@ func (s *Server) apiProvidersToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled})
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": true})
 }
 
 // apiProvidersSort handles POST /ocgt/api/providers/sort

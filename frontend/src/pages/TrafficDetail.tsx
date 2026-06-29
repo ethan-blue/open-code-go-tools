@@ -13,15 +13,16 @@ import { useI18n } from '@/i18n'
 
 /** Mirror the HistoryRecord shape from TrafficMonitor */
 export interface DetailRecord {
+  id?: string
   time: string
   model: string
   status: number
   input_tokens: number
   output_tokens: number
-  cache_read_tokens: number
-  cache_creation_tokens: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
   total_tokens: number
-  duration: number
+  duration?: number
   client: string
   route: string
   error: string
@@ -30,15 +31,6 @@ export interface DetailRecord {
 interface Props {
   record: DetailRecord | null
   onBack: () => void
-}
-
-/** Estimate cost breakdown from token counts (approximate Claude pricing) */
-// Approximate per-token rates; model-specific pricing not available from API
-function estimateCost(r: DetailRecord) {
-  const inputCost  = (r.input_tokens  || 0) * 0.000003
-  const outputCost = (r.output_tokens || 0) * 0.000015
-  const cacheCost  = (r.cache_read_tokens || 0) * 0.0000003
-  return { inputCost, outputCost, cacheCost, total: inputCost + outputCost + cacheCost }
 }
 
 export default memo(function TrafficDetail({ record, onBack }: Props) {
@@ -72,9 +64,9 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
     )
   }
 
-  const reqId = (record as any).id || '—'
-  const cost = estimateCost(record)
-  const totalDur = record.duration || 182
+  const reqId = record.id || '-'
+  const totalDur = typeof record.duration === 'number' ? Math.round(record.duration) : null
+  const cacheTokens = (record.cache_read_tokens || 0) + (record.cache_creation_tokens || 0)
   const statusOk = record.status >= 200 && record.status < 300
 
   return (
@@ -103,44 +95,13 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
       <div className="td-grid-2col">
         {/* ── LEFT COLUMN ── */}
         <div className="td-col">
-          {/* Waterfall Timeline */}
+          {/* Timing */}
           <div className="card">
-            <div className="card-h">{t('td_waterfall')}</div>
+            <div className="card-h">{t('td_duration')}</div>
             <div className="card-body td-waterfall-body">
-              {(() => {
-                // Simulate waterfall steps based on duration
-                const totalDur = record.duration || 182
-                const steps = [
-                  { label: t('td_wf_dns'), pct: 5, color: 'var(--link)' },
-                  { label: t('td_wf_connect'), pct: 8, color: 'var(--link)' },
-                  { label: t('td_wf_tls'), pct: 12, color: 'var(--link)' },
-                  { label: t('td_wf_send'), pct: 5, color: 'var(--online)' },
-                  { label: t('td_wf_wait'), pct: 55, color: 'var(--warn)' },
-                  { label: t('td_wf_receive'), pct: 15, color: 'var(--online)' },
-                ]
-                let offset = 0
-                return steps.map((step, i) => {
-                  const width = step.pct
-                  const left = offset
-                  offset += width
-                  return (
-                    <div key={i} className="td-wf-row">
-                      <span className="td-wf-label muted tiny">{step.label}</span>
-                      <div className="td-wf-bar-track">
-                        <div
-                          className="td-wf-bar"
-                          style={{
-                            left: `${left}%`,
-                            width: `${width}%`,
-                            background: step.color,
-                          }}
-                        />
-                      </div>
-                      <span className="td-wf-time mono tiny">{Math.round(totalDur * width / 100)}ms</span>
-                    </div>
-                  )
-                })
-              })()}
+              <div className="kv-list">
+                <div className="row"><span className="k">{t('td_duration')}</span><span className="v">{totalDur === null ? '-' : `${totalDur}ms`}</span></div>
+              </div>
             </div>
           </div>
 
@@ -167,12 +128,7 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
                   {record.error}
                 </pre>
               ) : (
-                <p className="td-info-p">
-                  {t('td_response_body_note')}{' '}
-                  <code className="inl">{record.model || 'unknown'}</code> returned{' '}
-                  <code className="inl">{record.status}</code> with{' '}
-                  <code className="inl">{record.output_tokens || 0}</code> output tokens.
-                </p>
+                <p className="td-info-p">Response body is not recorded for this request.</p>
               )}
             </div>
           </div>
@@ -203,34 +159,34 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
                 </div>
                 <div className="row">
                   <span className="k">{t('td_cache_label')}</span>
-                  <span className="v">{record.cache_read_tokens > 0 ? `hit · ${record.cache_read_tokens} tok` : 'miss → write'}</span>
+                  <span className="v">{cacheTokens > 0 ? `${cacheTokens} tok` : '-'}</span>
                 </div>
-                <div className="row"><span className="k">{t('td_duration')}</span><span className="v">{totalDur}ms</span></div>
+                <div className="row"><span className="k">{t('td_duration')}</span><span className="v">{totalDur === null ? '-' : `${totalDur}ms`}</span></div>
                 <div className="row"><span className="k">{t('td_time')}</span><span className="v">{record.time ? new Date(record.time).toLocaleString() : '-'}</span></div>
               </div>
             </div>
           </div>
 
-          {/* Cost */}
+          {/* Tokens */}
           <div className="card">
-            <div className="card-h">{t('td_cost')}</div>
+            <div className="card-h">{t('td_tokens')}</div>
             <div className="card-body">
               <div className="row between td-cost-row">
                 <span className="muted tiny">{t('td_input')} · {(record.input_tokens || 0).toLocaleString()} tok</span>
-                <span className="mono">${cost.inputCost.toFixed(4)}</span>
+                <span className="mono">{(record.input_tokens || 0).toLocaleString()}</span>
               </div>
               <div className="row between td-cost-row">
                 <span className="muted tiny">{t('td_output')} · {(record.output_tokens || 0).toLocaleString()} tok</span>
-                <span className="mono">${cost.outputCost.toFixed(4)}</span>
+                <span className="mono">{(record.output_tokens || 0).toLocaleString()}</span>
               </div>
               <div className="row between td-cost-row">
                 <span className="muted tiny">{t('td_cache_read')} · {record.cache_read_tokens || 0}</span>
-                <span className="mono">${cost.cacheCost.toFixed(4)}</span>
+                <span className="mono">{record.cache_read_tokens || 0}</span>
               </div>
               <div className="hbar td-hbar" />
               <div className="row between">
                 <b className="mono td-total-label">{t('td_total')}</b>
-                <b className="mono td-total-label">${cost.total.toFixed(4)}</b>
+                <b className="mono td-total-label">{(record.total_tokens || 0).toLocaleString()}</b>
               </div>
             </div>
           </div>

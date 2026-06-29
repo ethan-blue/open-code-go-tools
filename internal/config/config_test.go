@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -41,6 +42,37 @@ func TestExampleIncludesAllDocumentedGoAliases(t *testing.T) {
 		if got := profile.ResolveModel(alias); got != want {
 			t.Fatalf("%s resolved to %q, want %q", alias, got, want)
 		}
+	}
+}
+
+func TestLoadUsesSplitProfilesWhenConfigHasNone(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	configDir := filepath.Join(dir, ".ocgt")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	profiles := DefaultProfiles()
+	profiles.ActiveProfile = "mine"
+	profiles.Profiles["mine"] = Profile{APIKey: "sk-test", DefaultModel: "deepseek-v4-pro"}
+	if err := SaveProfiles(profiles, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(configDir, "config.json")
+	data := []byte(`{"listen":"127.0.0.1:9999","upstream":"https://custom.upstream.com","active_profile":"","profiles":null}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ActiveProfile != "mine" || cfg.Profiles["mine"].DefaultModel != "deepseek-v4-pro" {
+		t.Fatalf("split profiles were not loaded: %#v", cfg)
 	}
 }
 

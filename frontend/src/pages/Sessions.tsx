@@ -59,6 +59,7 @@ export default memo(function Sessions() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [sessions, setSessions] = useState<Session[]>([])
+  const [loadError, setLoadError] = useState(false)
   const [period, setPeriod] = useState(() => localStorage.getItem('sessions_period') || 'today')
 
  // Persist period selection
@@ -79,9 +80,11 @@ export default memo(function Sessions() {
     try {
       const result = await apiGet(`/ocgt/api/sessions?period=${period}`)
       setSessions(result.sessions || [])
+      setLoadError(false)
     } catch {
       setSessions([])
-      // silent: proxy may not be running
+      setLoadError(true)
+      toast(t('toast_sessions_load_failed'), 'error')
     } finally {
       setLoading(false)
     }
@@ -100,7 +103,7 @@ export default memo(function Sessions() {
       setDetailCache((prev) => ({ ...prev, [sessionId]: events }))
     } catch {
       setDetailCache((prev) => ({ ...prev, [sessionId]: [] }))
-      // silent: proxy may not be running
+      toast(t('toast_detail_load_failed'), 'error')
     } finally {
       setDetailLoading(null)
     }
@@ -171,6 +174,8 @@ export default memo(function Sessions() {
   }, [sessions, selectedId])
 
   const selectedEvents = selectedId ? detailCache[selectedId] : undefined
+  const shortSessionId = (sessionId: string): string =>
+    sessionId.length > 12 ? sessionId.slice(0, 8) : sessionId
 
   const periods = [
     { v: 'today', l: t('sessions_period_today') },
@@ -316,26 +321,34 @@ export default memo(function Sessions() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="card">
-          <EmptyState icon={<Hash width={28} height={28} />} title={t('sessions_empty_title') || 'No active sessions'} description={t('sessions_empty_desc') || 'Sessions will appear here when you start using connected clients.'} />
+          <EmptyState
+            icon={<Hash width={28} height={28} />}
+            title={loadError ? t('td_load_failed') : (t('sessions_empty_title') || 'No active sessions')}
+            description={loadError ? t('td_proxy_offline') : (t('sessions_empty_desc') || 'Sessions will appear here when you start using connected clients.')}
+            action={
+              loadError
+                ? <button className="btn btn-sm" onClick={load}>{t('retry')}</button>
+                : <button className="btn btn-sm btn-primary" onClick={() => window.dispatchEvent(new CustomEvent('nav-to', { detail: 'terminal' }))}>{t('nav_terminal')}</button>
+            }
+          />
         </div>
       ) : (
-        <div className="layout">
+        <div className="sessions-layout">
           <div className="session-list">
             {filtered.map((s) => {
               const cost = costMap[s.sessionId] || 0
               const isSelected = selectedId === s.sessionId
-              const preview = s.model || s.sessionId
-              return (
+                            return (
                 <div
                   key={s.sessionId}
-                  className={`sess-item ${isSelected ? 'active' : ''}`}
+                  className={`item ${isSelected ? 'on' : ''}`}
                   onClick={() => handleSelect(s.sessionId)}
                 >
                   <div className="top">
-                    <b>{s.sessionId}</b>
+                    <b>{shortSessionId(s.sessionId)}</b>
                     <time>{fmtDate(s.lastTime)}</time>
                   </div>
-                  <div className="prev">{preview} — {s.messageCount} {t('sessions_messages')}</div>
+                  <div className="prev">{s.model || t('sessions_unknown')} | {s.messageCount} {t('sessions_messages')}</div>
                   <div className="tags">
                     <span className="tag">{s.model || t('sessions_unknown')}</span>
                     {s.events?.[0]?.message?.client && <span className="tag blue">{s.events[0].message.client}</span>}
@@ -353,10 +366,10 @@ export default memo(function Sessions() {
               <>
                 <div className="crumb">
                   <Hash size={11} className="tm-mr-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
-                  {selectedSession.sessionId} · {selectedSession.messageCount} {t('sessions_messages')} · {fmtTokens(selectedSession.totalTokens)} {t('sessions_tokens_label')}
+                  {selectedSession.sessionId} | {selectedSession.messageCount} {t('sessions_messages')} | {fmtTokens(selectedSession.totalTokens)} {t('sessions_tokens_label')}
                 </div>
                 <h2>{selectedSession.model || t('sessions_title')}</h2>
-                <div className="sess-meta">
+                <div className="meta">
                   <span>{fmtDate(selectedSession.startTime)}</span>
                   <span>{fmtDate(selectedSession.lastTime)}</span>
                   <span>IN {fmtTokens(selectedSession.inputTokens)}</span>
@@ -383,12 +396,12 @@ export default memo(function Sessions() {
                     const role = ev.type === 'user' ? 'user' : 'assistant'
                     const text = ev.message?.text
                     return (
-                      <div key={idx} className={`sess-msg-row ${role}`}>
+                      <div key={idx} className="msg">
                         <div className="role">
                           <span className={'pill ' + role}>{role}</span>
                         </div>
-                        <div className={`sess-bubble ${role}`}>
-                          {text || <span className="muted tiny">—</span>}
+                        <div className="content">
+                          {text || <span className="muted tiny">--</span>}
                         </div>
                       </div>
                     )
@@ -402,3 +415,4 @@ export default memo(function Sessions() {
     </div>
   )
 })
+

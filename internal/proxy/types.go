@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -45,6 +46,7 @@ type Server struct {
 	client     *http.Client
 	upstream   string
 	webAssets  *embed.FS
+	startedAt  time.Time
 
 	configMu    sync.RWMutex // Protects config, upstream, and client.Timeout
 	rateLimiter *rateLimiter
@@ -97,22 +99,20 @@ type Server struct {
 
 	providerStore *providers.Store
 
-	configDir     string
+	configDir string
 
-	storeOnce     sync.Once
-
-
+	storeOnce sync.Once
 
 	// retryBackoffBase is the base duration for exponential backoff on retries.
 
 	// Defaults to 500ms. Tests can set it to 0 for instant retries.
 
 	retryBackoffBase time.Duration
-
 }
 
 func (s *Server) SetConfigPath(path string) {
 	s.configPath = path
+	s.configDir = filepath.Dir(path)
 }
 
 // SetHubCounters 注入跨设备同步计数器。
@@ -260,50 +260,44 @@ type anthropicErrorResponse struct {
 // OpenAI Responses API types (for Codex compatibility)
 
 type responsesRequest struct {
+	Model string `json:"model"`
 
-	Model           string        `json:"model"`
+	Input any `json:"input"` // string or array of input items
 
-	Input           any           `json:"input"` // string or array of input items
+	Stream bool `json:"stream,omitempty"`
 
-	Stream          bool          `json:"stream,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
 
-	Instructions    string        `json:"instructions,omitempty"`
+	Tools []responsesTool `json:"tools,omitempty"`
 
-	Tools           []responsesTool `json:"tools,omitempty"`
+	Temperature *float64 `json:"temperature,omitempty"`
 
-	Temperature     *float64      `json:"temperature,omitempty"`
-
-	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
-
+	MaxOutputTokens int `json:"max_output_tokens,omitempty"`
 }
-
-
 
 // responsesTool represents a tool definition in the Responses API format.
 
 type responsesTool struct {
+	Type string `json:"type"`
 
-	Type        string         `json:"type"`
+	Name string `json:"name,omitempty"`
 
-	Name        string         `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
 
-	Description string         `json:"description,omitempty"`
-
-	Parameters  map[string]any `json:"parameters,omitempty"`
-
+	Parameters map[string]any `json:"parameters,omitempty"`
 }
 
 type responsesResponse struct {
-	ID     string           `json:"id"`
-	Object string           `json:"object"`
-	Model  string           `json:"model"`
-	Output []responsesItem  `json:"output"`
-	Usage  responsesUsage   `json:"usage"`
+	ID     string          `json:"id"`
+	Object string          `json:"object"`
+	Model  string          `json:"model"`
+	Output []responsesItem `json:"output"`
+	Usage  responsesUsage  `json:"usage"`
 }
 
 type responsesItem struct {
-	Type    string            `json:"type"`
-	Role    string            `json:"role,omitempty"`
+	Type    string             `json:"type"`
+	Role    string             `json:"role,omitempty"`
 	Content []responsesContent `json:"content,omitempty"`
 }
 
@@ -334,14 +328,17 @@ func New(cfg config.Config, webAssets ...*embed.FS) (*Server, error) {
 		config:              cfg,
 		upstream:            cfg.Upstream,
 		client:              &http.Client{Timeout: cfg.RequestTimeout(), Transport: transport},
+		startedAt:           time.Now(),
 		rateLimiter:         newRateLimiter(cfg.RateLimit()),
 		rpmLimiter:          newRpmLimiter(cfg.RateLimitPerMinute),
 		reasoningByTool:     map[string]string{},
 		consecutiveFailures: map[string]int{},
 		trippedUntil:        map[string]time.Time{},
-		webAssets:           assets,
-		sessionsCacheTTL:    30 * time.Second,
-		retryBackoffBase:    500 * time.Millisecond,
+		webAssets:           assets,
+
+		sessionsCacheTTL: 30 * time.Second,
+
+		retryBackoffBase: 500 * time.Millisecond,
 	}, nil
 }
 

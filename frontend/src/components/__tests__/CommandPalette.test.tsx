@@ -46,8 +46,20 @@ describe('CommandPalette', () => {
 
   it('displays action items', () => {
     render(<CommandPalette {...defaultProps} />)
-    expect(screen.getByText('cmd_restart_proxy')).toBeInTheDocument()
-    expect(screen.getByText('cmd_toggle_theme')).toBeInTheDocument()
+    expect(screen.getByText('cmd_export_traffic')).toBeInTheDocument()
+    expect(screen.queryByText('cmd_restart_proxy')).not.toBeInTheDocument()
+    expect(screen.queryByText('cmd_toggle_theme')).not.toBeInTheDocument()
+  })
+
+  it('routes settings command to a real view', () => {
+    const listener = vi.fn()
+    window.addEventListener('nav-to', listener)
+    render(<CommandPalette {...defaultProps} />)
+
+    fireEvent.click(screen.getByText('cmd_open_settings'))
+
+    expect(listener.mock.calls[0][0].detail).toBe('preferences')
+    window.removeEventListener('nav-to', listener)
   })
 
   it('filters items based on search query', () => {

@@ -19,12 +19,12 @@ import (
 // ── 响应数据结构 ──
 
 type StatsSummary struct {
-	Period     PeriodInfo         `json:"period"`
-	Summary    SummaryTotals       `json:"summary"`
-	ByModel    []ModelStat         `json:"by_model"`
-	ByClient   []ClientStat        `json:"by_client"`
-	DailyTrend []DailyStat         `json:"daily_trend,omitempty"`
-  PlanUsage  pricing.PlanUsage `json:"plan_usage,omitempty"`
+	Period     PeriodInfo        `json:"period"`
+	Summary    SummaryTotals     `json:"summary"`
+	ByModel    []ModelStat       `json:"by_model"`
+	ByClient   []ClientStat      `json:"by_client"`
+	DailyTrend []DailyStat       `json:"daily_trend,omitempty"`
+	PlanUsage  pricing.PlanUsage `json:"plan_usage,omitempty"`
 }
 
 type PeriodInfo struct {
@@ -34,43 +34,44 @@ type PeriodInfo struct {
 }
 
 type SummaryTotals struct {
-	TotalRequests        int     `json:"total_requests"`
-	SuccessCount         int     `json:"success_count"`
-	SuccessRate          float64 `json:"success_rate"`
-	AvgLatencyMs         float64 `json:"avg_latency_ms"`
-	TotalInputTokens     int64   `json:"total_input_tokens"`
-	TotalOutputTokens    int64   `json:"total_output_tokens"`
-	TotalCacheReadTokens int64   `json:"total_cache_read_tokens"`
-	TotalCacheCreateTokens int64 `json:"total_cache_create_tokens"`
-	TotalTokens          int64   `json:"total_tokens"`
-	EstimatedCost        float64 `json:"estimated_cost"`
-	CacheHitRate         float64 `json:"cache_hit_rate"`
+	TotalRequests          int     `json:"total_requests"`
+	SuccessCount           int     `json:"success_count"`
+	SuccessRate            float64 `json:"success_rate"`
+	AvgLatencyMs           float64 `json:"avg_latency_ms"`
+	P50LatencyMs           float64 `json:"p50_latency_ms"`
+	TotalInputTokens       int64   `json:"total_input_tokens"`
+	TotalOutputTokens      int64   `json:"total_output_tokens"`
+	TotalCacheReadTokens   int64   `json:"total_cache_read_tokens"`
+	TotalCacheCreateTokens int64   `json:"total_cache_create_tokens"`
+	TotalTokens            int64   `json:"total_tokens"`
+	EstimatedCost          float64 `json:"estimated_cost"`
+	CacheHitRate           float64 `json:"cache_hit_rate"`
 }
 
 type ModelStat struct {
-	Name        string  `json:"name"`
-	Requests    int     `json:"requests"`
-	InputTokens int64   `json:"input_tokens"`
-	OutputTokens int64  `json:"output_tokens"`
-	CacheTokens int64   `json:"cache_tokens"`
-	TotalTokens int64   `json:"total_tokens"`
-	Cost        float64 `json:"cost_usd"`
-	Pct         float64 `json:"pct"`
+	Name         string  `json:"name"`
+	Requests     int     `json:"requests"`
+	InputTokens  int64   `json:"input_tokens"`
+	OutputTokens int64   `json:"output_tokens"`
+	CacheTokens  int64   `json:"cache_tokens"`
+	TotalTokens  int64   `json:"total_tokens"`
+	Cost         float64 `json:"cost_usd"`
+	Pct          float64 `json:"pct"`
 	CacheHitRate float64 `json:"cache_hit_rate"`
 }
 
 type ClientStat struct {
-	Name     string `json:"name"`
-	Requests int    `json:"requests"`
+	Name     string  `json:"name"`
+	Requests int     `json:"requests"`
 	Pct      float64 `json:"pct"`
 }
 
 type DailyStat struct {
-	Date        string `json:"date"`
-	Requests    int    `json:"requests"`
-	InputTokens int64  `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
-	TotalTokens int64  `json:"total_tokens"`
+	Date         string `json:"date"`
+	Requests     int    `json:"requests"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
 }
 
 // ── API Handlers ──
@@ -163,10 +164,10 @@ func (s *Server) readJSONLLogs(days int) []requestLogEntry {
 
 	files, err := os.ReadDir(dir)
 	if err != nil {
-			log.Printf("[stats] readJSONLLogs: cannot read dir %q: %v", dir, err)
+		log.Printf("[stats] readJSONLLogs: cannot read dir %q: %v", dir, err)
 		return nil
 	}
-log.Printf("[stats] readJSONLLogs: reading %q, found %d files, cutoff %s", dir, len(files), cutoff.Format("2006-01-02"))
+	log.Printf("[stats] readJSONLLogs: reading %q, found %d files, cutoff %s", dir, len(files), cutoff.Format("2006-01-02"))
 
 	for _, f := range files {
 		if f.IsDir() || !strings.HasPrefix(f.Name(), "ocgt-") || !strings.HasSuffix(f.Name(), ".jsonl") {
@@ -181,7 +182,7 @@ log.Printf("[stats] readJSONLLogs: reading %q, found %d files, cutoff %s", dir, 
 		return allEntries[i].Time.After(allEntries[j].Time)
 	})
 
-		// 不限制返回条数，全量数据返回给前端做本地筛选和分页
+	// 不限制返回条数，全量数据返回给前端做本地筛选和分页
 
 	// Fallback: 如果 JSONL 文件没有数据（日志未启用或目录不存在），
 	// 从内存历史记录读取，确保 stats API 总有数据可返回
@@ -256,6 +257,7 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 	modelMap := make(map[string]*ModelStat)
 	clientMap := make(map[string]*ClientStat)
 	dayMap := make(map[string]*DailyStat)
+	latencies := make([]float64, 0, len(entries))
 
 	for _, e := range entries {
 		// Summary
@@ -268,7 +270,9 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 		result.Summary.TotalCacheReadTokens += int64(e.CacheReadTokens)
 		result.Summary.TotalCacheCreateTokens += int64(e.CacheCreationTokens)
 		result.Summary.TotalTokens += int64(e.TotalTokens)
-		result.Summary.AvgLatencyMs += parseDurationFloat(e.Duration)
+		latency := parseDurationFloat(e.Duration)
+		result.Summary.AvgLatencyMs += latency
+		latencies = append(latencies, latency)
 
 		// By model
 		model := e.Model
@@ -312,6 +316,13 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 	if result.Summary.TotalRequests > 0 {
 		result.Summary.SuccessRate = float64(result.Summary.SuccessCount) / float64(result.Summary.TotalRequests) * 100
 		result.Summary.AvgLatencyMs = result.Summary.AvgLatencyMs / float64(result.Summary.TotalRequests)
+		sort.Float64s(latencies)
+		mid := len(latencies) / 2
+		if len(latencies)%2 == 0 && len(latencies) > 0 {
+			result.Summary.P50LatencyMs = (latencies[mid-1] + latencies[mid]) / 2
+		} else if len(latencies) > 0 {
+			result.Summary.P50LatencyMs = latencies[mid]
+		}
 	}
 	if result.Summary.TotalInputTokens > 0 {
 		result.Summary.CacheHitRate = float64(result.Summary.TotalCacheReadTokens) / float64(result.Summary.TotalInputTokens) * 100
@@ -450,14 +461,14 @@ func modelBreakdown(entries []requestLogEntry) []ModelStat {
 			cacheHitRate = float64(ms.CacheReadTokens) / float64(ms.InputTokens) * 100
 		}
 		result = append(result, ModelStat{
-			Name:        ms.Name,
-			Requests:    ms.Requests,
-			InputTokens: ms.InputTokens,
+			Name:         ms.Name,
+			Requests:     ms.Requests,
+			InputTokens:  ms.InputTokens,
 			OutputTokens: ms.OutputTokens,
-			CacheTokens: ms.CacheReadTokens + ms.CacheCreationTokens,
-			TotalTokens: ms.TotalTokens,
-			Cost:        ms.Cost,
-			Pct:         pct,
+			CacheTokens:  ms.CacheReadTokens + ms.CacheCreationTokens,
+			TotalTokens:  ms.TotalTokens,
+			Cost:         ms.Cost,
+			Pct:          pct,
 			CacheHitRate: cacheHitRate,
 		})
 	}
@@ -469,14 +480,14 @@ func modelBreakdown(entries []requestLogEntry) []ModelStat {
 
 // modelBreakdownAccum 是 modelBreakdown 内部使用的累加器
 type modelBreakdownAccum struct {
-	Name              string
-	Requests          int
-	InputTokens       int64
-	OutputTokens      int64
-	CacheReadTokens   int64
+	Name                string
+	Requests            int
+	InputTokens         int64
+	OutputTokens        int64
+	CacheReadTokens     int64
 	CacheCreationTokens int64
-	TotalTokens       int64
-	Cost              float64
+	TotalTokens         int64
+	Cost                float64
 }
 
 func parseDurationFloat(str string) float64 {

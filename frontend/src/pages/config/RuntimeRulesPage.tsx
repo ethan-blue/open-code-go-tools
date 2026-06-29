@@ -2,8 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { wails, apiGet, isWails } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
+import type { AgentLine } from '@/lib/types'
 
-export default function RuntimeRulesPage() {
+interface Props {
+  embedded?: boolean
+  line?: AgentLine
+}
+
+export default function RuntimeRulesPage({ embedded = false, line }: Props) {
   const { t } = useI18n()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
@@ -18,16 +24,23 @@ export default function RuntimeRulesPage() {
   const [maxMCPTokens, setMaxMCPTokens] = useState('')
   const [apiTimeout, setApiTimeout] = useState('')
   const [mcpTimeout, setMcpTimeout] = useState('')
-  // Plugin feature toggles (merged here from the former Plugins page — these are runtime switches, not a plugin system)
+  const [activeProfile, setActiveProfile] = useState('')
   const [plugins, setPlugins] = useState<Record<string, boolean>>({})
 
+  function parseEnv(raw: string): Record<string, string> {
+    try { const o = JSON.parse(raw); return typeof o === 'object' && o ? o as Record<string, string> : {} } catch { return {} }
+  }
+
   useEffect(() => {
-    apiGet('/ocgt/api/status').then(d => {
+    apiGet('/ocgt/api/status').then((d: any) => {
       if (!d) return
-      const env = parseEnv(d.claudeEnvJSON ?? d.envJSON ?? '{}')
-      setEnvJSON(d.claudeEnvJSON ?? d.envJSON ?? '{}')
-      setTimeoutSeconds(String(d.timeout ?? 300))
-      setThinkingBudget(String(d.thinkingBudgetTokens ?? 0))
+      setActiveProfile(d.active_profile ?? d.activeProfile ?? '')
+      const envObj = d.claude_env ?? d.claudeEnv ?? {}
+      const envRaw = d.claudeEnvJSON ?? d.envJSON ?? JSON.stringify(envObj, null, 2)
+      const env = parseEnv(envRaw)
+      setEnvJSON(envRaw)
+      setTimeoutSeconds(String(d.request_timeout_seconds ?? d.timeout ?? 300))
+      setThinkingBudget(String(d.max_thinking_budget_tokens ?? d.thinkingBudgetTokens ?? 0))
       setDisableNonessential(env.DISABLE_NONESSENTIAL === 'true')
       setEnableToolSearch(env.ENABLE_TOOL_SEARCH === 'true')
       setDisableAttribution(env.DISABLE_ATTRIBUTION === 'true')
@@ -39,10 +52,6 @@ export default function RuntimeRulesPage() {
       if (d.plugins) setPlugins(d.plugins)
     }).catch(() => {})
   }, [])
-
-  function parseEnv(raw: string): Record<string, string> {
-    try { const o = JSON.parse(raw); return typeof o === 'object' && o ? o : {} } catch { return {} }
-  }
 
   function buildEnv(): string {
     const env = parseEnv(envJSON)
@@ -62,21 +71,23 @@ export default function RuntimeRulesPage() {
     setSaving(true)
     try {
       const built = buildEnv()
-      const err = await wails.SaveProfileConfig('', '', '', '', '', '', timeoutSeconds, thinkingBudget, '', '', '', '', '', built, '', '')
+      if (!activeProfile) throw new Error('active profile not found')
+      const err = await wails.SaveProfileConfig(activeProfile, '', '', '', '', '', timeoutSeconds, thinkingBudget, '', '', '', '', '', built, '', '')
       if (err && typeof err === 'string' && err !== 'success') throw new Error(err)
-      // Persist plugin feature toggles (merged from former PluginsPage)
       const pluginErr = await wails.SavePlugins(JSON.stringify(plugins))
       if (pluginErr && typeof pluginErr === 'string' && pluginErr !== 'success') throw new Error(pluginErr)
       toast(t('toast_saved'), 'success')
-    } catch { toast(t('toast_save_failed'), 'error') }
-    finally { setSaving(false) }
-  }, [envJSON, disableNonessential, enableToolSearch, disableAttribution, disableThinking, maxOutputTokens, maxMCPTokens, apiTimeout, mcpTimeout, timeoutSeconds, thinkingBudget, plugins, t, toast])
+    } catch {
+      toast(t('toast_save_failed'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }, [activeProfile, apiTimeout, disableAttribution, disableNonessential, disableThinking, enableToolSearch, envJSON, maxMCPTokens, maxOutputTokens, mcpTimeout, plugins, t, thinkingBudget, timeoutSeconds, toast])
 
   const Toggle = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
     <button role="switch" aria-checked={checked} aria-label={label} className={`toggle${checked ? ' on' : ''}`} onClick={onChange} type="button"><span /></button>
   )
 
-  // Feature toggles (merged from former PluginsPage — these are runtime switches, not a plugin system)
   const featureToggles = [
     { id: 'web_search', title: t('plugin_web_search_title'), desc: t('plugin_web_search_desc') },
     { id: 'auto_compress', title: t('plugin_auto_compress_title'), desc: t('plugin_auto_compress_desc') },
@@ -87,7 +98,10 @@ export default function RuntimeRulesPage() {
   return (
     <div>
       <div className="set-top">
-        <div><h1 className="set-title">{t('sett_s04_title')}</h1><p className="set-subtitle">{t('sett_s04_sub')}</p></div>
+        <div>
+          <h1 className="set-title">{t('sett_s04_title')}</h1>
+          <p className="set-subtitle">{embedded ? `Active ${line === 'codex' ? 'Codex' : 'Claude'} runtime and env overrides` : t('sett_s04_sub')}</p>
+        </div>
         <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>{saving ? '...' : t('btn_save_config')}</button>
       </div>
       <section className="set-section">

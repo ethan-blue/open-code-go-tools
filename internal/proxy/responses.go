@@ -13,8 +13,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
 // responses handles OpenAI Responses API /v1/responses requests (for Codex).
@@ -23,7 +21,7 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
 		return
 	}
-	profile, _, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -88,22 +86,22 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload.Model = profile.ResolveModel(payload.Model)
+	payload.Model = target.profile.ResolveModel(payload.Model)
 	start := time.Now()
 	client := clientSourceFromRequest(r)
 
 	if payload.Stream {
-		s.streamResponses(w, r, profile, payload, messages, system, start, client)
+		s.streamResponses(w, r, target, payload, messages, system, start, client)
 		return
 	}
 
-	s.forwardResponses(w, r, profile, payload, messages, system, start, client)
+	s.forwardResponses(w, r, target, payload, messages, system, start, client)
 }
 
 // forwardResponses handles non-streaming Responses API requests.
 // It forwards to the upstream via chat completions (or Anthropic messages for
 // native profiles) and converts the result to Responses API format.
-func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, profile config.Profile, payload responsesRequest, messages []anthropicMsg, system any, start time.Time, client string) {
+func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target requestTarget, payload responsesRequest, messages []anthropicMsg, system any, start time.Time, client string) {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -161,16 +159,16 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, profil
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), profile)
+		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		applyAnthropicAuth(req, profile)
+		applyAnthropicAuth(req, target.profile)
 
 		reqStart := time.Now()
-		resp, err := s.clientSnapshot().Do(req)
+		resp, err := s.doUpstream(req, target.timeoutSeconds)
 		duration := time.Since(reqStart)
 
 		if err != nil {
@@ -284,7 +282,7 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, profil
 // streamResponses handles streaming Responses API requests.
 // It forwards to the upstream via chat completions (or Anthropic messages for
 // native profiles) and converts the upstream SSE chunks to Responses API format.
-func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, profile config.Profile, payload responsesRequest, messages []anthropicMsg, system any, start time.Time, client string) {
+func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target requestTarget, payload responsesRequest, messages []anthropicMsg, system any, start time.Time, client string) {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
@@ -333,16 +331,16 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, profile
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), profile)
+	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
 	prepareStreamingUpstreamRequest(req)
-	applyAnthropicAuth(req, profile)
+	applyAnthropicAuth(req, target.profile)
 
-	resp, err := s.clientSnapshot().Do(req)
+	resp, err := s.doUpstream(req, target.timeoutSeconds)
 	if err != nil {
 		duration := time.Since(start)
 		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "responses (stream)", tokenUsage{Client: client}, err.Error())

@@ -104,6 +104,35 @@ func TestUpdateWithNewRealKey(t *testing.T) {
 	}
 }
 
+func TestUpdatePreservesSortIndex(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	if err := store.Create(Provider{
+		ID:        "first",
+		Name:      "First",
+		BaseURL:   "https://a.example.com",
+		SortIndex: 7,
+	}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := store.Update("first", Provider{
+		Name:    "Renamed",
+		BaseURL: "https://b.example.com",
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	updated, err := store.Get("first")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if updated.SortIndex != 7 {
+		t.Fatalf("expected sortIndex 7, got %d", updated.SortIndex)
+	}
+}
+
 func TestIsMaskedKey(t *testing.T) {
 	tests := []struct {
 		key  string
@@ -146,5 +175,73 @@ func TestStoreSaveUsesAtomicWrite(t *testing.T) {
 	}
 	if len(data) == 0 {
 		t.Fatal("file is empty")
+	}
+}
+
+func TestActivateEnablesOneProviderPerLine(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	if err := store.Create(Provider{ID: "claude-a", Name: "A", BaseURL: "https://a.example", Enabled: true, Line: "claude"}); err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if err := store.Create(Provider{ID: "claude-b", Name: "B", BaseURL: "https://b.example", Enabled: false, Line: "claude"}); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	if err := store.Create(Provider{ID: "codex-a", Name: "C", BaseURL: "https://c.example", Enabled: true, Line: "codex"}); err != nil {
+		t.Fatalf("create c: %v", err)
+	}
+
+	if err := store.Activate("claude-b"); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, p := range store.List() {
+		got[p.ID] = p.Enabled
+	}
+	if got["claude-a"] || !got["claude-b"] || !got["codex-a"] {
+		t.Fatalf("unexpected enabled state: %#v", got)
+	}
+}
+
+func TestCreateEnabledProviderDisablesSameLine(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	if err := store.Create(Provider{ID: "a", Name: "A", BaseURL: "https://a.example", Enabled: true, Line: "claude"}); err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if err := store.Create(Provider{ID: "b", Name: "B", BaseURL: "https://b.example", Enabled: true, Line: "claude"}); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, p := range store.List() {
+		got[p.ID] = p.Enabled
+	}
+	if got["a"] || !got["b"] {
+		t.Fatalf("unexpected enabled state: %#v", got)
+	}
+}
+
+func TestActiveReturnsEnabledProviderForLine(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStore(dir)
+
+	if err := store.Create(Provider{ID: "claude-a", Name: "A", BaseURL: "https://a.example", Enabled: true, Line: "claude"}); err != nil {
+		t.Fatalf("create claude: %v", err)
+	}
+	if err := store.Create(Provider{ID: "codex-a", Name: "B", BaseURL: "https://b.example", Enabled: true, Line: "codex"}); err != nil {
+		t.Fatalf("create codex: %v", err)
+	}
+
+	claude, ok := store.Active("claude")
+	if !ok || claude.ID != "claude-a" {
+		t.Fatalf("unexpected claude provider: %#v ok=%v", claude, ok)
+	}
+	codex, ok := store.Active("codex")
+	if !ok || codex.ID != "codex-a" {
+		t.Fatalf("unexpected codex provider: %#v ok=%v", codex, ok)
 	}
 }

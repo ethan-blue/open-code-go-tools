@@ -47,8 +47,8 @@ type Config struct {
 	RateLimitBurst          int                `json:"rate_limit_burst,omitempty"`        // Rate limit: max burst size per IP
 	RateLimitPerMinute      int                `json:"rate_limit_per_minute,omitempty"`   // Quota protection: max requests per minute (0 = unlimited)
 	ClaudeEnv               map[string]string  `json:"claude_env,omitempty"`              // User-editable Claude Code env template
-	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
-	AuthEnabled             bool               `json:"auth_enabled,omitempty"`            // Whether local auth token is enabled for proxy access
+	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
+	AuthEnabled             bool               `json:"auth_enabled,omitempty"`            // Whether local auth token is enabled for proxy access
 }
 
 // Profile holds configuration for a specific API backend.
@@ -119,12 +119,12 @@ func Example() Config {
 		RateLimitBurst:          DefaultRateLimitBurst,
 		ClaudeEnv:               DefaultClaudeEnv(defaultProfile),
 		Plugins: map[string]bool{
-			"web_search":   true,
+			"web_search":    true,
 			"auto_compress": false,
 			"session_save":  true,
 			"git_sync":      false,
 		},
-		ActiveProfile:           "opencode-go",
+		ActiveProfile: "opencode-go",
 		Profiles: map[string]Profile{
 			"opencode-go": defaultProfile,
 		},
@@ -177,6 +177,17 @@ func Load(path string) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("failed to parse config file %q: %w", path, err)
+	}
+	if len(cfg.Profiles) == 0 {
+		profiles, err := LoadProfiles("")
+		if err != nil {
+			return Config{}, fmt.Errorf("failed to load profiles: %w", err)
+		}
+		cfg.ActiveProfile = profiles.ActiveProfile
+		cfg.Profiles = profiles.Profiles
+		if len(cfg.ClaudeEnv) == 0 {
+			cfg.ClaudeEnv = profiles.ClaudeEnv
+		}
 	}
 	cfg.applyDefaults()
 	cfg.Migrate()

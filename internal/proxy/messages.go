@@ -11,8 +11,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
 func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +28,7 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	profile, _, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -39,12 +37,12 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("model is required"))
 		return
 	}
-	payload.Model = profile.ResolveModel(payload.Model)
+	payload.Model = target.profile.ResolveModel(payload.Model)
 	if isClaudeDesktopRoute(r) {
 		writeJSON(w, http.StatusOK, map[string]int{"input_tokens": estimateTokens(payload)})
 		return
 	}
-	if profile.UsesMessagesEndpoint(payload.Model) {
+	if targetUsesMessagesEndpoint(target, payload.Model) {
 		var raw map[string]any
 		if err := json.Unmarshal(data, &raw); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -56,14 +54,14 @@ func (s *Server) countTokens(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body), profile)
+		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/messages/count_tokens", bytes.NewReader(body), target)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		applyAnthropicAuth(req, profile)
-		resp, err := s.clientSnapshot().Do(req)
+		applyAnthropicAuth(req, target.profile)
+		resp, err := s.doUpstream(req, target.timeoutSeconds)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]int{"input_tokens": estimateTokens(payload)})
 			return
@@ -87,7 +85,7 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
 		return
 	}
-	profile, _, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -119,15 +117,15 @@ func (s *Server) messages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errors.New("max_tokens must be a non-negative integer"))
 		return
 	}
-	payload.Model = profile.ResolveModel(payload.Model)
-	if profile.UsesMessagesEndpoint(payload.Model) {
-		s.forwardAnthropicMessages(w, r, profile, payload, data)
+	payload.Model = target.profile.ResolveModel(payload.Model)
+	if targetUsesMessagesEndpoint(target, payload.Model) {
+		s.forwardAnthropicMessages(w, r, target, payload, data)
 		return
 	}
-	s.forwardChatCompletions(w, r, profile, payload)
+	s.forwardChatCompletions(w, r, target, payload)
 }
 
-func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request, profile config.Profile, payload anthropicRequest, original []byte) {
+func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request, target requestTarget, payload anthropicRequest, original []byte) {
 	// Track in-flight streaming requests for graceful shutdown.
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -170,7 +168,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			if !supportsAnthropicThinkingRequest(model) {
 				delete(raw, "thinking")
 			} else {
-				bounded := boundedThinkingPayload(thinking, s.thinkingBudgetTokens())
+				bounded := boundedThinkingPayload(thinking, target.thinkingBudget)
 				if bounded == nil {
 					delete(raw, "thinking")
 				} else {
@@ -183,7 +181,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/messages", bytes.NewReader(body), profile)
+		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/messages", bytes.NewReader(body), target)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -192,7 +190,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 		if payload.Stream {
 			prepareStreamingUpstreamRequest(req)
 		}
-		applyAnthropicAuth(req, profile)
+		applyAnthropicAuth(req, target.profile)
 		for _, key := range []string{"Anthropic-Beta"} {
 			if val := r.Header.Get(key); val != "" {
 				req.Header.Set(key, val)
@@ -200,7 +198,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 		}
 
 		start := time.Now()
-		resp, err := s.clientSnapshot().Do(req)
+		resp, err := s.doUpstream(req, target.timeoutSeconds)
 		duration := time.Since(start)
 
 		if err != nil {

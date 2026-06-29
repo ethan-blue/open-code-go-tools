@@ -1,12 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
-import {
-  Shield, Calendar,
-} from 'lucide-react'
+import React, { useEffect, useRef, useState } from 'react'
+import { Calendar, SendHorizontal, Shield } from 'lucide-react'
 import { EmptyState, Skeleton } from '@/components/ui'
-import { errMessage } from '@/lib/utils'
 import { useI18n } from '@/i18n'
-import { useToast } from '@/hooks/toast'
-import { apiGet, apiFetch, apiFetchRaw, wails } from '@/lib/wails'
+import { apiFetchRaw, apiGet } from '@/lib/wails'
 
 interface Message {
   id: string
@@ -26,7 +22,17 @@ interface Insight {
   when?: string
 }
 
-type FilterType = 'all' | 'savings' | 'anomaly' | 'suggest'
+type InsightFilter = 'all' | 'savings' | 'anomaly' | 'suggestion'
+
+interface SummaryData {
+  summary?: {
+    total_requests: number
+    total_tokens: number
+    estimated_cost: number
+    success_rate: number
+    cache_hit_rate: number
+  }
+}
 
 const GLYPH_SVG: Record<string, React.ReactElement> = {
   savings: (
@@ -42,7 +48,7 @@ const GLYPH_SVG: Record<string, React.ReactElement> = {
       <circle cx="50" cy="65" r="2" fill="currentColor" />
     </svg>
   ),
-  suggest: (
+  suggestion: (
     <svg className="glyph" viewBox="0 0 100 100" fill="none">
       <circle cx="50" cy="40" r="20" stroke="currentColor" strokeWidth="2" />
       <line x1="50" y1="60" x2="50" y2="80" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -61,19 +67,19 @@ const GLYPH_SVG: Record<string, React.ReactElement> = {
 
 export default function Copilot() {
   const { t } = useI18n()
-  const { toast } = useToast()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [insights, setInsights] = useState<Insight[]>([])
   const [insightsLoading, setInsightsLoading] = useState(true)
   const [insightsError, setInsightsError] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<Insight['action'] | null>(null)
-  const [filter, setFilter] = useState<FilterType>('all')
+  const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [filter, setFilter] = useState<InsightFilter>('all')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadInsights()
+    loadSummary()
     const interval = setInterval(loadInsights, 300000)
     return () => clearInterval(interval)
   }, [])
@@ -87,8 +93,8 @@ export default function Copilot() {
     try {
       const data = await apiGet('/ocgt/api/copilot/insights')
       setInsights(data?.insights || [])
+      setInsightsError(false)
     } catch {
-      // silent: proxy may not be running
       setInsights([])
       setInsightsError(true)
     } finally {
@@ -96,109 +102,79 @@ export default function Copilot() {
     }
   }
 
+  const loadSummary = async () => {
+    try {
+      setSummary(await apiGet<SummaryData>('/ocgt/api/stats/summary?days=7'))
+    } catch {
+      setSummary(null)
+    }
+  }
+
   const handleAsk = async (retryQuery?: string) => {
-    const queryToUse = retryQuery || input;
-    if (!queryToUse.trim() || loading) return
+    const query = retryQuery || input
+    if (!query.trim() || loading) return
 
     if (!retryQuery) {
-      const userMsg: Message = { id: Date.now().toString(), role: 'user', content: queryToUse }
-      setMessages((prev) => [...prev, userMsg])
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: query }])
       setInput('')
     }
-    setLoading(true)
 
+    setLoading(true)
     const assistantId = (Date.now() + 1).toString()
     setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '', loading: true }])
 
     try {
       const resp = await apiFetchRaw('/ocgt/api/copilot/ask', {
         method: 'POST',
-        body: JSON.stringify({ query: queryToUse }),
+        body: JSON.stringify({ query }),
       })
-
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
 
       const reader = resp.body?.getReader()
       const decoder = new TextDecoder()
       let fullContent = ''
+      let buffer = ''
 
       if (reader) {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split('\n').filter((l) => l.startsWith('data: '))
-          for (const line of lines) {
+          buffer += decoder.decode(value, { stream: true })
+          const events = buffer.split('\n\n')
+          buffer = events.pop() || ''
+          for (const event of events) {
+            const line = event.split('\n').find((entry) => entry.startsWith('data: '))
+            if (!line) continue
             const data = line.slice(6)
             if (data === '[DONE]') continue
             try {
               const parsed = JSON.parse(data)
               if (parsed.content) {
                 fullContent += parsed.content
-                setMessages((prev) =>
-                  prev.map((m) => (m.id === assistantId ? { ...m, content: fullContent, data: parsed.data } : m))
-                )
+                setMessages((prev) => prev.map((msg) => (
+                  msg.id === assistantId ? { ...msg, content: fullContent, data: parsed.data } : msg
+                )))
               }
             } catch {}
           }
         }
       }
 
-      setMessages((prev) =>
-        prev.map((m) => (m.id === assistantId ? { ...m, loading: false } : m))
-      )
-    } catch (err: unknown) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId
-            ? { ...m, content: t('copilot_error'), loading: false }
-            : m
-        )
-      )
+      setMessages((prev) => prev.map((msg) => (
+        msg.id === assistantId ? { ...msg, loading: false } : msg
+      )))
+    } catch {
+      setMessages((prev) => prev.map((msg) => (
+        msg.id === assistantId ? { ...msg, content: t('copilot_error'), loading: false } : msg
+      )))
     } finally {
       setLoading(false)
     }
   }
 
-  const handleClearContext = () => {
-    setMessages([])
-  }
-
-  const handleAction = async (action: Insight['action']) => {
-    if (!action) return
-    setConfirmAction(action)
-  }
-
-  const executeAction = async () => {
-    if (!confirmAction) return
-    try {
-      const resp = await apiFetch(`/ocgt/api/copilot/action/${confirmAction.id}`, {
-        method: 'POST',
-        body: JSON.stringify(confirmAction.payload),
-      })
-      if (resp?.success) {
-        toast(t('copilot_action_done'), 'success')
-        loadInsights()
-      } else {
-        throw new Error(resp?.error || t('copilot_action_failed'))
-      }
-    } catch (err: unknown) {
-      toast(errMessage(err) || t('copilot_action_failed'), 'error')
-    } finally {
-      setConfirmAction(null)
-    }
-  }
-
   const filteredInsights = filter === 'all'
     ? insights
-    : insights.filter((ins) => ins.type === filter)
-
-  const filterCounts = {
-    all: insights.length,
-    savings: insights.filter((i) => i.type === 'savings').length,
-    anomaly: insights.filter((i) => i.type === 'anomaly').length,
-    suggest: insights.filter((i) => i.type === 'suggestion').length,
-  }
+    : insights.filter((insight) => insight.type === filter)
 
   const suggestions = [
     t('copilot_suggest1'),
@@ -207,24 +183,69 @@ export default function Copilot() {
     t('copilot_suggest4'),
   ]
 
+  const digestSummary = summary?.summary
+
   return (
     <div id="page-copilot">
       <div className="hero-wrap">
         <div className="askbox">
           <div className="av">AI</div>
-          <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAsk() } }} placeholder={t('copilot_placeholder')} aria-label={t('copilot_placeholder')} disabled={loading} />
-          <button className="send" onClick={() => handleAsk()} disabled={!input.trim() || loading}>{loading ? '...' : t('copilot_ask')}</button>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                handleAsk()
+              }
+            }}
+            placeholder={t('copilot_placeholder')}
+            aria-label={t('copilot_placeholder')}
+            disabled={loading}
+          />
+          <button className="send" onClick={() => handleAsk()} disabled={!input.trim() || loading}>
+            <SendHorizontal size={14} />
+            {loading ? '...' : t('copilot_ask')}
+          </button>
         </div>
         <div className="copilot-actions-bar">
-          <button className="btn btn-sm btn-ghost" onClick={handleClearContext} disabled={messages.length === 0}>{t('copilot_clear_context') || 'Clear context'}</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => setMessages([])} disabled={messages.length === 0}>
+            {t('copilot_clear_context') || 'Clear context'}
+          </button>
         </div>
-
         <div className="suggestions">
-          {suggestions.map((s, i) => (<button className="sugg" key={i} onClick={() => setInput(s)}><span className="ic">›</span>{s}</button>))}
+          {suggestions.map((suggestion, index) => (
+            <button className="sugg" key={index} onClick={() => setInput(suggestion)}>
+              <span className="ic">+</span>
+              {suggestion}
+            </button>
+          ))}
         </div>
+        {messages.length > 0 && (
+          <div className="copilot-chat-inline">
+            {messages.map((msg) => (
+              <div key={msg.id} className={`copilot-msg-row ${msg.role === 'user' ? 'user' : ''}`}>
+                <div className={`copilot-bubble ${msg.role === 'user' ? 'user' : ''}`}>
+                  {msg.loading ? (
+                    <span className="typing-dots"><span></span><span></span><span></span></span>
+                  ) : (
+                    <span className="tiny copilot-msg-content">{msg.content}</span>
+                  )}
+                  {msg.role === 'assistant' && msg.content === t('copilot_error') && (
+                    <div className="copilot-msg-retry">
+                      <button className="btn btn-sm" onClick={() => handleAsk(messages[messages.findIndex((m) => m.id === msg.id) - 1]?.content)}>
+                        {t('copilot_retry') || 'Retry'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
-      {/* Active Insights Section */}
       <div className="sec-h">
         <h3>{t('copilot_insights')}</h3>
         <span className="ct">{filteredInsights.length}</span>
@@ -233,15 +254,15 @@ export default function Copilot() {
           <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>{t('copilot_filter_all')}</button>
           <button className={filter === 'savings' ? 'on' : ''} onClick={() => setFilter('savings')}>{t('copilot_filter_savings')}</button>
           <button className={filter === 'anomaly' ? 'on' : ''} onClick={() => setFilter('anomaly')}>{t('copilot_filter_anomaly')}</button>
-          <button className={filter === 'suggest' ? 'on' : ''} onClick={() => setFilter('suggest')}>{t('copilot_filter_suggest')}</button>
+          <button className={filter === 'suggestion' ? 'on' : ''} onClick={() => setFilter('suggestion')}>{t('copilot_filter_suggest')}</button>
         </div>
       </div>
 
       <div className="insights">
         {insightsLoading ? (
           <div className="copilot-insights-grid">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="card copilot-insight-card">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="card copilot-insight-card">
                 <Skeleton className="copilot-skel-item" style={{ width: '30%', height: 10, marginBottom: 12 }} />
                 <Skeleton className="copilot-skel-item" style={{ width: '80%', height: 14, marginBottom: 8 }} />
                 <Skeleton className="copilot-skel-item" style={{ width: '100%', height: 10, marginBottom: 6 }} />
@@ -253,12 +274,16 @@ export default function Copilot() {
         ) : insightsError ? (
           <div className="copilot-insights-grid-center">
             <button className="btn btn-sm" onClick={() => { setInsightsError(false); loadInsights() }}>
-              ↻ {t('retry')}
+              {t('retry')}
             </button>
           </div>
         ) : filteredInsights.length === 0 ? (
           <div className="copilot-insights-grid-full">
-            <EmptyState icon="💡" title={t('copilot_no_insights') || 'No insights yet'} description={t('copilot_no_insights_desc') || 'Insights will appear as your usage patterns emerge.'} />
+            <EmptyState
+              icon={<Calendar size={20} />}
+              title={t('copilot_no_insights') || 'No insights yet'}
+              description={t('copilot_no_insights_desc') || 'Insights will appear as your usage patterns emerge.'}
+            />
           </div>
         ) : filteredInsights.map((insight) => (
           <div className={`ins-card ${insight.type}`} key={insight.id}>
@@ -268,80 +293,57 @@ export default function Copilot() {
             </div>
             <h4>{insight.title}</h4>
             <p>{insight.description}</p>
-            {insight.impact && (
-              <div className="impact">{insight.impact}</div>
-            )}
-            {insight.action && (
-              <div className="actions">
-                <button className="btn btn-sm btn-primary" onClick={() => handleAction(insight.action!)}>
-                  {insight.action.label}
-                </button>
-              </div>
-            )}
+            {insight.impact && <div className="impact">{insight.impact}</div>}
             {GLYPH_SVG[insight.type]}
           </div>
         ))}
       </div>
 
-      {/* Last Digest Section */}
       <div className="sec-h copilot-digest-sec">
         <h3>{t('copilot_digest_title')}</h3>
       </div>
 
       <div className="digest">
-        <EmptyState icon={<Calendar size={20} />} title={t('copilot_no_digest') || 'No digest available'} description={t('copilot_no_digest_desc') || 'Weekly digests will appear here once enough usage data has been collected.'} />
+        {digestSummary ? (
+          <>
+            <div className="head">
+              <div className="ico">7d</div>
+              <div>
+                <div className="digest-title">{t('copilot_digest_weekly')}</div>
+                <div className="digest-period">最近 7 天</div>
+              </div>
+            </div>
+            <div className="body">
+              <div>
+                <p>
+                  <b>摘要。</b> 最近 7 天网关共处理 {digestSummary.total_requests} 个请求，
+                  消耗 {digestSummary.total_tokens.toLocaleString()} tokens，成功率 {digestSummary.success_rate.toFixed(1)}%。
+                </p>
+                <p>
+                  预估费用 ${digestSummary.estimated_cost.toFixed(2)}，缓存命中率 {digestSummary.cache_hit_rate.toFixed(1)}%。
+                </p>
+              </div>
+              <div className="stats">
+                <div className="r"><span className="k">{t('copilot_digest_total')}</span><span className="v">{digestSummary.total_requests}</span></div>
+                <div className="r"><span className="k">Token</span><span className="v">{digestSummary.total_tokens.toLocaleString()}</span></div>
+                <div className="r"><span className="k">{t('copilot_digest_cost')}</span><span className="v">${digestSummary.estimated_cost.toFixed(2)}</span></div>
+                <div className="r"><span className="k">缓存命中</span><span className="v">{digestSummary.cache_hit_rate.toFixed(1)}%</span></div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <EmptyState
+            icon={<Calendar size={20} />}
+            title={t('copilot_no_digest') || 'No digest available'}
+            description={t('copilot_no_digest_desc') || 'Weekly digests will appear here once enough usage data has been collected.'}
+          />
+        )}
       </div>
 
-      {/* Privacy Disclaimer */}
       <div className="privacy">
         <span className="ic"><Shield size={14} /></span>
         <span>{t('copilot_privacy')}</span>
       </div>
-
-      {/* Chat Modal / Inline Chat Area */}
-      {messages.length > 0 && (
-        <div className="card copilot-chat-card">
-          <div className="card-h">
-            {t('title_copilot')}
-            <div className="actions"><span className="tag">{messages.length} msgs</span></div>
-          </div>
-          <div className="card-body copilot-chat-body">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`copilot-msg-row ${msg.role === 'user' ? 'user' : ''}`}>
-                <div className={`copilot-bubble ${msg.role === 'user' ? 'user' : ''}`}>
-                  {msg.loading ? (<span className="typing-dots"><span></span><span></span><span></span></span>) : (<span className="tiny copilot-msg-content">{msg.content}</span>)}
-                  {msg.role === 'assistant' && msg.content === t('copilot_error') && (
-                    <div className="copilot-msg-retry">
-                       <button className="btn btn-sm" onClick={() => handleAsk(messages[messages.findIndex(m => m.id === msg.id) - 1]?.content)}>{t('copilot_retry') || 'Retry'}</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        </div>
-      )}
-
-      {/* Confirm Action Modal */}
-      {confirmAction && (
-        <div className="modal-overlay copilot-modal" onClick={() => setConfirmAction(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="mh">
-              <h3>{t('copilot_confirm_action')}</h3>
-              <span className="spacer"></span>
-              <button aria-label={t('aria_close')} className="x" onClick={() => setConfirmAction(null)}>×</button>
-            </div>
-            <div className="mb">
-              <p className="tiny muted">{t('copilot_confirm_msg')}</p>
-            </div>
-            <div className="mf">
-              <button className="btn btn-sm btn-ghost" onClick={() => setConfirmAction(null)}>{t('about_close')}</button>
-              <button className="btn btn-sm btn-primary" onClick={executeAction}>{t('copilot_execute')}</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

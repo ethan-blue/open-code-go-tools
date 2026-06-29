@@ -11,11 +11,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
-func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, profile config.Profile, payload anthropicRequest) {
+func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, target requestTarget, payload anthropicRequest) {
 	// Track in-flight streaming requests for graceful shutdown.
 	s.wg.Add(1)
 	defer s.wg.Done()
@@ -42,7 +40,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 
 		chatReq := anthropicToOpenAI(payload)
 		chatReq.Model = model
-		chatReq.Thinking, chatReq.ReasoningEffort = chatCompletionThinkingControls(model, payload.Thinking, s.thinkingBudgetTokens())
+		chatReq.Thinking, chatReq.ReasoningEffort = chatCompletionThinkingControls(model, payload.Thinking, target.thinkingBudget)
 		if supportsReasoningContentReplay(model) {
 			s.attachReasoningContent(chatReq.Messages)
 		}
@@ -51,7 +49,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), profile)
+		req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -64,10 +62,10 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		// "bearer" mode (opencode.ai/zen/go and other OpenAI-compatible gateways)
 		// this is a no-op on Authorization; for "x-api-key"/"both" it adds/sets the
 		// Anthropic-native headers. See applyAnthropicAuth.
-		applyAnthropicAuth(req, profile)
+		applyAnthropicAuth(req, target.profile)
 
 		start := time.Now()
-		resp, err := s.clientSnapshot().Do(req)
+		resp, err := s.doUpstream(req, target.timeoutSeconds)
 		duration := time.Since(start)
 
 		if err != nil {
@@ -214,7 +212,7 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("only POST is supported"))
 		return
 	}
-	profile, _, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -253,7 +251,7 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	model := profile.ResolveModel(payload.Model)
+	model := target.profile.ResolveModel(payload.Model)
 	raw["model"] = model
 	if payload.Stream {
 		streamOpts, _ := raw["stream_options"].(map[string]any)
@@ -273,13 +271,13 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), profile)
+	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	resp, err := s.clientSnapshot().Do(req)
+	resp, err := s.doUpstream(req, target.timeoutSeconds)
 	if err != nil {
 		duration := time.Since(start)
 		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())

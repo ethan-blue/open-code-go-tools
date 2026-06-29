@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ethan-blue/open-code-go-tools/internal/config"
 )
 
 func TestStripComments(t *testing.T) {
@@ -46,8 +48,12 @@ func TestVSCodeEnvIntegration(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	settingsPath := filepath.Join(tempDir, "settings.json")
-	os.Setenv("OCGT_TEST_VSCODE_PATH", settingsPath)
-	defer os.Unsetenv("OCGT_TEST_VSCODE_PATH")
+	t.Setenv("OCGT_TEST_VSCODE_PATH", settingsPath)
+	configPath := filepath.Join(tempDir, "config.json")
+	if _, err := config.WriteExample(configPath, true); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	t.Setenv("OCGT_CONFIG", configPath)
 
 	// Write initial settings with some comments and a custom setting
 	initialJSON := `{

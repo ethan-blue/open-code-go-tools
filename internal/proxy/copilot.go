@@ -21,18 +21,12 @@ type copilotResponse struct {
 }
 
 type insight struct {
-	ID          string         `json:"id"`
-	Type        string         `json:"type"`
-	Title       string         `json:"title"`
-	Description string         `json:"description"`
-	Impact      string         `json:"impact,omitempty"`
-	Action      *insightAction `json:"action,omitempty"`
-}
-
-type insightAction struct {
-	ID      string      `json:"id"`
-	Label   string      `json:"label"`
-	Payload interface{} `json:"payload"`
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Impact      string `json:"impact,omitempty"`
+	When        string `json:"when,omitempty"`
 }
 
 type insightsResponse struct {
@@ -50,27 +44,25 @@ func (s *Server) apiCopilotAsk(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-
-	if req.Query == "" {
+	if strings.TrimSpace(req.Query) == "" {
 		http.Error(w, "query is required", http.StatusBadRequest)
 		return
 	}
 
-	// Data queries: use local pattern matching
-	q := strings.ToLower(req.Query)
-	if isDataQuery(q) {
+	if isDataQuery(strings.ToLower(req.Query)) {
 		s.handleLocalQuery(w, req.Query)
 		return
 	}
-
-	// AI queries: forward to configured upstream via proxy
 	s.handleAIQuery(w, req.Query)
 }
 
 func isDataQuery(q string) bool {
-	keywords := []string{"花费", "cost", "费用", "缓存", "cache", "模型", "model", "客户端", "client", "摘要", "summary", "today"}
-	for _, kw := range keywords {
-		if strings.Contains(q, kw) {
+	keywords := []string{
+		"cost", "spend", "cache", "model", "client", "latency", "summary", "today", "week",
+		"费用", "花费", "成本", "缓存", "模型", "客户端", "延迟", "总结", "摘要", "今天", "本周", "上周",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(q, keyword) {
 			return true
 		}
 	}
@@ -78,97 +70,108 @@ func isDataQuery(q string) bool {
 }
 
 func (s *Server) handleLocalQuery(w http.ResponseWriter, query string) {
-	q := strings.ToLower(query)
-	entries := s.readJSONLLogs(7)
-	summary := aggregateStats(entries, 7)
+	q := strings.ToLower(strings.TrimSpace(query))
+	days := 7
+	if strings.Contains(q, "today") || strings.Contains(q, "今天") {
+		days = 1
+	}
+
+	entries := s.readJSONLLogs(days)
+	summary := aggregateStats(entries, days)
 	models := modelBreakdown(entries)
 
 	var response copilotResponse
 
 	switch {
-	case strings.Contains(q, "花费") || strings.Contains(q, "cost") || strings.Contains(q, "费用"):
+	case strings.Contains(q, "cost") || strings.Contains(q, "spend") || strings.Contains(q, "费用") || strings.Contains(q, "花费") || strings.Contains(q, "成本"):
 		response = copilotResponse{
-			Content: fmt.Sprintf("过去 7 天的总费用为 %s，共处理 %d 个请求。",
-				copilotFormatCost(summary.Summary.EstimatedCost),
-				summary.Summary.TotalRequests),
-			Data: map[string]interface{}{
-				"table": map[string]interface{}{
-					"headers": []string{"指标", "数值"},
-					"rows": [][]string{
-						{"总请求数", fmt.Sprintf("%d", summary.Summary.TotalRequests)},
-						{"总 Token", copilotFormatTokens(summary.Summary.TotalTokens)},
-						{"总费用", copilotFormatCost(summary.Summary.EstimatedCost)},
-						{"平均延迟", fmt.Sprintf("%.0fms", summary.Summary.AvgLatencyMs)},
-					},
+			Content: fmt.Sprintf("过去 %d 天总费用 %s，共 %d 个请求。", days, copilotFormatCost(summary.Summary.EstimatedCost), summary.Summary.TotalRequests),
+			Data: tablePayload(
+				[]string{"指标", "数值"},
+				[][]string{
+					{"总请求", fmt.Sprintf("%d", summary.Summary.TotalRequests)},
+					{"总 Token", copilotFormatTokens(summary.Summary.TotalTokens)},
+					{"总费用", copilotFormatCost(summary.Summary.EstimatedCost)},
+					{"成功率", fmt.Sprintf("%.1f%%", summary.Summary.SuccessRate)},
 				},
-			},
+			),
 		}
-
-	case strings.Contains(q, "缓存") || strings.Contains(q, "cache"):
+	case strings.Contains(q, "cache") || strings.Contains(q, "缓存"):
 		response = copilotResponse{
-			Content: fmt.Sprintf("过去 7 天的缓存命中率为 %.1f%%。读取了 %s 个缓存 Token。",
-				summary.Summary.CacheHitRate,
-				copilotFormatTokens(summary.Summary.TotalCacheReadTokens)),
+			Content: fmt.Sprintf("过去 %d 天缓存命中率 %.1f%%，读取缓存 Token %s。", days, summary.Summary.CacheHitRate, copilotFormatTokens(summary.Summary.TotalCacheReadTokens)),
+			Data: tablePayload(
+				[]string{"指标", "数值"},
+				[][]string{
+					{"缓存命中率", fmt.Sprintf("%.1f%%", summary.Summary.CacheHitRate)},
+					{"缓存读取", copilotFormatTokens(summary.Summary.TotalCacheReadTokens)},
+					{"缓存创建", copilotFormatTokens(summary.Summary.TotalCacheCreateTokens)},
+				},
+			),
 		}
-
-	case strings.Contains(q, "模型") || strings.Contains(q, "model"):
+	case strings.Contains(q, "model") || strings.Contains(q, "模型"):
 		if len(models) == 0 {
-			response = copilotResponse{Content: "暂无模型使用数据。"}
-		} else {
-			sort.Slice(models, func(i, j int) bool { return models[i].TotalTokens > models[j].TotalTokens })
-			top := models[0]
-			rows := [][]string{}
-			for i, m := range models {
-				if i >= 5 {
-					break
-				}
-				rows = append(rows, []string{m.Name, fmt.Sprintf("%d", m.Requests), copilotFormatTokens(m.TotalTokens), copilotFormatCost(m.Cost)})
-			}
-			response = copilotResponse{
-				Content: fmt.Sprintf("使用最多的模型是 %s，共 %s Token，%d 个请求。",
-					top.Name, copilotFormatTokens(top.TotalTokens), top.Requests),
-				Data: map[string]interface{}{
-					"table": map[string]interface{}{
-						"headers": []string{"模型", "请求数", "Token", "费用"},
-						"rows":    rows,
-					},
-				},
-			}
+			response = copilotResponse{Content: "还没有模型使用数据。"}
+			break
 		}
-
-	case strings.Contains(q, "客户端") || strings.Contains(q, "client"):
-		rows := [][]string{}
-		for _, c := range summary.ByClient {
-			rows = append(rows, []string{c.Name, fmt.Sprintf("%d", c.Requests), fmt.Sprintf("%.1f%%", c.Pct)})
+		sort.Slice(models, func(i, j int) bool { return models[i].Cost > models[j].Cost })
+		top := models[0]
+		rows := make([][]string, 0, minInt(len(models), 5))
+		for i, model := range models {
+			if i >= 5 {
+				break
+			}
+			rows = append(rows, []string{
+				model.Name,
+				fmt.Sprintf("%d", model.Requests),
+				copilotFormatTokens(model.TotalTokens),
+				copilotFormatCost(model.Cost),
+			})
 		}
 		response = copilotResponse{
-			Content: fmt.Sprintf("过去 7 天共有 %d 个请求。", summary.Summary.TotalRequests),
-			Data: map[string]interface{}{
-				"table": map[string]interface{}{
-					"headers": []string{"客户端", "请求数", "占比"},
-					"rows":    rows,
-				},
-			},
+			Content: fmt.Sprintf("%s 成本最高，过去 %d 天用了 %s，处理 %d 个请求。", top.Name, days, copilotFormatCost(top.Cost), top.Requests),
+			Data:    tablePayload([]string{"模型", "请求", "Token", "费用"}, rows),
 		}
-
-	case strings.Contains(q, "摘要") || strings.Contains(q, "summary") || strings.Contains(q, "today"):
+	case strings.Contains(q, "client") || strings.Contains(q, "客户端"):
+		rows := make([][]string, 0, len(summary.ByClient))
+		for _, client := range summary.ByClient {
+			rows = append(rows, []string{
+				client.Name,
+				fmt.Sprintf("%d", client.Requests),
+				fmt.Sprintf("%.1f%%", client.Pct),
+			})
+		}
 		response = copilotResponse{
-			Content: fmt.Sprintf("今日概览：\n• 请求数: %d\n• Token: %s\n• 费用: %s\n• 成功率: %.1f%%\n• 缓存命中: %.1f%%",
-				summary.Summary.TotalRequests,
-				copilotFormatTokens(summary.Summary.TotalTokens),
-				copilotFormatCost(summary.Summary.EstimatedCost),
-				summary.Summary.SuccessRate,
-				summary.Summary.CacheHitRate),
+			Content: fmt.Sprintf("过去 %d 天共有 %d 个请求，按客户端分布如下。", days, summary.Summary.TotalRequests),
+			Data:    tablePayload([]string{"客户端", "请求", "占比"}, rows),
 		}
-
+	case strings.Contains(q, "latency") || strings.Contains(q, "延迟"):
+		response = copilotResponse{
+			Content: fmt.Sprintf("过去 %d 天 P50 延迟 %.0fms，平均延迟 %.0fms。", days, summary.Summary.P50LatencyMs, summary.Summary.AvgLatencyMs),
+			Data: tablePayload(
+				[]string{"指标", "数值"},
+				[][]string{
+					{"P50", fmt.Sprintf("%.0fms", summary.Summary.P50LatencyMs)},
+					{"平均延迟", fmt.Sprintf("%.0fms", summary.Summary.AvgLatencyMs)},
+					{"成功率", fmt.Sprintf("%.1f%%", summary.Summary.SuccessRate)},
+				},
+			),
+		}
 	default:
 		response = copilotResponse{
-			Content: "我可以帮你分析流量、成本、模型使用情况。试试问：\n• 上周哪个模型花费最多？\n• 缓存命中率怎么样？\n• 哪个客户端延迟最高？\n• 给我今天的流量摘要",
+			Content: fmt.Sprintf("过去 %d 天共有 %d 个请求，消耗 %s，费用 %s，成功率 %.1f%%。", days, summary.Summary.TotalRequests, copilotFormatTokens(summary.Summary.TotalTokens), copilotFormatCost(summary.Summary.EstimatedCost), summary.Summary.SuccessRate),
+			Data: tablePayload(
+				[]string{"指标", "数值"},
+				[][]string{
+					{"总请求", fmt.Sprintf("%d", summary.Summary.TotalRequests)},
+					{"总 Token", copilotFormatTokens(summary.Summary.TotalTokens)},
+					{"总费用", copilotFormatCost(summary.Summary.EstimatedCost)},
+					{"缓存命中率", fmt.Sprintf("%.1f%%", summary.Summary.CacheHitRate)},
+				},
+			),
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	writeCopilotSSE(w, response)
 }
 
 func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
@@ -181,18 +184,22 @@ func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
 	profile, _, _ := cfg.Profile("")
 	upstream := cfg.Upstream
 	apiKey := profile.APIKeyValue()
-	model := profile.DefaultModel
-
+	model := strings.TrimSpace(profile.DefaultModel)
+	if model == "" {
+		model = "gpt-4o-mini"
+	}
 	if upstream == "" || apiKey == "" {
 		s.handleLocalQuery(w, query)
 		return
 	}
 
-	// Build chat completion request
 	reqBody := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
-			{"role": "system", "content": "你是 OCGT（OpenCode Go Tools）的 AI 助手。用户正在使用 OCGT 代理网关。请用中文回答用户的问题，简洁明了。"},
+			{
+				"role":    "system",
+				"content": "你是 OpenCode Go 的本地运维助手。优先基于网关指标回答，中文输出，简洁直接，不编造不存在的数据。",
+			},
 			{"role": "user", "content": query},
 		},
 		"stream": true,
@@ -200,8 +207,7 @@ func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
 
 	body, _ := json.Marshal(reqBody)
 	url := strings.TrimRight(upstream, "/") + "/v1/chat/completions"
-
-	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		s.handleLocalQuery(w, query)
 		return
@@ -209,8 +215,7 @@ func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
 	if err != nil {
 		s.handleLocalQuery(w, query)
 		return
@@ -222,7 +227,6 @@ func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
 		return
 	}
 
-	// Stream SSE response
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -256,11 +260,13 @@ func (s *Server) handleAIQuery(w http.ResponseWriter, query string) {
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
 		}
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			out, _ := json.Marshal(map[string]string{"content": chunk.Choices[0].Delta.Content})
-			fmt.Fprintf(w, "data: %s\n\n", out)
-			flusher.Flush()
+		if len(chunk.Choices) == 0 || chunk.Choices[0].Delta.Content == "" {
+			continue
 		}
+
+		out, _ := json.Marshal(map[string]string{"content": chunk.Choices[0].Delta.Content})
+		fmt.Fprintf(w, "data: %s\n\n", out)
+		flusher.Flush()
 	}
 }
 
@@ -270,139 +276,113 @@ func (s *Server) apiCopilotInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	insights := []insight{}
+	insights := make([]insight, 0, 4)
+	todaySummary := aggregateStats(s.readJSONLLogs(1), 1)
+	weekModels := modelBreakdown(s.readJSONLLogs(7))
 
-	entries := s.readJSONLLogs(1)
-	summary := aggregateStats(entries, 1)
-
-	if summary.Summary.TotalRequests > 0 {
-		if summary.Summary.AvgLatencyMs > 2000 {
+	if todaySummary.Summary.TotalRequests > 0 {
+		if todaySummary.Summary.AvgLatencyMs > 2000 {
 			insights = append(insights, insight{
 				ID:          "high-latency",
 				Type:        "anomaly",
 				Title:       "延迟偏高",
-				Description: fmt.Sprintf("今日平均延迟 %.0fms，超过 2 秒阈值。", summary.Summary.AvgLatencyMs),
+				Description: fmt.Sprintf("今天平均延迟 %.0fms，已经超过 2s。", todaySummary.Summary.AvgLatencyMs),
+				When:        "Today",
 			})
 		}
-
-		if summary.Summary.SuccessRate < 95 {
+		if todaySummary.Summary.SuccessRate > 0 && todaySummary.Summary.SuccessRate < 95 {
 			insights = append(insights, insight{
 				ID:          "low-success-rate",
 				Type:        "anomaly",
-				Title:       "成功率偏低",
-				Description: fmt.Sprintf("今日成功率 %.1f%%，低于 95%% 阈值。", summary.Summary.SuccessRate),
+				Title:       "成功率下降",
+				Description: fmt.Sprintf("今天成功率 %.1f%%，低于 95%%。", todaySummary.Summary.SuccessRate),
+				When:        "Today",
 			})
 		}
-
-		if summary.Summary.CacheHitRate < 20 && summary.Summary.TotalTokens > 100000 {
+		if todaySummary.Summary.CacheHitRate < 20 && todaySummary.Summary.TotalTokens > 100000 {
 			insights = append(insights, insight{
 				ID:          "low-cache-hit",
 				Type:        "suggestion",
-				Title:       "缓存优化建议",
-				Description: fmt.Sprintf("缓存命中率仅 %.1f%%。考虑启用 prompt caching 以降低成本。", summary.Summary.CacheHitRate),
+				Title:       "缓存还有空间",
+				Description: fmt.Sprintf("今天缓存命中率只有 %.1f%%，重复 prompt 可以再收敛。", todaySummary.Summary.CacheHitRate),
+				Impact:      "优先检查固定系统提示词和长上下文复用。",
+				When:        "Today",
 			})
 		}
 	}
 
-	models := modelBreakdown(s.readJSONLLogs(7))
-	if len(models) >= 2 {
-		sort.Slice(models, func(i, j int) bool { return models[i].Cost > models[j].Cost })
-		mostExpensive := models[0]
-		if mostExpensive.Cost > 5 {
-			cheaper := ""
-			for _, m := range models[1:] {
-				if m.Cost < mostExpensive.Cost*0.5 {
-					cheaper = m.Name
-					break
-				}
+	if len(weekModels) >= 2 {
+		sort.Slice(weekModels, func(i, j int) bool { return weekModels[i].Cost > weekModels[j].Cost })
+		top := weekModels[0]
+		cheap := ""
+		for _, model := range weekModels[1:] {
+			if model.Cost < top.Cost*0.5 {
+				cheap = model.Name
+				break
 			}
-			if cheaper != "" {
-				insights = append(insights, insight{
-					ID:          "cost-optimization",
-					Type:        "savings",
-					Title:       "成本优化机会",
-					Description: fmt.Sprintf("%s 是最昂贵的模型（%s）。考虑将部分请求路由到 %s。", mostExpensive.Name, copilotFormatCost(mostExpensive.Cost), cheaper),
-					Impact:      fmt.Sprintf("预计可节省 %s/周", copilotFormatCost(mostExpensive.Cost*0.3)),
-					Action: &insightAction{
-						ID:    "update-haiku-alias",
-						Label: "更新 Haiku 别名",
-						Payload: map[string]string{
-							"alias": cheaper,
-						},
-					},
-				})
-			}
+		}
+		if top.Cost > 5 && cheap != "" {
+			insights = append(insights, insight{
+				ID:          "cost-optimization",
+				Type:        "savings",
+				Title:       "模型成本偏重",
+				Description: fmt.Sprintf("%s 是近 7 天最贵的模型，累计 %s。", top.Name, copilotFormatCost(top.Cost)),
+				Impact:      fmt.Sprintf("可以先把低风险请求切到 %s。", cheap),
+				When:        "7d",
+			})
 		}
 	}
 
 	if len(insights) == 0 {
 		insights = append(insights, insight{
-			ID:          "all-good",
+			ID:          "steady-state",
 			Type:        "digest",
-			Title:       "一切正常",
-			Description: "没有发现异常或优化机会。继续使用代理吧！",
+			Title:       "当前没有明显异常",
+			Description: "最近数据比较平稳，暂时没有需要立刻处理的告警。",
+			When:        "Now",
 		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(insightsResponse{Insights: insights})
+	_ = json.NewEncoder(w).Encode(insightsResponse{Insights: insights})
 }
 
 func (s *Server) apiCopilotAction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
+	http.Error(w, "no copilot actions available", http.StatusNotImplemented)
+}
+
+func tablePayload(headers []string, rows [][]string) map[string]interface{} {
+	return map[string]interface{}{
+		"table": map[string]interface{}{
+			"headers": headers,
+			"rows":    rows,
+		},
 	}
+}
 
-	actionID := r.PathValue("id")
-	if actionID == "" {
-		http.Error(w, "action id required", http.StatusBadRequest)
-		return
-	}
+func writeCopilotSSE(w http.ResponseWriter, response copilotResponse) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
-	var payload map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "invalid payload", http.StatusBadRequest)
-		return
-	}
-
-	switch actionID {
-	case "update-haiku-alias":
-		alias, _ := payload["alias"].(string)
-		if alias == "" {
-			http.Error(w, "alias required", http.StatusBadRequest)
-			return
-		}
-
-		cfg := s.Config()
-		if cfg == nil {
-			http.Error(w, "config not loaded", http.StatusInternalServerError)
-			return
-		}
-
-		_, profileName, _ := cfg.Profile("")
-		profile := cfg.Profiles[profileName]
-		if profile.ModelAliases == nil {
-			profile.ModelAliases = make(map[string]string)
-		}
-		profile.ModelAliases["haiku"] = alias
-		cfg.Profiles[profileName] = profile
-
-		s.ApplyConfig(*cfg)
-
-		if s.configPath != "" {
-			if err := cfg.Save(s.configPath); err != nil {
-				http.Error(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-
+	flusher, ok := w.(http.Flusher)
+	if !ok {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
-
-	default:
-		http.Error(w, "unknown action", http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(response)
+		return
 	}
+
+	payload, _ := json.Marshal(response)
+	fmt.Fprintf(w, "data: %s\n\n", payload)
+	fmt.Fprintf(w, "data: [DONE]\n\n")
+	flusher.Flush()
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func copilotFormatTokens(n int64) string {

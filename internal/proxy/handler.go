@@ -270,34 +270,31 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) profile(w http.ResponseWriter, r *http.Request) {
-	_, name, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	s.configMu.RLock()
-	upstream := s.config.Upstream
-	s.configMu.RUnlock()
-	writeJSON(w, http.StatusOK, map[string]string{"active_profile": name, "upstream": upstream})
+	writeJSON(w, http.StatusOK, map[string]string{"active_profile": target.name, "upstream": target.upstream})
 }
 
 func (s *Server) models(w http.ResponseWriter, r *http.Request) {
-	profile, _, err := s.profileFromRequest(r)
+	target, err := s.runtimeTargetForRequest(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	if isClaudeDesktopRoute(r) {
-		writeJSON(w, http.StatusOK, configuredModels(profile))
+		writeJSON(w, http.StatusOK, configuredModels(target.profile))
 		return
 	}
-	req, err := s.newUpstreamRequest(r.Context(), http.MethodGet, "/v1/models", nil, profile)
+	req, err := s.newUpstreamRequest(r.Context(), http.MethodGet, "/v1/models", nil, target)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	applyAnthropicAuth(req, profile)
-	resp, err := s.clientSnapshot().Do(req)
+	applyAnthropicAuth(req, target.profile)
+	resp, err := s.doUpstream(req, target.timeoutSeconds)
 	if err != nil {
 		writeProxyError(w, err)
 		return
@@ -312,7 +309,7 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		writeUpstreamError(w, resp.StatusCode, body)
 		return
 	}
-	writeJSON(w, http.StatusOK, normalizeModels(body, profile))
+	writeJSON(w, http.StatusOK, normalizeModels(body, target.profile))
 }
 
 // FetchUpstreamModels fetches the /v1/models list from the active upstream profile.
@@ -321,18 +318,16 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 // and automatically carries the configured API key for the active profile.
 // Returns the normalized models map (same shape produced by normalizeModels).
 func (s *Server) FetchUpstreamModels(ctx context.Context) (map[string]any, error) {
-	s.configMu.RLock()
-	profile, _, err := s.config.Profile("")
-	s.configMu.RUnlock()
+	target, err := s.runtimeTargetForRequest((&http.Request{URL: &url.URL{Path: "/v1/models"}}))
 	if err != nil {
 		return nil, err
 	}
-	req, err := s.newUpstreamRequest(ctx, http.MethodGet, "/v1/models", nil, profile)
+	req, err := s.newUpstreamRequest(ctx, http.MethodGet, "/v1/models", nil, target)
 	if err != nil {
 		return nil, err
 	}
-	applyAnthropicAuth(req, profile)
-	resp, err := s.clientSnapshot().Do(req)
+	applyAnthropicAuth(req, target.profile)
+	resp, err := s.doUpstream(req, target.timeoutSeconds)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +339,7 @@ func (s *Server) FetchUpstreamModels(ctx context.Context) (map[string]any, error
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
 	}
-	return normalizeModels(body, profile), nil
+	return normalizeModels(body, target.profile), nil
 }
 
 // TestConnection fetches /v1/models from the given upstream URL using the
@@ -417,33 +412,23 @@ func (s *Server) buildCandidateModels(payloadModel string, profile config.Profil
 	return candidates
 }
 
-func (s *Server) thinkingBudgetTokens() int {
-	s.configMu.RLock()
-	defer s.configMu.RUnlock()
-	return s.config.ThinkingBudgetTokens()
-}
-
-func (s *Server) newUpstreamRequest(ctx context.Context, method, path string, body io.Reader, profile config.Profile) (*http.Request, error) {
-	s.configMu.RLock()
-	upstreamStr := s.upstream
-	s.configMu.RUnlock()
-
-	upstream, err := url.Parse(upstreamStr)
+func (s *Server) newUpstreamRequest(ctx context.Context, method, path string, body io.Reader, target requestTarget) (*http.Request, error) {
+	upstream, err := url.Parse(target.upstream)
 	if err != nil {
 		return nil, err
 	}
-	target := *upstream
-	target.Path = singleJoin(target.Path, path)
-	req, err := http.NewRequestWithContext(ctx, method, target.String(), body)
+	upstreamTarget := *upstream
+	upstreamTarget.Path = singleJoin(upstreamTarget.Path, path)
+	req, err := http.NewRequestWithContext(ctx, method, upstreamTarget.String(), body)
 	if err != nil {
 		return nil, err
 	}
 	req.Host = upstream.Host
 	req.Header.Set("Accept", "application/json")
-	for k, v := range profile.Headers {
+	for k, v := range target.profile.Headers {
 		req.Header.Set(k, v)
 	}
-	if key := profile.APIKeyValue(); key != "" {
+	if key := target.profile.APIKeyValue(); key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	stripHopByHopHeaders(req.Header)
@@ -496,19 +481,6 @@ func applyAnthropicAuth(req *http.Request, profile config.Profile) {
 
 func isClaudeDesktopRoute(r *http.Request) bool {
 	return strings.HasPrefix(r.URL.Path, "/claude-desktop/")
-}
-
-func (s *Server) profileFromRequest(r *http.Request) (config.Profile, string, error) {
-	name := strings.TrimSpace(r.Header.Get("X-Ocgt-Profile"))
-	if before, _, found := strings.Cut(name, ","); found {
-		name = strings.TrimSpace(before)
-	}
-	if name == "" {
-		name = strings.TrimSpace(r.URL.Query().Get("ocgt_profile"))
-	}
-	s.configMu.RLock()
-	defer s.configMu.RUnlock()
-	return s.config.Profile(name)
 }
 
 func clientSourceFromRequest(r *http.Request) string {

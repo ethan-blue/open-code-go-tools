@@ -64,10 +64,18 @@ interface HistoryEntry {
   input_tokens?: number
   output_tokens?: number
   total_tokens?: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
   error?: string
 }
 
-// ── Area Chart ──────────────────────────────────────────────────────────
+function parseDurationMs(duration: string): number {
+  const value = duration.trim().toLowerCase()
+  if (value.endsWith('ms')) return parseFloat(value.slice(0, -2)) || 0
+  if (value.endsWith('s')) return (parseFloat(value.slice(0, -1)) || 0) * 1000
+  return parseFloat(value) || 0
+}
+
 
 function AreaChart({ data }: { data: TrendData['daily'] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
@@ -160,7 +168,7 @@ function AreaChart({ data }: { data: TrendData['daily'] }) {
           <circle cx={hoverX} cy={yScale(data[hoverIdx].output_tokens)} r="5" fill="var(--danger)" stroke="var(--paper, #fff)" strokeWidth="2" />
           <rect x={hoverX - 50} y={PT - 2} width="100" height="28" rx="4" fill="var(--ink-800)" opacity="0.9" />
           <text x={hoverX} y={PT + 14} textAnchor="middle" fill="#fff" fontSize="10" fontFamily="var(--mono)">
-            {data[hoverIdx].date} · {fmtTokens(data[hoverIdx].input_tokens + data[hoverIdx].output_tokens)}
+            {data[hoverIdx].date} / {fmtTokens(data[hoverIdx].input_tokens + data[hoverIdx].output_tokens)}
           </text>
         </g>
       )}
@@ -168,7 +176,6 @@ function AreaChart({ data }: { data: TrendData['daily'] }) {
   )
 }
 
-// ── Donut Chart ─────────────────────────────────────────────────────────
 
 function DonutChart({ models }: { models: ModelsData['models'] }) {
   const { t } = useI18n()
@@ -213,7 +220,6 @@ function DonutChart({ models }: { models: ModelsData['models'] }) {
   )
 }
 
-// ── Main Component ──────────────────────────────────────────────────────
 
 const PAGE_SIZE = 10
 
@@ -227,6 +233,7 @@ export default function TrafficMonitor() {
   const [models, setModels] = useState<ModelsData | null>(null)
   const [reqPage, setReqPage] = useState(0)
   const [recentRequests, setRecentRequests] = useState<HistoryEntry[]>([])
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => { load() }, [range])
 
@@ -239,14 +246,15 @@ export default function TrafficMonitor() {
         apiGet<TrendData>(`/ocgt/api/stats/trend?days=${days}`),
         apiGet<ModelsData>(`/ocgt/api/stats/models?days=${days}`),
       ])
-      setSummary(s); setTrend(tr); setModels(m)
+      setSummary(s); setTrend(tr); setModels(m); setLoadError(false)
       // Fetch recent request history
       try {
         const hist = await apiGet<HistoryEntry[]>(`/ocgt/api/history?days=${days}`)
         setRecentRequests(Array.isArray(hist) ? hist.slice(0, 50) : [])
       } catch { setRecentRequests([]) }
     } catch {
-      // silent: proxy may not be running
+      toast(t('toast_traffic_load_failed'), 'error')
+      setLoadError(true)
       setSummary(null); setTrend(null); setModels(null)
     } finally { setLoading(false) }
   }
@@ -267,7 +275,7 @@ export default function TrafficMonitor() {
     { label: t('tm_input'), value: s ? fmtTokens(s.total_input_tokens) : '-', icon: ArrowDownToLine, color: 'var(--link)' },
     { label: t('tm_output'), value: s ? fmtTokens(s.total_output_tokens) : '-', icon: ArrowUpFromLine, color: 'var(--danger)' },
     { label: t('tm_cache'), value: s ? fmtTokens(s.total_cache_read_tokens + s.total_cache_create_tokens) : '-', icon: Database, color: 'var(--warn)' },
-    { label: t('tm_cache_hit_rate'), value: s ? `${(s.cache_hit_rate * 100).toFixed(1)}%` : '-', icon: Coins, color: 'var(--danger)' },
+    { label: t('tm_cache_hit_rate'), value: s ? `${s.cache_hit_rate.toFixed(1)}%` : '-', icon: Coins, color: 'var(--danger)' },
   ]
 
   const rangeLabel = (v: string) => {
@@ -279,12 +287,18 @@ export default function TrafficMonitor() {
 
   const mappedRequests = recentRequests.map(r => ({
     time: typeof r.time === 'string' ? new Date(r.time).toLocaleTimeString() : '-',
+    rawTime: r.time,
     id: r.id,
     client: r.client || r.route || '-',
     model: r.model || '-',
     inp: r.input_tokens || 0,
     out: r.output_tokens || 0,
-    latency: r.duration ? parseFloat(r.duration) || 0 : 0,
+    cacheRead: r.cache_read_tokens || 0,
+    cacheCreate: r.cache_creation_tokens || 0,
+    latency: r.duration ? parseDurationMs(r.duration) : 0,
+    status: r.status,
+    route: r.route || '',
+    error: r.error || '',
     ok: r.status >= 200 && r.status < 300,
   }))
 
@@ -325,23 +339,26 @@ export default function TrafficMonitor() {
         </div>
       ) : !summary && !trend && !models ? (
         <div className="card">
-          <EmptyState icon={<Activity width={28} height={28} />} title={t('td_no_data') || 'No data yet'} description={t('tm_no_data_desc') || 'No traffic recorded for this period.'} />
+          <EmptyState
+            icon={<Activity width={28} height={28} />}
+            title={loadError ? t('td_load_failed') : (t('td_no_data') || 'No data yet')}
+            description={loadError ? t('td_proxy_offline') : (t('tm_no_data_desc') || 'No traffic recorded for this period.')}
+            action={<button className="btn btn-sm" onClick={load}>{t('retry')}</button>}
+          />
         </div>
       ) : (
         <>
-          {/* ── Stat cards ── */}
           <div className="grid-stats">
             {statCards.map((c) => (
               <div className="stat" key={c.label}><div className="lbl">{c.label}</div><div className="v">{c.value}</div></div>
             ))}
           </div>
 
-          {/* ── Token Trend Area Chart ── */}
           <div className="card chart-card">
             <div className="card-body tm-p-0">
               <div className="chart-head tm-chart-head">
                 <div className="titles">
-                  <h4>{t('tm_token_trend')} · {trend?.granularity || 'daily'}</h4>
+                  <h4>{t('tm_token_trend')} / {trend?.granularity || 'daily'}</h4>
                   <span>{rangeLabel(range)}</span>
                 </div>
                 <div className="tm-text-right">
@@ -349,8 +366,8 @@ export default function TrafficMonitor() {
                   <div className="sub-big">{summary && tokDelta !== null ? `${tokDelta >= 0 ? '+' : ''}${tokDelta.toFixed(1)}% vs prev. ${range}` : t('tm_token_trend')}</div>
                 </div>
                 <div className="legend">
-                  <span><i className="tm-legend-in" /> {t('tm_input')} · {summary ? fmtTokens(s?.total_input_tokens ?? 0) : '-'}</span>
-                  <span><i className="tm-legend-out" /> {t('tm_output')} · {summary ? fmtTokens(s?.total_output_tokens ?? 0) : '-'}</span>
+                  <span><i className="tm-legend-in" /> {t('tm_input')} / {summary ? fmtTokens(s?.total_input_tokens ?? 0) : '-'}</span>
+                  <span><i className="tm-legend-out" /> {t('tm_output')} / {summary ? fmtTokens(s?.total_output_tokens ?? 0) : '-'}</span>
                 </div>
               </div>
               {trend?.daily?.length ? (
@@ -365,7 +382,6 @@ export default function TrafficMonitor() {
             </div>
           </div>
 
-          {/* ── Model Donut + Client Table ── */}
           <div className="grid2">
             <div className="card">
               <div className="card-h">{t('tm_model_distribution')}</div>
@@ -383,7 +399,14 @@ export default function TrafficMonitor() {
             <div className="card">
               <div className="card-h">{t('tm_client_source')}</div>
               <div className="table-wrap">
-              <table className="table table-fixed">
+              <table className="table table-fixed tm-client-table">
+                <colgroup>
+                  <col className="tm-client-col-name" />
+                  <col className="tm-client-col-req" />
+                  <col className="tm-client-col-lat" />
+                  <col className="tm-client-col-lat" />
+                  <col className="tm-client-col-cost" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>{t('tm_client_name')}</th>
@@ -394,19 +417,19 @@ export default function TrafficMonitor() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary?.by_client?.map((c, i) => {
+                  {summary?.by_client?.map((c) => {
                     const cost = s ? (s.estimated_cost * (c.pct / 100)) : 0
                     return (
                       <tr key={c.name}>
                         <td title={c.name}>
-                          <span className="row gap-2">
+                          <span className="row gap-2 tm-client-name">
                             <span className="dot online" />
                             <span>{c.name}</span>
                           </span>
                         </td>
                         <td className="num mono tiny">{fmtNum(c.requests)}</td>
-                        <td className="num mono tiny">—</td>
-                        <td className="num mono tiny">—</td>
+                        <td className="num mono tiny tm-client-empty">--</td>
+                        <td className="num mono tiny tm-client-empty">--</td>
                         <td className="num mono tiny">{fmtCost(cost)}</td>
                       </tr>
                     )
@@ -417,7 +440,6 @@ export default function TrafficMonitor() {
             </div>
           </div>
 
-          {/* ── Model Breakdown ── */}
           <div className="card">
             <div className="card-h">{t('tm_model_breakdown')}</div>
             <div className="card-body tm-table-wrap">
@@ -430,7 +452,7 @@ export default function TrafficMonitor() {
                       <td className="num mono tiny">{fmtNum(m.requests)}</td>
                       <td className="num mono tiny">{fmtTokens(m.input_tokens)}</td>
                       <td className="num mono tiny">{fmtTokens(m.output_tokens)}</td>
-                      <td className="num mono tiny"><b>{fmtTokens(m.total_tokens)}</b></td>
+                      <td className="num mono tiny">{fmtTokens(m.total_tokens)}</td>
                       <td className="num mono tiny">{m.pct.toFixed(1)}%</td>
                       <td className="num mono tiny">{fmtCost(m.cost_usd)}</td>
                     </tr>
@@ -440,7 +462,6 @@ export default function TrafficMonitor() {
             </div>
           </div>
 
-          {/* ── Recent Requests ── */}
           <div className="card tm-mt-18">
             <div className="card-h">
               {t('tm_recent_requests')}
@@ -487,22 +508,22 @@ export default function TrafficMonitor() {
                           <td className="mono tiny">{r.model}</td>
                           <td className="num mono tiny">{fmtTokens(r.inp)}</td>
                           <td className="num mono tiny">{fmtTokens(r.out)}</td>
-                          <td className="num mono tiny">{r.latency}ms</td>
+                          <td className="num mono tiny">{Math.round(r.latency)}ms</td>
                           <td>
                             <span className={`tm-status-badge ${r.ok ? '' : 'err'}`}>
-                              {r.ok ? '200' : '500'}
+                              {r.status || '-'}
                             </span>
                           </td>
                           <td>
                             <button className="btn btn-sm btn-ghost tm-btn-nav" onClick={() => {
                               window.dispatchEvent(new CustomEvent('nav-to-detail', { detail: {
-                                time: r.time, model: r.model, status: r.ok ? 200 : 500,
+                                id: r.id, time: r.rawTime, model: r.model, status: r.status,
                                 input_tokens: r.inp, output_tokens: r.out,
-                                cache_read_tokens: 0, cache_creation_tokens: 0,
+                                cache_read_tokens: r.cacheRead, cache_creation_tokens: r.cacheCreate,
                                 total_tokens: r.inp + r.out, duration: r.latency,
-                                client: r.client, route: '', error: r.ok ? '' : 'Internal error',
+                                client: r.client, route: r.route, error: r.error,
                               }}))
-                            }}>→</button>
+                            }}>Open</button>
                           </td>
                         </tr>
                       ))}
@@ -510,7 +531,7 @@ export default function TrafficMonitor() {
                   </table>
                   {/* pagination */}
                   <div className="row between tm-pagination">
-                    <span>{reqPage * PAGE_SIZE + 1}–{Math.min((reqPage + 1) * PAGE_SIZE, reqTotal)} / {reqTotal}</span>
+                    <span>{reqPage * PAGE_SIZE + 1}-{Math.min((reqPage + 1) * PAGE_SIZE, reqTotal)} / {reqTotal}</span>
                     <div className="row gap-2">
                        <button aria-label={t('aria_prev_page')} className="btn btn-sm btn-ghost" disabled={reqPage === 0} onClick={() => setReqPage(p => p - 1)}>
                         <ChevronLeft size={14} /> {t('td_prev')}
@@ -522,7 +543,12 @@ export default function TrafficMonitor() {
                   </div>
                 </>
               ) : (
-                <div className="muted tm-no-data">{t('td_no_data')}</div>
+                <EmptyState
+                  icon={<Activity width={24} height={24} />}
+                  title={t('td_no_data')}
+                  description={t('tm_no_data_desc')}
+                  action={<button className="btn btn-sm" onClick={load}>{t('retry')}</button>}
+                />
               )}
             </div>
           </div>
@@ -531,3 +557,9 @@ export default function TrafficMonitor() {
     </div>
   )
 }
+
+
+
+
+
+

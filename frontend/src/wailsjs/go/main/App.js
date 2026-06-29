@@ -10,6 +10,10 @@ export function ClearClaudeDesktopApp() {
   return window['go']['main']['App']['ClearClaudeDesktopApp']();
 }
 
+export function ClearCodex() {
+  return window['go']['main']['App']['ClearCodex']();
+}
+
 export function ClearSystemEnv() {
   return window['go']['main']['App']['ClearSystemEnv']();
 }
@@ -60,6 +64,10 @@ export function IsClaudeDesktopAppConfigured() {
 
 export function IsClaudeDesktopConfigured() {
   return window['go']['main']['App']['IsClaudeDesktopConfigured']();
+}
+
+export function IsCodexConfigured() {
+  return window['go']['main']['App']['IsCodexConfigured']();
 }
 
 export function IsSystemEnvConfigured() {
@@ -128,6 +136,10 @@ export function SetupClaudeDesktop() {
 
 export function SetupClaudeDesktopApp() {
   return window['go']['main']['App']['SetupClaudeDesktopApp']();
+}
+
+export function SetupCodex() {
+  return window['go']['main']['App']['SetupCodex']();
 }
 
 export function ShowAboutDialog() {

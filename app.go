@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/hub"
 	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
+	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
@@ -166,18 +168,15 @@ func (a *App) startup(ctx context.Context) {
 		}
 		srv.SetConfigPath(defaultPath)
 
-		// ── 初始化 Hub 同步 ──
+		// Initialize Hub sync.
 		homeDir, _ := os.UserHomeDir()
 		dataDir := filepath.Join(homeDir, ".ocgt")
 
-		// 创建同步计数器
 		counters := hub.NewSyncCounters(dataDir)
 		srv.SetHubCounters(counters)
 
-		// 读取 Hub 配置
 		hubPrefs, hubErr := preferences.Load("")
 		if hubErr == nil && hubPrefs.HubEnabled {
-			// 读取密钥（独立文件，不写入 preferences.json）
 			hubSecret := hubPrefs.HubSecret
 			if hubSecret == "" {
 				secretPath := filepath.Join(dataDir, "hub-secret")
@@ -186,7 +185,6 @@ func (a *App) startup(ctx context.Context) {
 				}
 			}
 
-			// 无远程 Hub URL 时启动内嵌 Hub 服务器
 			if hubPrefs.HubURL == "" {
 				if hubSecret == "" {
 					secretPath := filepath.Join(dataDir, "hub-secret")
@@ -204,14 +202,13 @@ func (a *App) startup(ctx context.Context) {
 				if err == nil {
 					go func() {
 						if err := hubSrv.Start(); err != nil {
-							log.Println("[hub] 内嵌 Hub 停止:", err)
+							log.Println("[hub] embedded Hub stopped:", err)
 							return
 						}
-						log.Println("[hub] 内嵌 Hub 启动于", hubSrv.Addr())
+						log.Println("[hub] embedded Hub started:", hubSrv.Addr())
 					}()
 				}
 			} else {
-				// 有远程 Hub URL，创建并启动同步客户端
 				hubClient, err := hub.NewClient(hub.Config{
 					Enabled:         hubPrefs.HubEnabled,
 					HubURL:          hubPrefs.HubURL,
@@ -227,13 +224,22 @@ func (a *App) startup(ctx context.Context) {
 		}
 
 		a.srv = srv
-		if errStr := a.SyncConfiguredIntegrations(); errStr != "success" {
-			log.Println("[GUI proxy] integration resync error:", errStr)
-		}
+		go func() {
+			if errStr := a.SyncConfiguredIntegrations(); errStr != "success" {
+				log.Println("[GUI proxy] integration resync error:", errStr)
+			}
+		}()
 
 		// 4. Listen and Serve with cancellation context
 		proxyCtx, cancel := context.WithCancel(context.Background())
 		a.cancelFunc = cancel
+
+		if killed, pid := killProcessOnPort(cfg.Listen); killed {
+			msg := fmt.Sprintf("端口 %s 已被进程 %d 占用，已自动终止旧进程", cfg.Listen, pid)
+			log.Println("[GUI proxy]", msg)
+			wailsruntime.EventsEmit(a.ctx, "port-conflict", msg)
+			time.Sleep(500 * time.Millisecond)
+		}
 
 		log.Println("[GUI proxy] starting background proxy server on http://" + cfg.Listen)
 		if err := srv.ListenAndServe(proxyCtx); err != nil {
@@ -250,6 +256,48 @@ func generateLocalAuthToken() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+func killProcessOnPort(listenAddr string) (killed bool, pid int) {
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return false, 0
+	}
+
+	switch runtime.GOOS {
+	case "windows":
+		out, _ := exec.Command("cmd", "/c",
+			fmt.Sprintf("netstat -ano | findstr :%s | findstr LISTENING", port)).Output()
+		if len(out) == 0 {
+			return false, 0
+		}
+		fields := strings.Fields(strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0]))
+		if len(fields) < 5 {
+			return false, 0
+		}
+		pid, _ = strconv.Atoi(fields[len(fields)-1])
+		if pid <= 0 || pid == os.Getpid() {
+			return false, 0
+		}
+		if exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid)).Run() != nil {
+			return false, pid
+		}
+	default:
+		out, _ := exec.Command("lsof", "-i", ":"+port, "-t").Output()
+		if len(out) == 0 {
+			return false, 0
+		}
+		pid, _ = strconv.Atoi(strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0]))
+		if pid <= 0 || pid == os.Getpid() {
+			return false, 0
+		}
+		if p, e := os.FindProcess(pid); e == nil {
+			if p.Kill() != nil {
+				return false, pid
+			}
+		}
+	}
+	return true, pid
+}
+
 // domReady is called when the frontend DOM is fully loaded and ready.
 func (a *App) domReady(ctx context.Context) {
 	a.ctx = ctx
@@ -259,7 +307,7 @@ func (a *App) domReady(ctx context.Context) {
 	// Initialize the system tray after the Wails WebView2 is fully loaded.
 	// A short delay prevents Windows message pump race conditions on startup.
 	// Note: setupSystray uses systray.Run() which manages its own dedicated
-	// OS thread — no LockOSThread needed here.
+	// OS thread 鈥?no LockOSThread needed here.
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		a.setupSystray()
@@ -325,6 +373,9 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 	}
 
 	// 3. Find and update profile
+	if strings.TrimSpace(profileName) == "" {
+		profileName = cfg.ActiveProfile
+	}
 	p, ok := cfg.Profiles[profileName]
 	if !ok {
 		return "profile not found: " + profileName
@@ -333,13 +384,21 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 	if apiKey != "" && !isMaskedAPIKey(apiKey) {
 		p.APIKey = apiKey
 	}
-	p.DefaultModel = defaultModel
+	if defaultModel != "" {
+		p.DefaultModel = defaultModel
+	}
 	if p.ModelAliases == nil {
 		p.ModelAliases = make(map[string]string)
 	}
-	p.ModelAliases["sonnet"] = sonnetAlias
-	p.ModelAliases["haiku"] = haikuAlias
-	p.ModelAliases["opus"] = opusAlias
+	if sonnetAlias != "" {
+		p.ModelAliases["sonnet"] = sonnetAlias
+	}
+	if haikuAlias != "" {
+		p.ModelAliases["haiku"] = haikuAlias
+	}
+	if opusAlias != "" {
+		p.ModelAliases["opus"] = opusAlias
+	}
 	cfg.Profiles[profileName] = p
 	if timeoutSeconds != "" {
 		timeout, err := strconv.Atoi(timeoutSeconds)
@@ -424,13 +483,9 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 
 	}
 
-
-
 	return "success"
 
 }
-
-
 
 // SetAuthEnabled enables or disables local auth token for proxy access.
 
@@ -450,8 +505,6 @@ func (a *App) SetAuthEnabled(enabled bool) string {
 
 	}
 
-
-
 	// 2. Load config
 
 	cfg, err := config.Load(path)
@@ -462,13 +515,9 @@ func (a *App) SetAuthEnabled(enabled bool) string {
 
 	}
 
-
-
 	// 3. Update auth enabled state
 
 	cfg.AuthEnabled = enabled
-
-
 
 	// 4. Generate or clear token based on enabled state
 
@@ -498,8 +547,6 @@ func (a *App) SetAuthEnabled(enabled bool) string {
 
 	}
 
-
-
 	// 5. Save config
 
 	if err := cfg.Save(path); err != nil {
@@ -508,8 +555,6 @@ func (a *App) SetAuthEnabled(enabled bool) string {
 
 	}
 
-
-
 	// 6. Update server config in-memory if running
 
 	if a.srv != nil {
@@ -517,8 +562,6 @@ func (a *App) SetAuthEnabled(enabled bool) string {
 		a.srv.ApplyConfig(cfg)
 
 	}
-
-
 
 	return "success"
 }
@@ -630,7 +673,7 @@ func (a *App) InstallClaudeUserEnv() string {
 
 // so the Claude Code Desktop app picks them up automatically.
 
-// This does NOT modify Windows user environment variables — only the settings file.
+// This does NOT modify Windows user environment variables 鈥?only the settings file.
 
 func (a *App) SetupClaudeDesktop() string {
 
@@ -663,6 +706,26 @@ func claudeCustomHeaders(profile, client string) string {
 	return "X-Ocgt-Profile: " + profile
 }
 
+func loadProviderStore() (*providers.Store, error) {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return nil, err
+	}
+	store := providers.NewStore(filepath.Dir(path))
+	if err := store.Load(); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+func activeProviderForLine(line string) (*providers.Provider, bool) {
+	store, err := loadProviderStore()
+	if err != nil {
+		return nil, false
+	}
+	return store.Active(line)
+}
+
 func (a *App) claudeCodeEnv() map[string]string {
 	return a.claudeCodeEnvForClient("")
 }
@@ -689,6 +752,23 @@ func (a *App) claudeCodeEnvForClient(client string) map[string]string {
 		}
 	}
 
+	if len(claudeEnv) == 0 {
+		claudeEnv = config.DefaultClaudeEnv(activeProf)
+	}
+	if provider, ok := activeProviderForLine("claude"); ok {
+		if strings.TrimSpace(provider.DefaultModel) != "" {
+			activeProf.DefaultModel = strings.TrimSpace(provider.DefaultModel)
+		}
+		if len(provider.ModelAliases) > 0 {
+			activeProf.ModelAliases = provider.ModelAliases
+		}
+		if provider.ThinkingBudgetTokens != 0 {
+			thinkingBudget = provider.ThinkingBudgetTokens
+		}
+		if len(provider.Env) > 0 {
+			claudeEnv = provider.Env
+		}
+	}
 	if len(claudeEnv) == 0 {
 		claudeEnv = config.DefaultClaudeEnv(activeProf)
 	}
@@ -792,7 +872,7 @@ func (a *App) LaunchClaudeTerminal(shell string, lang string) string {
 	case "windows":
 		// SECURITY: Env vars are passed via cmd.Env (child process inherits them).
 		// Shell scripts reference $env:VAR (PowerShell) or %VAR% (CMD) instead of
-		// interpolating values into strings — prevents command injection.
+		// interpolating values into strings 鈥?prevents command injection.
 		envMap := a.claudeCodeEnvForClient("claude-code-cli")
 		envMap["OCGT_DEFAULT_MODEL"] = defaultModel
 		env := make([]string, 0, len(envMap)+1)
@@ -1177,10 +1257,10 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	switch closeBehavior {
 	case "exit":
 		a.forceQuit.Store(true)
-		// Directly exit — no dialog needed
+		// Directly exit 鈥?no dialog needed
 		return false
 	case "minimize":
-		// Silently hide to tray — no dialog needed
+		// Silently hide to tray 鈥?no dialog needed
 		go func() {
 			time.Sleep(50 * time.Millisecond)
 			a.enqueueTrayAction(trayActionHide)
@@ -1321,7 +1401,7 @@ func (a *App) GetPreferences() map[string]string {
 
 // FetchQuota queries OpenCode Go quota from the opencode.ai RPC endpoint.
 // Called from the frontend via Wails binding. Returns JSON-serializable result.
-// Credentials are resolved in this order: Profile config → env vars.
+// Credentials are resolved in this order: Profile config 鈫?env vars.
 func (a *App) FetchQuota() map[string]any {
 	cookie, workspaceID := a.resolveQuotaCredentials()
 	data, err := quota.FetchOpenCodeGoQuota(cookie, workspaceID)
@@ -1360,8 +1440,6 @@ func (a *App) FetchUpstreamModels() map[string]any {
 
 }
 
-
-
 // TestUpstreamConnection tests connectivity to an upstream URL with the provided API key.
 
 // Returns a result with success status, message, and latency in milliseconds.
@@ -1374,31 +1452,24 @@ func (a *App) TestUpstreamConnection(upstream, apiKey string) map[string]any {
 
 	}
 
-
-
 	start := time.Now()
 
 	result, err := a.srv.TestConnection(context.Background(), upstream, apiKey)
 
 	latencyMs := time.Since(start).Milliseconds()
 
-
-
 	if err != nil {
 
 		return map[string]any{
 
-			"success":   false,
+			"success": false,
 
-			"message":   err.Error(),
+			"message": err.Error(),
 
 			"latencyMs": latencyMs,
-
 		}
 
 	}
-
-
 
 	// Extract model count for success message
 
@@ -1408,26 +1479,21 @@ func (a *App) TestUpstreamConnection(upstream, apiKey string) map[string]any {
 
 	message := fmt.Sprintf("Connection successful. %d models available.", modelCount)
 
-
-
 	return map[string]any{
 
-		"success":   true,
+		"success": true,
 
-		"message":   message,
+		"message": message,
 
 		"latencyMs": latencyMs,
 
-		"data":      result,
-
+		"data": result,
 	}
 
 }
 
-
-
 // resolveQuotaCredentials resolves quota credentials from config or env vars.
-// Priority: Profile.QuotaCookie/QuotaWorkspaceID → env vars.
+// Priority: Profile.QuotaCookie/QuotaWorkspaceID 鈫?env vars.
 func (a *App) resolveQuotaCredentials() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")

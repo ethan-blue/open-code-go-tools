@@ -239,8 +239,9 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip auth for static web assets
-		if strings.HasPrefix(r.URL.Path, "/ocgt/web/") || r.URL.Path == "/" {
+		// Skip auth for static web assets and client-side routes.
+		// ponytail: the dashboard shell is all non-API GET/HEAD traffic; tighten only if we ever add other non-API handlers.
+		if isStaticWebRequest(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -264,6 +265,20 @@ func authMiddleware(token string, next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isStaticWebRequest(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	path := r.URL.Path
+	if path == "/" || strings.HasPrefix(path, "/ocgt/web/") {
+		return true
+	}
+	if strings.HasPrefix(path, "/ocgt/api/") || strings.HasPrefix(path, "/v1/") || strings.HasPrefix(path, "/claude-desktop/") {
+		return false
+	}
+	return true
 }
 
 type statusRecorder struct {
@@ -401,13 +416,13 @@ func rpmLimitMiddleware(rl *rpmLimiter, next http.Handler) http.Handler {
 
 // rpmLimiter implements a simple sliding window counter for Requests Per Minute
 type rpmLimiter struct {
-	mu       sync.Mutex
-	clients  map[string]*rpmBucket
-	limit    int // max requests per minute
+	mu      sync.Mutex
+	clients map[string]*rpmBucket
+	limit   int // max requests per minute
 }
 
 type rpmBucket struct {
-	count    int
+	count       int
 	windowStart time.Time
 }
 

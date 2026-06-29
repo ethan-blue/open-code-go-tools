@@ -16,30 +16,38 @@ import (
 
 // Provider represents an upstream API provider configuration.
 type Provider struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	BaseURL      string   `json:"baseUrl"`
-	APIKey       string   `json:"apiKey,omitempty"`
-	Models       []string `json:"models,omitempty"`
-	Priority     int      `json:"priority"`
-	Enabled      bool     `json:"enabled"`
-	Health       string   `json:"health"` // "healthy", "degraded", "down", "unknown"
-	LastCheck    string   `json:"lastCheck,omitempty"`
-	RequestCount int64    `json:"requestCount"`
-	ErrorCount   int64    `json:"errorCount"`
-	AvgLatency   float64  `json:"avgLatency"`
-	CreatedAt    int64    `json:"createdAt"`
-	SortIndex         int      `json:"sortIndex,omitempty"`
-	Line              string   `json:"line,omitempty"`
-	Protocol          string   `json:"protocol,omitempty"`
-	RateLimitPerSecond int     `json:"rateLimitPerSecond,omitempty"`
-	RateLimitBurst    int      `json:"rateLimitBurst,omitempty"`
+	ID                    string            `json:"id"`
+	Name                  string            `json:"name"`
+	BaseURL               string            `json:"baseUrl"`
+	APIKey                string            `json:"apiKey,omitempty"`
+	Models                []string          `json:"models,omitempty"`
+	DefaultModel          string            `json:"defaultModel,omitempty"`
+	MessageModels         []string          `json:"messageModels,omitempty"`
+	Priority              int               `json:"priority"`
+	Enabled               bool              `json:"enabled"`
+	Health                string            `json:"health"` // "healthy", "degraded", "down", "unknown"
+	LastCheck             string            `json:"lastCheck,omitempty"`
+	RequestCount          int64             `json:"requestCount"`
+	ErrorCount            int64             `json:"errorCount"`
+	AvgLatency            float64           `json:"avgLatency"`
+	CreatedAt             int64             `json:"createdAt"`
+	SortIndex             int               `json:"sortIndex,omitempty"`
+	Line                  string            `json:"line,omitempty"`
+	Protocol              string            `json:"protocol,omitempty"`
+	RateLimitPerSecond    int               `json:"rateLimitPerSecond,omitempty"`
+	RateLimitBurst        int               `json:"rateLimitBurst,omitempty"`
+	RequestTimeoutSeconds int               `json:"requestTimeoutSeconds,omitempty"`
+	ThinkingBudgetTokens  int               `json:"thinkingBudgetTokens,omitempty"`
+	AuthMode              string            `json:"authMode,omitempty"`
+	ModelAliases          map[string]string `json:"modelAliases,omitempty"`
+	Headers               map[string]string `json:"headers,omitempty"`
+	Env                   map[string]string `json:"env,omitempty"`
 }
 
 // Store manages provider CRUD operations with file-backed persistence.
 type Store struct {
-	mu       sync.RWMutex
-	path     string
+	mu        sync.RWMutex
+	path      string
 	Providers []Provider `json:"providers"`
 }
 
@@ -117,6 +125,41 @@ func (s *Store) Get(id string) (*Provider, error) {
 	return nil, fmt.Errorf("provider %q not found", id)
 }
 
+// Active returns the enabled provider for a line.
+func (s *Store) Active(line string) (*Provider, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	line = strings.TrimSpace(line)
+	if line == "" {
+		line = "claude"
+	}
+	for i := range s.Providers {
+		if providerLine(s.Providers[i]) == line && s.Providers[i].Enabled {
+			p := s.Providers[i]
+			return &p, true
+		}
+	}
+	return nil, false
+}
+
+// HasLine reports whether any provider exists for the given line.
+func (s *Store) HasLine(line string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	line = strings.TrimSpace(line)
+	if line == "" {
+		line = "claude"
+	}
+	for _, p := range s.Providers {
+		if providerLine(p) == line {
+			return true
+		}
+	}
+	return false
+}
+
 // Create adds a new provider.
 func (s *Store) Create(p Provider) error {
 	s.mu.Lock()
@@ -136,6 +179,9 @@ func (s *Store) Create(p Provider) error {
 		if existing.ID == p.ID {
 			return fmt.Errorf("provider %q already exists", p.ID)
 		}
+	}
+	if p.Enabled {
+		s.disableLineLocked(providerLine(p), p.ID)
 	}
 
 	s.Providers = append(s.Providers, p)
@@ -184,9 +230,13 @@ func (s *Store) Update(id string, p Provider) error {
 			p.AvgLatency = s.Providers[i].AvgLatency
 			p.Health = s.Providers[i].Health
 			p.LastCheck = s.Providers[i].LastCheck
+			p.SortIndex = s.Providers[i].SortIndex
 			// Preserve real API key when incoming key is masked/empty
 			if isMaskedKey(p.APIKey) {
 				p.APIKey = s.Providers[i].APIKey
+			}
+			if p.Enabled {
+				s.disableLineLocked(providerLine(p), id)
 			}
 			s.Providers[i] = p
 			return s.save()
@@ -209,21 +259,44 @@ func (s *Store) Delete(id string) error {
 	return fmt.Errorf("provider %q not found", id)
 }
 
-// Toggle flips the enabled state of a provider.
-func (s *Store) Toggle(id string) (bool, error) {
+// Activate enables one provider and disables its siblings on the same line.
+func (s *Store) Activate(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	activeLine := "claude"
 	for i := range s.Providers {
 		if s.Providers[i].ID == id {
-			s.Providers[i].Enabled = !s.Providers[i].Enabled
-			if err := s.save(); err != nil {
-				return false, err
-			}
-			return s.Providers[i].Enabled, nil
+			activeLine = providerLine(s.Providers[i])
+			break
 		}
 	}
-	return false, fmt.Errorf("provider %q not found", id)
+	found := false
+	for i := range s.Providers {
+		if s.Providers[i].ID == id {
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("provider %q not found", id)
+	}
+	s.disableLineLocked(activeLine, id)
+	return s.save()
+}
+
+func providerLine(p Provider) string {
+	if p.Line == "" {
+		return "claude"
+	}
+	return p.Line
+}
+
+func (s *Store) disableLineLocked(line, exceptID string) {
+	for i := range s.Providers {
+		if providerLine(s.Providers[i]) == line {
+			s.Providers[i].Enabled = s.Providers[i].ID == exceptID
+		}
+	}
 }
 
 // SaveOrder persists a new sort order for providers.

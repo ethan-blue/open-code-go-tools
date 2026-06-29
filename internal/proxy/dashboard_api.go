@@ -44,6 +44,57 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 	configPath := s.configPath
 	s.configMu.RUnlock()
 
+	type providerStatus struct {
+		ID               string `json:"id"`
+		Name             string `json:"name"`
+		Line             string `json:"line"`
+		BaseURL          string `json:"base_url"`
+		DefaultModel     string `json:"default_model"`
+		Protocol         string `json:"protocol"`
+		Enabled          bool   `json:"enabled"`
+		APIKeyConfigured bool   `json:"api_key_configured"`
+	}
+	providerView := func(line string, fallbackModel string) providerStatus {
+		if strings.TrimSpace(s.configDir) == "" {
+			return providerStatus{
+				ID:               activeProfile,
+				Name:             activeProfile,
+				Line:             line,
+				BaseURL:          upstream,
+				DefaultModel:     fallbackModel,
+				Enabled:          true,
+				APIKeyConfigured: profile.APIKeyValue() != "",
+			}
+		}
+		if provider, ok := s.ensureStore().Active(line); ok {
+			model := strings.TrimSpace(provider.DefaultModel)
+			if model == "" {
+				model = fallbackModel
+			}
+			return providerStatus{
+				ID:               provider.ID,
+				Name:             provider.Name,
+				Line:             line,
+				BaseURL:          provider.BaseURL,
+				DefaultModel:     model,
+				Protocol:         provider.Protocol,
+				Enabled:          provider.Enabled,
+				APIKeyConfigured: provider.APIKey != "" || profile.APIKeyValue() != "",
+			}
+		}
+		return providerStatus{
+			ID:               activeProfile,
+			Name:             activeProfile,
+			Line:             line,
+			BaseURL:          upstream,
+			DefaultModel:     fallbackModel,
+			Enabled:          true,
+			APIKeyConfigured: profile.APIKeyValue() != "",
+		}
+	}
+	claudeProvider := providerView("claude", profile.DefaultModel)
+	codexProvider := providerView("codex", profile.DefaultModel)
+
 	status := map[string]any{
 		"status":                     "running",
 		"listen":                     listen,
@@ -59,6 +110,11 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 		"active_profile":             activeProfile,
 		"default_model":              profile.DefaultModel,
 		"auth_enabled":               authEnabled,
+		"uptime_seconds":             int(time.Since(s.startedAt).Seconds()),
+		"providers": map[string]any{
+			"claude": claudeProvider,
+			"codex":  codexProvider,
+		},
 	}
 	writeJSON(w, http.StatusOK, status)
 }

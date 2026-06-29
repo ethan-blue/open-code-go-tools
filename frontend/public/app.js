@@ -10,9 +10,9 @@ const INTEGRATION_IDS = ['quick', 'cli', 'vscode', 'claude-desktop', 'codex'];
 
 
 
-// ── Model Registry (single source of truth) ──
+// 鈹€鈹€ Model Registry (single source of truth) 鈹€鈹€
 
-// Built-in base models — provide labels and recommended flags for well-known models.
+// Built-in base models 鈥?provide labels and recommended flags for well-known models.
 // All <select> dropdowns update automatically from MODEL_REGISTRY.
 
 const BUILTIN_MODELS = [
@@ -70,7 +70,7 @@ const MAPPING_DEFAULTS = {
 
 
 
-// ── Accent color presets ──
+// 鈹€鈹€ Accent color presets 鈹€鈹€
 
 const ACCENT_PRESETS = [
 
@@ -104,179 +104,179 @@ let uiPreferencesSaveTimer = null;
 let activeCustomModelCancel = null;
 let activeRawJsonClose = null;
 
-// ══════════════════════════════════════════════════════
-// §2 — i18n Dictionary
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+// 搂2 鈥?i18n Dictionary
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 const i18n = {
     zh: {
-        nav_dashboard: "系统状态",
-        nav_settings: "配置管理",
-        nav_terminal: "快速连接",
-        nav_history: "流量监控",
-        status_running: "代理运行中",
-        status_connecting: "代理连接中",
-        status_online: "代理已连接",
-        status_offline: "代理未连接",
-        status_api_key_configured: "已配置",
-        status_api_key_not_configured: "未配置",
-        status_model_unset: "未设定",
-        status_not_configured: "未配置",
-        status_saving: "保存中...",
-        status_success: "已保存 ✓",
-        service_normal: "服务正常",
-        service_connecting: "服务连接中",
-        service_offline: "服务离线",
-        title_dashboard: "系统状态监控",
-        subtitle_dashboard: "查看当前代理服务运行指标与后台状态",
-        title_settings: "一键配置管理中心",
-        subtitle_settings: "快速设置您的 API 密钥与高阶 Claude 模型代理映射",
-        title_terminal: "快速连接",
+        nav_dashboard: "绯荤粺鐘舵€?,
+        nav_settings: "閰嶇疆绠＄悊",
+        nav_terminal: "蹇€熻繛鎺?,
+        nav_history: "娴侀噺鐩戞帶",
+        status_running: "浠ｇ悊杩愯涓?,
+        status_connecting: "浠ｇ悊杩炴帴涓?,
+        status_online: "浠ｇ悊宸茶繛鎺?,
+        status_offline: "浠ｇ悊鏈繛鎺?,
+        status_api_key_configured: "宸查厤缃?,
+        status_api_key_not_configured: "鏈厤缃?,
+        status_model_unset: "鏈瀹?,
+        status_not_configured: "鏈厤缃?,
+        status_saving: "淇濆瓨涓?..",
+        status_success: "宸蹭繚瀛?鉁?,
+        service_normal: "鏈嶅姟姝ｅ父",
+        service_connecting: "鏈嶅姟杩炴帴涓?,
+        service_offline: "鏈嶅姟绂荤嚎",
+        title_dashboard: "绯荤粺鐘舵€佺洃鎺?,
+        subtitle_dashboard: "鏌ョ湅褰撳墠浠ｇ悊鏈嶅姟杩愯鎸囨爣涓庡悗鍙扮姸鎬?,
+        title_settings: "涓€閿厤缃鐞嗕腑蹇?,
+        subtitle_settings: "蹇€熻缃偍鐨?API 瀵嗛挜涓庨珮闃?Claude 妯″瀷浠ｇ悊鏄犲皠",
+        title_terminal: "蹇€熻繛鎺?,
 
-        subtitle_terminal: "一键将代理接入终端、编辑器与 Claude 客户端",
-        hint_desktop_config_short: "一键将 ocgt 代理配置写入 Claude Code settings.json",
-        title_history: "流量雷达监控",
-        subtitle_history: "实时捕获并通过仪表盘统计来自 Claude Code 的 API 请求日志",
-        lbl_listen: "监听地址",
-        lbl_upstream: "上游 API 节点",
-        lbl_timeout: "请求超时",
-        lbl_api_key: "API Key 状态",
-        lbl_profile: "当前活跃 Profile",
-        lbl_model: "默认解析模型",
-        dash_integrations: "客户端集成状态",
+        subtitle_terminal: "涓€閿皢浠ｇ悊鎺ュ叆缁堢銆佺紪杈戝櫒涓?Claude 瀹㈡埛绔?,
+        hint_desktop_config_short: "涓€閿皢 ocgt 浠ｇ悊閰嶇疆鍐欏叆 Claude Code settings.json",
+        title_history: "娴侀噺闆疯揪鐩戞帶",
+        subtitle_history: "瀹炴椂鎹曡幏骞堕€氳繃浠〃鐩樼粺璁℃潵鑷?Claude Code 鐨?API 璇锋眰鏃ュ織",
+        lbl_listen: "鐩戝惉鍦板潃",
+        lbl_upstream: "涓婃父 API 鑺傜偣",
+        lbl_timeout: "璇锋眰瓒呮椂",
+        lbl_api_key: "API Key 鐘舵€?,
+        lbl_profile: "褰撳墠娲昏穬 Profile",
+        lbl_model: "榛樿瑙ｆ瀽妯″瀷",
+        dash_integrations: "瀹㈡埛绔泦鎴愮姸鎬?,
         dash_cli: "CLI",
         dash_vscode: "VS Code",
         dash_claude_desktop: "Claude Desktop",
-        lbl_config_path: "本地配置文件路径",
-        lbl_desktop_config: "Claude Code settings 配置",
-        lbl_last_updated: "刚刚更新",
-        btn_open_folder: "打开所在文件夹",
-        sett_title: "一键配置管理中心",
-        sett_section_api: "API 代理配置",
-        sett_section_api_desc: "Profile、API Key、默认模型与超时",
-        sett_section_network: "网络与限流",
-        sett_section_network_desc: "上游 API 地址、监听端口与请求限制",
-        sett_section_model: "模型策略设置",
-        sett_section_model_desc: "思考强度与 Claude 模型别名映射",
-        sett_section_prefs: "偏好设置",
-        sett_profile: "当前配置 Profile",
-        sett_default_model: "全局默认模型",
-        sett_api_key: "代理 API 密钥",
-        placeholder_api_key: "请输入您的 sk-... 密钥",
-        sett_upstream: "上游 API 地址",
-        sett_timeout: "请求超时（秒，1-3600）",
-        sett_rate_minute: "每分钟请求上限",
-        sett_thinking: "思考强度（支持模型生效）",
-        opt_thinking_256: "低",
-        opt_thinking_512: "中",
-        opt_thinking_1024: "高",
-        opt_thinking_2048: "极高",
-        opt_thinking_off: "关",
-        sett_mapping_title: "Claude 模型映射",
+        lbl_config_path: "鏈湴閰嶇疆鏂囦欢璺緞",
+        lbl_desktop_config: "Claude Code settings 閰嶇疆",
+        lbl_last_updated: "鍒氬垰鏇存柊",
+        btn_open_folder: "鎵撳紑鎵€鍦ㄦ枃浠跺す",
+        sett_title: "涓€閿厤缃鐞嗕腑蹇?,
+        sett_section_api: "API 浠ｇ悊閰嶇疆",
+        sett_section_api_desc: "Profile銆丄PI Key銆侀粯璁ゆā鍨嬩笌瓒呮椂",
+        sett_section_network: "缃戠粶涓庨檺娴?,
+        sett_section_network_desc: "涓婃父 API 鍦板潃銆佺洃鍚鍙ｄ笌璇锋眰闄愬埗",
+        sett_section_model: "妯″瀷绛栫暐璁剧疆",
+        sett_section_model_desc: "鎬濊€冨己搴︿笌 Claude 妯″瀷鍒悕鏄犲皠",
+        sett_section_prefs: "鍋忓ソ璁剧疆",
+        sett_profile: "褰撳墠閰嶇疆 Profile",
+        sett_default_model: "鍏ㄥ眬榛樿妯″瀷",
+        sett_api_key: "浠ｇ悊 API 瀵嗛挜",
+        placeholder_api_key: "璇疯緭鍏ユ偍鐨?sk-... 瀵嗛挜",
+        sett_upstream: "涓婃父 API 鍦板潃",
+        sett_timeout: "璇锋眰瓒呮椂锛堢锛?-3600锛?,
+        sett_rate_minute: "姣忓垎閽熻姹備笂闄?,
+        sett_thinking: "鎬濊€冨己搴︼紙鏀寔妯″瀷鐢熸晥锛?,
+        opt_thinking_256: "浣?,
+        opt_thinking_512: "涓?,
+        opt_thinking_1024: "楂?,
+        opt_thinking_2048: "鏋侀珮",
+        opt_thinking_off: "鍏?,
+        sett_mapping_title: "Claude 妯″瀷鏄犲皠",
 
         sett_mapping_sonnet: "Sonnet",
 
         sett_mapping_haiku: "Haiku",
 
         sett_mapping_opus: "Opus",
-        sett_advanced_title: "高级代理参数",
-        sett_rate_limit: "每秒请求上限",
-        sett_rate_burst: "突发请求容量",
-        sett_claude_env_template: "Claude Code 环境变量模板",
-        sett_advanced_summary: "监听、限流、环境变量与 JSON",
-        sett_log_title: "日志存储",
-        sett_log_desc: "日志保存路径与保留周期",
-        sett_env_title: "高级环境变量",
-        sett_env_desc: "Claude Code 环境参数开关与自定义 JSON 配置",
-        env_disable_nonessential: "禁用非必要流量",
+        sett_advanced_title: "楂樼骇浠ｇ悊鍙傛暟",
+        sett_rate_limit: "姣忕璇锋眰涓婇檺",
+        sett_rate_burst: "绐佸彂璇锋眰瀹归噺",
+        sett_claude_env_template: "Claude Code 鐜鍙橀噺妯℃澘",
+        sett_advanced_summary: "鐩戝惉銆侀檺娴併€佺幆澧冨彉閲忎笌 JSON",
+        sett_log_title: "鏃ュ織瀛樺偍",
+        sett_log_desc: "鏃ュ織淇濆瓨璺緞涓庝繚鐣欏懆鏈?,
+        sett_env_title: "楂樼骇鐜鍙橀噺",
+        sett_env_desc: "Claude Code 鐜鍙傛暟寮€鍏充笌鑷畾涔?JSON 閰嶇疆",
+        env_disable_nonessential: "绂佺敤闈炲繀瑕佹祦閲?,
         env_enable_tool_search: "Tool Search",
-        env_disable_attribution: "禁用 Attribution",
-        env_disable_thinking: "禁用 Thinking",
+        env_disable_attribution: "绂佺敤 Attribution",
+        env_disable_thinking: "绂佺敤 Thinking",
         env_max_output_tokens: "Max Output Tokens",
         env_max_mcp_tokens: "Max MCP Tokens",
         env_api_timeout: "API Timeout (ms)",
         env_mcp_timeout: "MCP Timeout (ms)",
-        btn_edit_settings_json: "编辑 settings.json",
-        btn_sync_models: "同步上游模型",
-        opt_custom: "自定义模型...",
-        btn_save_config: "保存配置",
-        btn_repair_env: "一键修复 Claude Code 系统环境变量",
-        btn_reset_defaults: "重置为默认值",
-        btn_about_app: "关于 ocgt",
-        btn_clear_history: "清除历史记录",
-        hint_save: "保存只更新代理配置和当前已配置的目标；未配置的 CLI、VS Code 或 Claude Desktop 不会被写入。",
-        hint_tip: "💡 提示：只需在“客户端集成”中一键激活或配置您的终端，新建窗口即可开箱即用，无需在此做重复修改。",
-        hint_changes_detected: "检测到未保存的更改",
-        btn_cancel_changes: "取消更改",
+        btn_edit_settings_json: "缂栬緫 settings.json",
+        btn_sync_models: "鍚屾涓婃父妯″瀷",
+        opt_custom: "鑷畾涔夋ā鍨?..",
+        btn_save_config: "淇濆瓨閰嶇疆",
+        btn_repair_env: "涓€閿慨澶?Claude Code 绯荤粺鐜鍙橀噺",
+        btn_reset_defaults: "閲嶇疆涓洪粯璁ゅ€?,
+        btn_about_app: "鍏充簬 ocgt",
+        btn_clear_history: "娓呴櫎鍘嗗彶璁板綍",
+        hint_save: "淇濆瓨鍙洿鏂颁唬鐞嗛厤缃拰褰撳墠宸查厤缃殑鐩爣锛涙湭閰嶇疆鐨?CLI銆乂S Code 鎴?Claude Desktop 涓嶄細琚啓鍏ャ€?,
+        hint_tip: "馃挕 鎻愮ず锛氬彧闇€鍦ㄢ€滃鎴风闆嗘垚鈥濅腑涓€閿縺娲绘垨閰嶇疆鎮ㄧ殑缁堢锛屾柊寤虹獥鍙ｅ嵆鍙紑绠卞嵆鐢紝鏃犻渶鍦ㄦ鍋氶噸澶嶄慨鏀广€?,
+        hint_changes_detected: "妫€娴嬪埌鏈繚瀛樼殑鏇存敼",
+        btn_cancel_changes: "鍙栨秷鏇存敼",
         sync_profile: "Profile",
-        sync_listen: "监听",
+        sync_listen: "鐩戝惉",
         sync_cli: "CLI",
         sync_vscode: "VS Code",
         sync_claude: "Claude Desktop",
-        sync_active: "已配置",
-        token_log_on: "日志开启",
-        token_log_off: "日志关闭",
-        term_title: "一键唤醒代理控制台",
-        term_shell_type: "目标命令行类型",
-        btn_launch_term: "一键拉起配置终端 (Launch)",
-        btn_persistent_env: "修复以后所有新终端环境变量",
+        sync_active: "宸查厤缃?,
+        token_log_on: "鏃ュ織寮€鍚?,
+        token_log_off: "鏃ュ織鍏抽棴",
+        term_title: "涓€閿敜閱掍唬鐞嗘帶鍒跺彴",
+        term_shell_type: "鐩爣鍛戒护琛岀被鍨?,
+        btn_launch_term: "涓€閿媺璧烽厤缃粓绔?(Launch)",
+        btn_persistent_env: "淇浠ュ悗鎵€鏈夋柊缁堢鐜鍙橀噺",
 
-        btn_setup_desktop: "配置 Claude Code settings",
+        btn_setup_desktop: "閰嶇疆 Claude Code settings",
 
-        status_configuring: "配置中...",
-        btn_setup_desktop_configured: "✓ 已配置 | 重新配置",
-        btn_clear_desktop_config: "清除配置",
-        status_clearing: "清除中...",
+        status_configuring: "閰嶇疆涓?..",
+        btn_setup_desktop_configured: "鉁?宸查厤缃?| 閲嶆柊閰嶇疆",
+        btn_clear_desktop_config: "娓呴櫎閰嶇疆",
+        status_clearing: "娓呴櫎涓?..",
 
-        toast_desktop_setup_fail: "配置失败",
+        toast_desktop_setup_fail: "閰嶇疆澶辫触",
 
-        hint_launch: "一键注入当前 Profile 代理变量并打开原生 shell。直接打 <code>claude</code> 即可开始运行！",
-        guide_title: "💡 快捷运行极简指南",
-        guide_1: "在上方选项卡选择您常用的命令终端。",
-        guide_2: "点击 <b>\"一键拉起配置终端\"</b>，系统会自动唤醒控制台。",
-        guide_3: "直接在拉起的窗口中键入 <code>claude</code> 即可启动 AI 代码对话。",
-        guide_4: "（可选）若要在已有终端中工作，可点击右侧的复制按钮导入配置。",
-        guide_5: "<b>提示</b>：终端类型只需选择并一键启动任意一个即可，无需全部配置或启动。",
-        code_env_title: "Claude Code 环境变量",
-        code_ccswitch_title: "CC Switch 提供商配置",
-        btn_copy: "复制",
-        btn_copied: "已复制 ✓",
-        traf_total: "总吞吐请求量",
+        hint_launch: "涓€閿敞鍏ュ綋鍓?Profile 浠ｇ悊鍙橀噺骞舵墦寮€鍘熺敓 shell銆傜洿鎺ユ墦 <code>claude</code> 鍗冲彲寮€濮嬭繍琛岋紒",
+        guide_title: "馃挕 蹇嵎杩愯鏋佺畝鎸囧崡",
+        guide_1: "鍦ㄤ笂鏂归€夐」鍗￠€夋嫨鎮ㄥ父鐢ㄧ殑鍛戒护缁堢銆?,
+        guide_2: "鐐瑰嚮 <b>\"涓€閿媺璧烽厤缃粓绔痋"</b>锛岀郴缁熶細鑷姩鍞ら啋鎺у埗鍙般€?,
+        guide_3: "鐩存帴鍦ㄦ媺璧风殑绐楀彛涓敭鍏?<code>claude</code> 鍗冲彲鍚姩 AI 浠ｇ爜瀵硅瘽銆?,
+        guide_4: "锛堝彲閫夛級鑻ヨ鍦ㄥ凡鏈夌粓绔腑宸ヤ綔锛屽彲鐐瑰嚮鍙充晶鐨勫鍒舵寜閽鍏ラ厤缃€?,
+        guide_5: "<b>鎻愮ず</b>锛氱粓绔被鍨嬪彧闇€閫夋嫨骞朵竴閿惎鍔ㄤ换鎰忎竴涓嵆鍙紝鏃犻渶鍏ㄩ儴閰嶇疆鎴栧惎鍔ㄣ€?,
+        code_env_title: "Claude Code 鐜鍙橀噺",
+        code_ccswitch_title: "CC Switch 鎻愪緵鍟嗛厤缃?,
+        btn_copy: "澶嶅埗",
+        btn_copied: "宸插鍒?鉁?,
+        traf_total: "鎬诲悶鍚愯姹傞噺",
 
-        traf_rate: "请求成功率",
+        traf_rate: "璇锋眰鎴愬姛鐜?,
 
-        traf_latency: "平均响应延时",
+        traf_latency: "骞冲潎鍝嶅簲寤舵椂",
 
-        traf_tokens: "Token 消耗",
+        traf_tokens: "Token 娑堣€?,
 
-        traf_limit: "请求限制",
+        traf_limit: "璇锋眰闄愬埗",
 
-        traf_token_detail: "Token 消耗明细",
+        traf_token_detail: "Token 娑堣€楁槑缁?,
 
         traf_input_output: "input + output",
 
-        traf_rpm_hint: "RPM / 配额",
-        traf_filter_source: "来源",
-        traf_filter_all: "全部来源",
+        traf_rpm_hint: "RPM / 閰嶉",
+        traf_filter_source: "鏉ユ簮",
+        traf_filter_all: "鍏ㄩ儴鏉ユ簮",
         traf_filter_cli: "CLI",
         traf_filter_vscode: "VS Code",
         traf_filter_desktop: "Claude Desktop",
-        traf_filter_count: "显示 {{shown}} / {{total}} 条",
+        traf_filter_count: "鏄剧ず {{shown}} / {{total}} 鏉?,
 
         th_tokens: "Tokens",
-        th_client: "来源",
-        client_unknown: "未知",
+        th_client: "鏉ユ簮",
+        client_unknown: "鏈煡",
 
-        th_time: "时间",
-        th_method: "方法",
-        th_path: "路由路径",
-        th_model: "解析模型",
-        th_status: "状态码",
-        th_duration: "耗时",
-        th_error: "错误原因",
-        traf_empty: "暂无流量记录。请使用一键终端或在其他 Shell 中向代理发送请求...",
-        traf_empty_filtered: "当前来源筛选下没有流量记录。切换为“全部来源”可查看其他请求。",
-        traf_listening: "实时流量雷达持续监听中",
+        th_time: "鏃堕棿",
+        th_method: "鏂规硶",
+        th_path: "璺敱璺緞",
+        th_model: "瑙ｆ瀽妯″瀷",
+        th_status: "鐘舵€佺爜",
+        th_duration: "鑰楁椂",
+        th_error: "閿欒鍘熷洜",
+        traf_empty: "鏆傛棤娴侀噺璁板綍銆傝浣跨敤涓€閿粓绔垨鍦ㄥ叾浠?Shell 涓悜浠ｇ悊鍙戦€佽姹?..",
+        traf_empty_filtered: "褰撳墠鏉ユ簮绛涢€変笅娌℃湁娴侀噺璁板綍銆傚垏鎹负鈥滃叏閮ㄦ潵婧愨€濆彲鏌ョ湅鍏朵粬璇锋眰銆?,
+        traf_listening: "瀹炴椂娴侀噺闆疯揪鎸佺画鐩戝惉涓?,
         opt_model_kimi_26: "kimi-k2.6",
 
         opt_model_qwen_36: "qwen3.6-plus",
@@ -294,231 +294,231 @@ const i18n = {
         opt_mapping_haiku_default: "deepseek-v4-flash (recommended)",
 
         opt_mapping_opus_default: "kimi-k2.6 (recommended)",
-        sett_close_behavior: "关闭窗口行为",
-        opt_close_prompt: "每次询问",
-        opt_close_minimize: "隐藏到托盘，代理继续运行",
-        opt_close_exit: "退出程序，停止代理",
-        close_dialog_title: "关闭窗口",
-        close_dialog_msg: "隐藏到托盘会继续代理请求；退出程序会停止本地代理。",
-        close_dialog_exit: "退出并停止代理",
-        close_dialog_minimize: "隐藏到托盘并继续代理",
-        close_dialog_cancel: "取消",
-        about_desc: "专为 Claude Code 与 OpenCode Go 打造的极简桌面控制面板与代理",
-        about_author: "作者",
-        about_license: "许可证",
-        about_project: "项目地址",
-        about_close: "关闭",
-        err_api_key_required: "请输入 API Key",
-        err_upstream_url: "请输入有效的 http(s) 地址",
-        err_listen_addr: "请输入有效的监听地址，例如 127.0.0.1:8787 或 :8787",
-        err_timeout_range: "超时必须在 1-3600 秒之间",
-        err_rate_limit_range: "范围必须在 1-10000 之间",
-        err_rate_burst_range: "范围必须在 1-100000 之间",
-        err_rate_minute_range: "范围必须在 0-100000 之间，0 表示不限量",
-        err_claude_env_json: "必须是 JSON 对象，键和值都必须是字符串",
-        toast_saved: "配置已保存；已配置目标已同步刷新",
-        toast_save_failed: "保存失败",
-        toast_env_repaired: "环境变量已修复并写入系统",
-        toast_env_repair_failed: "环境变量修复失败",
-        toast_copy_success: "已复制到剪贴板",
-        toast_copy_failed: "复制失败",
-        toast_profile_changed: "Profile 已切换",
-        toast_launch_failed: "终端启动失败",
-        toast_launch_success: "终端已成功启动",
+        sett_close_behavior: "鍏抽棴绐楀彛琛屼负",
+        opt_close_prompt: "姣忔璇㈤棶",
+        opt_close_minimize: "闅愯棌鍒版墭鐩橈紝浠ｇ悊缁х画杩愯",
+        opt_close_exit: "閫€鍑虹▼搴忥紝鍋滄浠ｇ悊",
+        close_dialog_title: "鍏抽棴绐楀彛",
+        close_dialog_msg: "闅愯棌鍒版墭鐩樹細缁х画浠ｇ悊璇锋眰锛涢€€鍑虹▼搴忎細鍋滄鏈湴浠ｇ悊銆?,
+        close_dialog_exit: "閫€鍑哄苟鍋滄浠ｇ悊",
+        close_dialog_minimize: "闅愯棌鍒版墭鐩樺苟缁х画浠ｇ悊",
+        close_dialog_cancel: "鍙栨秷",
+        about_desc: "涓撲负 Claude Code 涓?OpenCode Go 鎵撻€犵殑鏋佺畝妗岄潰鎺у埗闈㈡澘涓庝唬鐞?,
+        about_author: "浣滆€?,
+        about_license: "璁稿彲璇?,
+        about_project: "椤圭洰鍦板潃",
+        about_close: "鍏抽棴",
+        err_api_key_required: "璇疯緭鍏?API Key",
+        err_upstream_url: "璇疯緭鍏ユ湁鏁堢殑 http(s) 鍦板潃",
+        err_listen_addr: "璇疯緭鍏ユ湁鏁堢殑鐩戝惉鍦板潃锛屼緥濡?127.0.0.1:8787 鎴?:8787",
+        err_timeout_range: "瓒呮椂蹇呴』鍦?1-3600 绉掍箣闂?,
+        err_rate_limit_range: "鑼冨洿蹇呴』鍦?1-10000 涔嬮棿",
+        err_rate_burst_range: "鑼冨洿蹇呴』鍦?1-100000 涔嬮棿",
+        err_rate_minute_range: "鑼冨洿蹇呴』鍦?0-100000 涔嬮棿锛? 琛ㄧず涓嶉檺閲?,
+        err_claude_env_json: "蹇呴』鏄?JSON 瀵硅薄锛岄敭鍜屽€奸兘蹇呴』鏄瓧绗︿覆",
+        toast_saved: "閰嶇疆宸蹭繚瀛橈紱宸查厤缃洰鏍囧凡鍚屾鍒锋柊",
+        toast_save_failed: "淇濆瓨澶辫触",
+        toast_env_repaired: "鐜鍙橀噺宸蹭慨澶嶅苟鍐欏叆绯荤粺",
+        toast_env_repair_failed: "鐜鍙橀噺淇澶辫触",
+        toast_copy_success: "宸插鍒跺埌鍓创鏉?,
+        toast_copy_failed: "澶嶅埗澶辫触",
+        toast_profile_changed: "Profile 宸插垏鎹?,
+        toast_launch_failed: "缁堢鍚姩澶辫触",
+        toast_launch_success: "缁堢宸叉垚鍔熷惎鍔?,
 
-        toast_desktop_setup_success: "✓ Claude Code settings 已配置。重新打开 Claude Code 后生效。验证方式：发送一条消息，观察 ocgt 日志中的请求记录。",
-        toast_desktop_verify_hint: "验证方式：启动桌面版后发送一条消息，观察 ocgt 日志中的请求记录。",
-        toast_desktop_cleared: "Claude Code settings 配置已清除",
+        toast_desktop_setup_success: "鉁?Claude Code settings 宸查厤缃€傞噸鏂版墦寮€ Claude Code 鍚庣敓鏁堛€傞獙璇佹柟寮忥細鍙戦€佷竴鏉℃秷鎭紝瑙傚療 ocgt 鏃ュ織涓殑璇锋眰璁板綍銆?,
+        toast_desktop_verify_hint: "楠岃瘉鏂瑰紡锛氬惎鍔ㄦ闈㈢増鍚庡彂閫佷竴鏉℃秷鎭紝瑙傚療 ocgt 鏃ュ織涓殑璇锋眰璁板綍銆?,
+        toast_desktop_cleared: "Claude Code settings 閰嶇疆宸叉竻闄?,
 
-        toast_history_cleared: "历史记录已清除",
-        toast_validation_error: "请检查表单中的错误",
-        toast_custom_model_prompt: "请输入自定义模型名称",
-        custom_model_title: "添加自定义模型",
-        custom_model_desc: "输入上游支持的模型 ID，保存后会写入当前 Profile。",
-        custom_model_label: "模型名称",
-        custom_model_placeholder: "例如 qwen3.6-plus 或 vendor/model-name",
-        custom_model_cancel: "取消",
-        custom_model_confirm: "使用此模型",
-        custom_model_required: "模型名称不能为空",
-        custom_model_too_long: "模型名称不能超过 128 个字符",
-        toast_reset_confirm: "确定要重置所有设置为默认值吗？",
-        toast_reset_done: "设置已重置为默认值",
-        toast_confirm: "确认重置",
+        toast_history_cleared: "鍘嗗彶璁板綍宸叉竻闄?,
+        toast_validation_error: "璇锋鏌ヨ〃鍗曚腑鐨勯敊璇?,
+        toast_custom_model_prompt: "璇疯緭鍏ヨ嚜瀹氫箟妯″瀷鍚嶇О",
+        custom_model_title: "娣诲姞鑷畾涔夋ā鍨?,
+        custom_model_desc: "杈撳叆涓婃父鏀寔鐨勬ā鍨?ID锛屼繚瀛樺悗浼氬啓鍏ュ綋鍓?Profile銆?,
+        custom_model_label: "妯″瀷鍚嶇О",
+        custom_model_placeholder: "渚嬪 qwen3.6-plus 鎴?vendor/model-name",
+        custom_model_cancel: "鍙栨秷",
+        custom_model_confirm: "浣跨敤姝ゆā鍨?,
+        custom_model_required: "妯″瀷鍚嶇О涓嶈兘涓虹┖",
+        custom_model_too_long: "妯″瀷鍚嶇О涓嶈兘瓒呰繃 128 涓瓧绗?,
+        toast_reset_confirm: "纭畾瑕侀噸缃墍鏈夎缃负榛樿鍊煎悧锛?,
+        toast_reset_done: "璁剧疆宸查噸缃负榛樿鍊?,
+        toast_confirm: "纭閲嶇疆",
         // Terminal launch states
-        term_launching: "启动中...",
-        term_launched: "已启动终端 ✓",
+        term_launching: "鍚姩涓?..",
+        term_launched: "宸插惎鍔ㄧ粓绔?鉁?,
         // Desktop-only warnings
-        warn_desktop_only_launch: "一键启动终端仅在桌面版 app 客户端可用，请在桌面端中点击使用！",
-        warn_desktop_only_env: "Claude Code settings 配置接口未初始化，请尝试重启 ocgt",
-        warn_desktop_only_folder: "该功能仅在桌面客户端可用。您的配置文件夹通常在您的个人用户目录下的 .ocgt 文件夹中。",
+        warn_desktop_only_launch: "涓€閿惎鍔ㄧ粓绔粎鍦ㄦ闈㈢増 app 瀹㈡埛绔彲鐢紝璇峰湪妗岄潰绔腑鐐瑰嚮浣跨敤锛?,
+        warn_desktop_only_env: "Claude Code settings 閰嶇疆鎺ュ彛鏈垵濮嬪寲锛岃灏濊瘯閲嶅惎 ocgt",
+        warn_desktop_only_folder: "璇ュ姛鑳戒粎鍦ㄦ闈㈠鎴风鍙敤銆傛偍鐨勯厤缃枃浠跺す閫氬父鍦ㄦ偍鐨勪釜浜虹敤鎴风洰褰曚笅鐨?.ocgt 鏂囦欢澶逛腑銆?,
         // Env repair states
-        env_repairing: "修复中...",
-        env_repaired_hint: "已修复，重新打开终端生效",
+        env_repairing: "淇涓?..",
+        env_repaired_hint: "宸蹭慨澶嶏紝閲嶆柊鎵撳紑缁堢鐢熸晥",
         // Connection status with unconfigured key
-        status_connected_no_key: "代理已连接，密钥未配置",
+        status_connected_no_key: "浠ｇ悊宸茶繛鎺ワ紝瀵嗛挜鏈厤缃?,
         // Open folder errors
-        err_open_folder: "打开失败",
-        err_open_folder_generic: "无法打开文件夹",
+        err_open_folder: "鎵撳紑澶辫触",
+        err_open_folder_generic: "鏃犳硶鎵撳紑鏂囦欢澶?,
         // Footer
         footer_text: "ocgt \u00A9 2026 \u00B7 MIT Licensed \u00B7 Official OpenCode Go Companion Center",
         // Preferences popover
-        pref_title: "偏好设置",
-        pref_language: "界面语言",
-        pref_appearance: "外观",
-        pref_appearance_desc: "主题模式与界面语言",
-        pref_theme: "主题模式",
-        pref_theme_light: "浅色",
-        pref_theme_dark: "深色",
-        pref_theme_system: "跟随系统",
+        pref_title: "鍋忓ソ璁剧疆",
+        pref_language: "鐣岄潰璇█",
+        pref_appearance: "澶栬",
+        pref_appearance_desc: "涓婚妯″紡涓庣晫闈㈣瑷€",
+        pref_theme: "涓婚妯″紡",
+        pref_theme_light: "娴呰壊",
+        pref_theme_dark: "娣辫壊",
+        pref_theme_system: "璺熼殢绯荤粺",
 
-        pref_accent_color: "主题色",
+        pref_accent_color: "涓婚鑹?,
 
-        pref_network: "网络",
+        pref_network: "缃戠粶",
 
-        pref_network_desc: "代理监听地址与端口",
+        pref_network_desc: "浠ｇ悊鐩戝惉鍦板潃涓庣鍙?,
 
-        pref_listen_addr: "监听地址",
+        pref_listen_addr: "鐩戝惉鍦板潃",
 
-        btn_apply_restart: "应用并重启",
+        btn_apply_restart: "搴旂敤骞堕噸鍚?,
 
-        pref_behavior: "行为",
+        pref_behavior: "琛屼负",
 
-        pref_behavior_desc: "关闭窗口与系统交互",
-        pref_logs: "日志",
-        pref_logs_desc: "日志保存路径与保留周期",
-        pref_log_save: "GUI 日志保存",
-        pref_log_dir: "日志目录",
-        pref_log_retention: "保留天数",
-        btn_open_log_dir: "打开",
-        btn_save_log_prefs: "保存日志设置",
-        toast_log_prefs_saved: "日志设置已保存",
-        toast_log_prefs_failed: "日志设置保存失败",
-        raw_json_title: "编辑 Claude Code settings.json",
-        raw_json_desc: "高级入口：只修改 ~/.claude/settings.json。保存前请确认 JSON 格式有效。",
-        raw_json_cancel: "取消",
-        raw_json_save: "保存 settings.json",
-        raw_json_loading: "加载中...",
-        raw_json_load_failed: "加载 settings.json 失败: ",
-        raw_json_save_failed: "解析或保存 settings.json 失败: ",
-        raw_json_saved: "Claude Code settings.json 已保存",
-        pref_danger: "重置与关于",
-        pref_danger_desc: "恢复默认设置或查看版本信息",
-        badge_not_configured: "未配置",
-        badge_active: "已配置 ✓",
-        badge_inactive: "未配置",
-        badge_recommended: "推荐",
-        integration_reapply_hint: "已配置；可再次点击补写当前 Profile 的代理配置。",
-        int_quick_title: "快速开始：临时终端",
-        int_quick_desc: "只为当前新开的终端窗口临时注入代理变量，不写入系统配置；可以连续打开多个窗口。",
-        btn_launch_temp_term: "打开临时终端",
-        repair_title: "一键修复",
-        repair_desc: "修复 Claude Code settings、基础环境变量，并刷新已配置过的 VS Code / Claude Desktop 集成。",
-        btn_repair_all: "一键修复",
-        toast_repair_all_success: "基础配置和已配置集成已修复",
-        toast_repair_all_failed: "一键修复失败",
+        pref_behavior_desc: "鍏抽棴绐楀彛涓庣郴缁熶氦浜?,
+        pref_logs: "鏃ュ織",
+        pref_logs_desc: "鏃ュ織淇濆瓨璺緞涓庝繚鐣欏懆鏈?,
+        pref_log_save: "GUI 鏃ュ織淇濆瓨",
+        pref_log_dir: "鏃ュ織鐩綍",
+        pref_log_retention: "淇濈暀澶╂暟",
+        btn_open_log_dir: "鎵撳紑",
+        btn_save_log_prefs: "淇濆瓨鏃ュ織璁剧疆",
+        toast_log_prefs_saved: "鏃ュ織璁剧疆宸蹭繚瀛?,
+        toast_log_prefs_failed: "鏃ュ織璁剧疆淇濆瓨澶辫触",
+        raw_json_title: "缂栬緫 Claude Code settings.json",
+        raw_json_desc: "楂樼骇鍏ュ彛锛氬彧淇敼 ~/.claude/settings.json銆備繚瀛樺墠璇风‘璁?JSON 鏍煎紡鏈夋晥銆?,
+        raw_json_cancel: "鍙栨秷",
+        raw_json_save: "淇濆瓨 settings.json",
+        raw_json_loading: "鍔犺浇涓?..",
+        raw_json_load_failed: "鍔犺浇 settings.json 澶辫触: ",
+        raw_json_save_failed: "瑙ｆ瀽鎴栦繚瀛?settings.json 澶辫触: ",
+        raw_json_saved: "Claude Code settings.json 宸蹭繚瀛?,
+        pref_danger: "閲嶇疆涓庡叧浜?,
+        pref_danger_desc: "鎭㈠榛樿璁剧疆鎴栨煡鐪嬬増鏈俊鎭?,
+        badge_not_configured: "鏈厤缃?,
+        badge_active: "宸查厤缃?鉁?,
+        badge_inactive: "鏈厤缃?,
+        badge_recommended: "鎺ㄨ崘",
+        integration_reapply_hint: "宸查厤缃紱鍙啀娆＄偣鍑昏ˉ鍐欏綋鍓?Profile 鐨勪唬鐞嗛厤缃€?,
+        int_quick_title: "蹇€熷紑濮嬶細涓存椂缁堢",
+        int_quick_desc: "鍙负褰撳墠鏂板紑鐨勭粓绔獥鍙ｄ复鏃舵敞鍏ヤ唬鐞嗗彉閲忥紝涓嶅啓鍏ョ郴缁熼厤缃紱鍙互杩炵画鎵撳紑澶氫釜绐楀彛銆?,
+        btn_launch_temp_term: "鎵撳紑涓存椂缁堢",
+        repair_title: "涓€閿慨澶?,
+        repair_desc: "淇 Claude Code settings銆佸熀纭€鐜鍙橀噺锛屽苟鍒锋柊宸查厤缃繃鐨?VS Code / Claude Desktop 闆嗘垚銆?,
+        btn_repair_all: "涓€閿慨澶?,
+        toast_repair_all_success: "鍩虹閰嶇疆鍜屽凡閰嶇疆闆嗘垚宸蹭慨澶?,
+        toast_repair_all_failed: "涓€閿慨澶嶅け璐?,
         int_sys_title: "Claude Code CLI",
-        btn_sys_install: "一键激活",
-        btn_sys_remove: "移除配置",
-        int_sys_desc: "将代理地址自动写入 ~/.claude/settings.json，Claude Code 在任意终端均可直接使用代理，移除时自动恢复原配置。",
-        toast_sys_installed: "全局 JSON 配置已写入！Claude Code 现在将通过代理运行。",
-        toast_sys_removed: "已移除代理配置并还原。 (如果有的话)",
-        lbl_temp_import: "临时导入 (当前窗口生效):",
-        int_vscode_title: "VS Code Claude Code 插件",
-        int_vscode_desc: "自动向 VS Code 用户配置注入 ocgt 代理变量。插件或其启动的 Claude Code 进程会继承这些变量，新建会话即可走本地代理。",
-        btn_vscode_install: "一键激活",
+        btn_sys_install: "涓€閿縺娲?,
+        btn_sys_remove: "绉婚櫎閰嶇疆",
+        int_sys_desc: "灏嗕唬鐞嗗湴鍧€鑷姩鍐欏叆 ~/.claude/settings.json锛孋laude Code 鍦ㄤ换鎰忕粓绔潎鍙洿鎺ヤ娇鐢ㄤ唬鐞嗭紝绉婚櫎鏃惰嚜鍔ㄦ仮澶嶅師閰嶇疆銆?,
+        toast_sys_installed: "鍏ㄥ眬 JSON 閰嶇疆宸插啓鍏ワ紒Claude Code 鐜板湪灏嗛€氳繃浠ｇ悊杩愯銆?,
+        toast_sys_removed: "宸茬Щ闄や唬鐞嗛厤缃苟杩樺師銆?(濡傛灉鏈夌殑璇?",
+        lbl_temp_import: "涓存椂瀵煎叆 (褰撳墠绐楀彛鐢熸晥):",
+        int_vscode_title: "VS Code Claude Code 鎻掍欢",
+        int_vscode_desc: "鑷姩鍚?VS Code 鐢ㄦ埛閰嶇疆娉ㄥ叆 ocgt 浠ｇ悊鍙橀噺銆傛彃浠舵垨鍏跺惎鍔ㄧ殑 Claude Code 杩涚▼浼氱户鎵胯繖浜涘彉閲忥紝鏂板缓浼氳瘽鍗冲彲璧版湰鍦颁唬鐞嗐€?,
+        btn_vscode_install: "涓€閿縺娲?,
 
-        btn_vscode_remove: "移除配置",
-        int_vscode_tip: "注入后重新打开 VS Code 内的 Claude Code 会话即可验证。",
+        btn_vscode_remove: "绉婚櫎閰嶇疆",
+        int_vscode_tip: "娉ㄥ叆鍚庨噸鏂版墦寮€ VS Code 鍐呯殑 Claude Code 浼氳瘽鍗冲彲楠岃瘉銆?,
         int_claude_title: "Claude Code settings",
-        int_claude_desc: "将 ocgt 代理写入 <code>~/.claude/settings.json</code>，用于 Claude Code 本地客户端读取代理环境；真实 Claude Desktop App 请使用下方 3P profile。",
-        btn_setup_desktop_full: "一键激活",
+        int_claude_desc: "灏?ocgt 浠ｇ悊鍐欏叆 <code>~/.claude/settings.json</code>锛岀敤浜?Claude Code 鏈湴瀹㈡埛绔鍙栦唬鐞嗙幆澧冿紱鐪熷疄 Claude Desktop App 璇蜂娇鐢ㄤ笅鏂?3P profile銆?,
+        btn_setup_desktop_full: "涓€閿縺娲?,
 
-        btn_clear_desktop_full: "移除配置",
+        btn_clear_desktop_full: "绉婚櫎閰嶇疆",
         lbl_desktop_help_title: "Claude Code settings",
-        lbl_desktop_help_desc: "这里只写入 Claude Code 读取的 settings.json 环境块，不修改 Claude Desktop 登录状态。",
+        lbl_desktop_help_desc: "杩欓噷鍙啓鍏?Claude Code 璇诲彇鐨?settings.json 鐜鍧楋紝涓嶄慨鏀?Claude Desktop 鐧诲綍鐘舵€併€?,
         int_claude_desktop_title: "Claude Desktop App",
-        int_claude_desktop_desc: "按 cc-switch 的 3P profile 方式写入 Claude Desktop 配置，重启 Claude Desktop 后通过 ocgt 本地路由转发。",
-        btn_setup_claude_desktop_app: "一键激活",
-        btn_clear_claude_desktop_app: "移除配置",
-        toast_claude_desktop_app_setup_success: "Claude Desktop App 3P 配置已写入，重启 Claude Desktop 后生效。",
-        toast_claude_desktop_app_cleared: "Claude Desktop App 3P 配置已移除。",
+        int_claude_desktop_desc: "鎸?cc-switch 鐨?3P profile 鏂瑰紡鍐欏叆 Claude Desktop 閰嶇疆锛岄噸鍚?Claude Desktop 鍚庨€氳繃 ocgt 鏈湴璺敱杞彂銆?,
+        btn_setup_claude_desktop_app: "涓€閿縺娲?,
+        btn_clear_claude_desktop_app: "绉婚櫎閰嶇疆",
+        toast_claude_desktop_app_setup_success: "Claude Desktop App 3P 閰嶇疆宸插啓鍏ワ紝閲嶅惎 Claude Desktop 鍚庣敓鏁堛€?,
+        toast_claude_desktop_app_cleared: "Claude Desktop App 3P 閰嶇疆宸茬Щ闄ゃ€?,
         dash_codex: "Codex",
         int_codex_title: "Codex CLI",
-        int_codex_desc: "将 ocgt 代理写入 <code>~/.codex/config.toml</code>，Codex CLI 将通过 ocgt 本地路由转发请求。重启 Codex 后生效。",
-        btn_setup_codex: "一键激活",
-        btn_clear_codex: "移除配置",
-        toast_codex_setup_success: "Codex 配置已写入 ~/.codex/config.toml，重启 Codex 后生效。",
-        toast_codex_cleared: "Codex 配置已移除。",
-        toast_codex_failed: "Codex 配置失败",
-        toast_vscode_installed: "VS Code Claude Code 插件配置已注入！",
-        toast_vscode_removed: "VS Code Claude Code 插件配置已清除！",
-        toast_vscode_failed: "配置 VS Code 失败",
-        loading_title: "正在连接本地代理",
-        loading_init: "正在初始化代理服务...",
-        loading_unavailable_title: "代理暂时不可用",
-        loading_unavailable_desc: "本地代理未响应。请检查监听地址、端口占用或配置后重试。",
-        proxy_health_timeout: "代理端口未响应 /healthz",
-        btn_retry_connection: "重试连接",
-        token_total_label: "总计: {{count}} tokens",
-        nav_hub: "多设备同步",
-        nav_sessions: "会话",
-        sessions_total: "本地会话",
-        sessions_total_tokens: "会话 Token 总计",
-        sessions_total_cost: "会话费用估算",
-        sessions_loading: "加载中...",
-        sessions_no_data: "未找到 Claude Code 会话记录",
-        sessions_search_placeholder: "搜索会话 ID 或模型名称...",
-        sessions_filter_all: "全部模型",
-        sessions_period_today: "今日",
-        sessions_period_month: "本月",
-        sessions_period_all: "全部",
-        sessions_sort_time_desc: "最新在前",
-        sessions_sort_time_asc: "最早在前",
-        sessions_sort_tokens_desc: "Token 最多",
-        sessions_sort_tokens_asc: "Token 最少",
-        sessions_sort_cost_desc: "费用最高",
-        sessions_show_content: "内容",
-        sd_sort_time: "按时间",
-        sd_sort_tokens: "按 Token",
-        sessions_model_chart: "模型分布",
-        title_hub: "多设备同步",
-        subtitle_hub: "跨设备 Hub 配置同步与状态监控",
-        hub_disconnected: "未连接",
-        hub_connected: "已连接",
-        hub_total_tokens: "多设备 Token 总计",
-        hub_total_cost: "多设备费用总计",
+        int_codex_desc: "灏?ocgt 浠ｇ悊鍐欏叆 <code>~/.codex/config.toml</code>锛孋odex CLI 灏嗛€氳繃 ocgt 鏈湴璺敱杞彂璇锋眰銆傞噸鍚?Codex 鍚庣敓鏁堛€?,
+        btn_setup_codex: "涓€閿縺娲?,
+        btn_clear_codex: "绉婚櫎閰嶇疆",
+        toast_codex_setup_success: "Codex 閰嶇疆宸插啓鍏?~/.codex/config.toml锛岄噸鍚?Codex 鍚庣敓鏁堛€?,
+        toast_codex_cleared: "Codex 閰嶇疆宸茬Щ闄ゃ€?,
+        toast_codex_failed: "Codex 閰嶇疆澶辫触",
+        toast_vscode_installed: "VS Code Claude Code 鎻掍欢閰嶇疆宸叉敞鍏ワ紒",
+        toast_vscode_removed: "VS Code Claude Code 鎻掍欢閰嶇疆宸叉竻闄わ紒",
+        toast_vscode_failed: "閰嶇疆 VS Code 澶辫触",
+        loading_title: "姝ｅ湪杩炴帴鏈湴浠ｇ悊",
+        loading_init: "姝ｅ湪鍒濆鍖栦唬鐞嗘湇鍔?..",
+        loading_unavailable_title: "浠ｇ悊鏆傛椂涓嶅彲鐢?,
+        loading_unavailable_desc: "鏈湴浠ｇ悊鏈搷搴斻€傝妫€鏌ョ洃鍚湴鍧€銆佺鍙ｅ崰鐢ㄦ垨閰嶇疆鍚庨噸璇曘€?,
+        proxy_health_timeout: "浠ｇ悊绔彛鏈搷搴?/healthz",
+        btn_retry_connection: "閲嶈瘯杩炴帴",
+        token_total_label: "鎬昏: {{count}} tokens",
+        nav_hub: "澶氳澶囧悓姝?,
+        nav_sessions: "浼氳瘽",
+        sessions_total: "鏈湴浼氳瘽",
+        sessions_total_tokens: "浼氳瘽 Token 鎬昏",
+        sessions_total_cost: "浼氳瘽璐圭敤浼扮畻",
+        sessions_loading: "鍔犺浇涓?..",
+        sessions_no_data: "鏈壘鍒?Claude Code 浼氳瘽璁板綍",
+        sessions_search_placeholder: "鎼滅储浼氳瘽 ID 鎴栨ā鍨嬪悕绉?..",
+        sessions_filter_all: "鍏ㄩ儴妯″瀷",
+        sessions_period_today: "浠婃棩",
+        sessions_period_month: "鏈湀",
+        sessions_period_all: "鍏ㄩ儴",
+        sessions_sort_time_desc: "鏈€鏂板湪鍓?,
+        sessions_sort_time_asc: "鏈€鏃╁湪鍓?,
+        sessions_sort_tokens_desc: "Token 鏈€澶?,
+        sessions_sort_tokens_asc: "Token 鏈€灏?,
+        sessions_sort_cost_desc: "璐圭敤鏈€楂?,
+        sessions_show_content: "鍐呭",
+        sd_sort_time: "鎸夋椂闂?,
+        sd_sort_tokens: "鎸?Token",
+        sessions_model_chart: "妯″瀷鍒嗗竷",
+        title_hub: "澶氳澶囧悓姝?,
+        subtitle_hub: "璺ㄨ澶?Hub 閰嶇疆鍚屾涓庣姸鎬佺洃鎺?,
+        hub_disconnected: "鏈繛鎺?,
+        hub_connected: "宸茶繛鎺?,
+        hub_total_tokens: "澶氳澶?Token 鎬昏",
+        hub_total_cost: "澶氳澶囪垂鐢ㄦ€昏",
         hub_today_tokens: "",
         hub_today_cost: "",
-        hub_device_list: "在线设备",
-        hub_no_devices: "暂无设备数据",
-        hub_model_breakdown: "模型用量分布（全部设备）",
-        hub_refresh: "刷新",
-        hub_sync_now: "立即同步",
-        hub_sync_success: "同步成功",
-        hub_sync_failed: "同步失败",
-        hub_syncing: "同步中...",
-        pref_hub_title: "跨设备同步",
-        pref_hub_desc: "将使用统计同步到 Hub，在多台设备间查看汇总数据",
-        pref_hub_enable: "启用同步",
-        pref_hub_url: "Hub 地址",
-        pref_hub_secret: "同步密钥",
-        pref_hub_device_name: "设备名称",
-        pref_hub_interval: "推送间隔（秒）",
-        pref_hub_save: "保存同步设置",
-        td_today: "今日",
-        td_7d: "7日",
-        td_30d: "30日",
-        td_updated: "更新于",
-        td_no_data: "暂无数据",
-        td_no_match: "暂无匹配记录",
-        td_total: "总计",
-        td_prev: "上一页",
-        td_next: "下一页",
-        td_records: "条",
-        td_time: "时间",
-        td_load_failed: "加载失败",
-        td_clear_confirm: "确定清除所有历史记录？此操作不可恢复。",
-        td_proxy_offline: "无法连接代理，请确认代理服务运行中",
+        hub_device_list: "鍦ㄧ嚎璁惧",
+        hub_no_devices: "鏆傛棤璁惧鏁版嵁",
+        hub_model_breakdown: "妯″瀷鐢ㄩ噺鍒嗗竷锛堝叏閮ㄨ澶囷級",
+        hub_refresh: "鍒锋柊",
+        hub_sync_now: "绔嬪嵆鍚屾",
+        hub_sync_success: "鍚屾鎴愬姛",
+        hub_sync_failed: "鍚屾澶辫触",
+        hub_syncing: "鍚屾涓?..",
+        pref_hub_title: "璺ㄨ澶囧悓姝?,
+        pref_hub_desc: "灏嗕娇鐢ㄧ粺璁″悓姝ュ埌 Hub锛屽湪澶氬彴璁惧闂存煡鐪嬫眹鎬绘暟鎹?,
+        pref_hub_enable: "鍚敤鍚屾",
+        pref_hub_url: "Hub 鍦板潃",
+        pref_hub_secret: "鍚屾瀵嗛挜",
+        pref_hub_device_name: "璁惧鍚嶇О",
+        pref_hub_interval: "鎺ㄩ€侀棿闅旓紙绉掞級",
+        pref_hub_save: "淇濆瓨鍚屾璁剧疆",
+        td_today: "浠婃棩",
+        td_7d: "7鏃?,
+        td_30d: "30鏃?,
+        td_updated: "鏇存柊浜?,
+        td_no_data: "鏆傛棤鏁版嵁",
+        td_no_match: "鏆傛棤鍖归厤璁板綍",
+        td_total: "鎬昏",
+        td_prev: "涓婁竴椤?,
+        td_next: "涓嬩竴椤?,
+        td_records: "鏉?,
+        td_time: "鏃堕棿",
+        td_load_failed: "鍔犺浇澶辫触",
+        td_clear_confirm: "纭畾娓呴櫎鎵€鏈夊巻鍙茶褰曪紵姝ゆ搷浣滀笉鍙仮澶嶃€?,
+        td_proxy_offline: "鏃犳硶杩炴帴浠ｇ悊锛岃纭浠ｇ悊鏈嶅姟杩愯涓?,
     },
     en: {
         nav_dashboard: "Status",
@@ -534,7 +534,7 @@ const i18n = {
         status_model_unset: "Unset",
         status_not_configured: "Not configured",
         status_saving: "Saving...",
-        status_success: "Saved ✓",
+        status_success: "Saved 鉁?,
         service_normal: "Normal",
         service_connecting: "Connecting...",
         service_offline: "Offline",
@@ -616,7 +616,7 @@ const i18n = {
         btn_about_app: "About ocgt Dashboard",
         btn_clear_history: "Clear history",
         hint_save: "Saving updates proxy configuration and refreshes only already configured targets; unconfigured CLI, VS Code, or Claude Desktop targets are not written.",
-        hint_tip: "💡 Tip: Just select and launch any terminal shell of your choice. No need to repeatedly configure all shells.",
+        hint_tip: "馃挕 Tip: Just select and launch any terminal shell of your choice. No need to repeatedly configure all shells.",
         hint_changes_detected: "Unsaved changes detected",
         btn_cancel_changes: "Cancel Changes",
         sync_profile: "Profile",
@@ -635,14 +635,14 @@ const i18n = {
         btn_setup_desktop: "Setup Claude Code settings",
 
         status_configuring: "Configuring...",
-        btn_setup_desktop_configured: "✓ Configured | Reconfigure",
+        btn_setup_desktop_configured: "鉁?Configured | Reconfigure",
         btn_clear_desktop_config: "Clear Config",
         status_clearing: "Clearing...",
 
         toast_desktop_setup_fail: "Setup failed",
 
         hint_launch: "Injects proxy environment variables and spawns a native shell. Directly run <code>claude</code> to begin!",
-        guide_title: "💡 Quick Start Guide",
+        guide_title: "馃挕 Quick Start Guide",
         guide_1: "Select your preferred shell type in the tabs above.",
         guide_2: "Click \"Launch Pre-configured Terminal\" to summon the console.",
         guide_3: "Directly type <code>claude</code> and press Enter inside the shell to start coding!",
@@ -651,7 +651,7 @@ const i18n = {
         code_env_title: "Claude Code Env Variables",
         code_ccswitch_title: "CC Switch Provider Config (JSON Import)",
         btn_copy: "Copy",
-        btn_copied: "Copied ✓",
+        btn_copied: "Copied 鉁?,
         traf_total: "Total Requests",
 
         traf_rate: "Success Rate",
@@ -729,7 +729,7 @@ const i18n = {
         toast_launch_failed: "Terminal launch failed",
         toast_launch_success: "Terminal launched successfully",
 
-        toast_desktop_setup_success: "✓ Claude Code settings configured. Reopen Claude Code to apply. Verify: send a message and check ocgt logs for request records.",
+        toast_desktop_setup_success: "鉁?Claude Code settings configured. Reopen Claude Code to apply. Verify: send a message and check ocgt logs for request records.",
         toast_desktop_verify_hint: "Verify: send a message and check ocgt logs for request records.",
         toast_desktop_cleared: "Desktop configuration cleared",
 
@@ -748,7 +748,7 @@ const i18n = {
         toast_reset_done: "Settings reset to defaults",
         toast_confirm: "Confirm Reset",
         term_launching: "Launching...",
-        term_launched: "Terminal Launched ✓",
+        term_launched: "Terminal Launched 鉁?,
         warn_desktop_only_launch: "One-click launch is only available in the desktop app!",
         warn_desktop_only_env: "Desktop config interface not initialized. Please try restarting ocgt.",
         warn_desktop_only_folder: "Only available in the desktop client. Config is typically under ~/.ocgt directory.",
@@ -800,7 +800,7 @@ const i18n = {
         pref_danger: "Reset & About",
         pref_danger_desc: "Reset defaults or view version info",
         badge_not_configured: "Not configured",
-        badge_active: "Configured ✓",
+        badge_active: "Configured 鉁?,
         badge_inactive: "Not configured",
         badge_recommended: "Recommended",
         integration_reapply_hint: "Configured; click again to reapply the current profile proxy config.",
@@ -921,9 +921,9 @@ const i18n = {
     }
 };
 
-// ══════════════════════════════════════════════════════
-// §3 — Utility Helpers
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+// 搂3 鈥?Utility Helpers
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 /** Get the current language dictionary */
 function t(key) {
@@ -1012,7 +1012,7 @@ function parseExpandedIntegrations(value) {
 }
 
 function padTwo(n) { return n.toString().padStart(2, '0'); }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 // Lazily cached DOM references (populated in bootstrap)
 const dom = {};
@@ -1094,13 +1094,13 @@ function cacheDom() {
                     MODEL_REGISTRY = [...upstreamMap.values()];
                     localStorage.setItem('model_registry', JSON.stringify(MODEL_REGISTRY));
                     populateModelSelects();
-                    toast(`同步成功，共 ${MODEL_REGISTRY.length} 个模型`);
+                    toast(`鍚屾鎴愬姛锛屽叡 ${MODEL_REGISTRY.length} 涓ā鍨媊);
                 } else {
-                    toast('上游返回的数据格式异常', 'error');
+                    toast('涓婃父杩斿洖鐨勬暟鎹牸寮忓紓甯?, 'error');
                 }
             } catch (err) {
                 console.error(err);
-                toast('获取模型失败：' + (err && err.message ? err.message : '请检查 API Key 与网络连接'), 'error');
+                toast('鑾峰彇妯″瀷澶辫触锛? + (err && err.message ? err.message : '璇锋鏌?API Key 涓庣綉缁滆繛鎺?), 'error');
             } finally {
                 syncModelsBtn.disabled = false;
                 syncModelsBtn.textContent = t('btn_sync_models');
@@ -1188,7 +1188,7 @@ function cacheDom() {
     dom.customModelCancelBtn = document.getElementById('customModelCancelBtn');
     dom.customModelConfirmBtn = document.getElementById('customModelConfirmBtn');
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 const TOAST_ICONS = {
     success: '<svg class="toast-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
@@ -1280,7 +1280,7 @@ function toast(message, type, options) {
 function toastI18n(key, type, options) {
     return toast(t(key), type, options);
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 function showModal(overlayEl) {
     if (!overlayEl) return;
@@ -1362,7 +1362,7 @@ function requestCustomModelName() {
         dom.customModelInput.addEventListener('keydown', onKeydown);
     });
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 function setProxyConnectionState(state, detail) {
     const meta = {
@@ -1489,7 +1489,7 @@ async function isProxyHealthy() {
     }
 }
 
-// ── Dynamic Model Select Rendering ──
+// 鈹€鈹€ Dynamic Model Select Rendering 鈹€鈹€
 function populateModelSelects() {
     const i18nKey = (m) => `opt_model_${m.id.replace(/[.-]/g, '_')}`;
     document.querySelectorAll('select[data-model-source]').forEach(sel => {
@@ -1499,7 +1499,7 @@ function populateModelSelects() {
 
         if (source === 'default') {
 
-            // Default model selector — flat list grouped by category
+            // Default model selector 鈥?flat list grouped by category
 
             MODEL_REGISTRY.forEach(m => {
 
@@ -1518,7 +1518,7 @@ function populateModelSelects() {
             custom.textContent = t('opt_custom');
             sel.appendChild(custom);
         } else {
-            // Mapping selector — show all models + custom
+            // Mapping selector 鈥?show all models + custom
             const mappingTargets = MODEL_REGISTRY.slice();
             const defaultId = MAPPING_DEFAULTS[source];
             // Deduplicate by id
@@ -1552,7 +1552,7 @@ function populateModelSelects() {
     });
 }
 
-// ── Accent Color System ──
+// 鈹€鈹€ Accent Color System 鈹€鈹€
 function persistUIPreferencesSoon() {
     if (!uiPreferencesLoaded) return;
     if (uiPreferencesSaveTimer) clearTimeout(uiPreferencesSaveTimer);
@@ -1707,7 +1707,7 @@ function updateLastUpdated() {
     const span = dom.lastUpdated.querySelector('span:last-child');
     if (span) span.textContent = `${t('lbl_last_updated')}: ${timeStr}`;
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 function setSelectValue(selectEl, value) {
     if (!selectEl) return;
@@ -1715,7 +1715,7 @@ function setSelectValue(selectEl, value) {
     for (let i = 0; i < selectEl.options.length; i++) {
         if (selectEl.options[i].value === value) { selectEl.value = value; return; }
     }
-    // Value not found — add it before the last option (custom)
+    // Value not found 鈥?add it before the last option (custom)
     const opt = document.createElement('option');
     opt.value = value;
     opt.textContent = value;
@@ -1734,7 +1734,7 @@ function setThinkingBudgetValue(value) {
     if (!opt) {
         opt = document.createElement('option');
         opt.value = value;
-        opt.textContent = `${value} · ${t('opt_custom')}`;
+        opt.textContent = `${value} 路 ${t('opt_custom')}`;
         dom.inputThinkingBudget.insertBefore(opt, dom.inputThinkingBudget.lastElementChild);
     }
     dom.inputThinkingBudget.value = value;
@@ -2056,7 +2056,7 @@ function applyUIPreferences(prefs) {
     applyExpandedIntegrationIds(expanded);
     uiPreferencesLoaded = true;
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 function getSettingsSnapshot() {
     return {
@@ -2178,7 +2178,7 @@ function clearChangesDetected() {
     }
     captureOriginalSettings();
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 // Client integrations code renderers are handled dynamically inside integrations-grid section
 
@@ -2257,7 +2257,7 @@ function isValidListenAddress(value) {
     const port = Number(match[1]);
     return Number.isInteger(port) && port >= 1 && port <= 65535;
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
 function updateLanguageDOM() {
     const lang = currentLang;
@@ -2268,7 +2268,7 @@ function updateLanguageDOM() {
     if (dom.prefLangSelect) dom.prefLangSelect.value = lang;
 
     if (dom.prefsToggleBtn) {
-        dom.prefsToggleBtn.setAttribute('title', lang === 'zh' ? '偏好设置' : 'Preferences');
+        dom.prefsToggleBtn.setAttribute('title', lang === 'zh' ? '鍋忓ソ璁剧疆' : 'Preferences');
     }
 
     // data-i18n elements
@@ -2332,18 +2332,18 @@ function updateActiveViewHeaders() {
         settings: { title: t('title_settings'), subtitle: t('subtitle_settings') },
         terminal: { title: t('title_terminal'), subtitle: t('subtitle_terminal') },
         history: { title: t('title_history'), subtitle: t('subtitle_history') },
-        'traffic-detail': { title: '流量明细', subtitle: '查看所有请求的详细记录' },
+        'traffic-detail': { title: '娴侀噺鏄庣粏', subtitle: '鏌ョ湅鎵€鏈夎姹傜殑璇︾粏璁板綍' },
         hub: { title: t('title_hub'), subtitle: t('subtitle_hub') },
-        sessions: { title: t('nav_sessions'), subtitle: 'Claude Code 本地会话记录' }
+        sessions: { title: t('nav_sessions'), subtitle: 'Claude Code 鏈湴浼氳瘽璁板綍' }
     }[viewId];
     if (meta) {
         titleEl.textContent = meta.title;
         subtitleEl.textContent = meta.subtitle;
     }
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
-// ── 12a: Navigation ──
+// 鈹€鈹€ 12a: Navigation 鈹€鈹€
 function setActiveView(viewId, options = {}) {
     viewId = normalizeView(viewId);
     const navItems = document.querySelectorAll('.nav-item');
@@ -2381,7 +2381,7 @@ function setupNavigation() {
         });
     });
 
-    // Status pill → dashboard
+    // Status pill 鈫?dashboard
     if (dom.statusPill) {
         dom.statusPill.addEventListener('click', () => {
             const dashBtn = document.getElementById('btn-nav-dashboard');
@@ -2389,7 +2389,7 @@ function setupNavigation() {
         });
     }
 
-    // Sidebar brand → dashboard
+    // Sidebar brand 鈫?dashboard
     const sidebarBrand = document.getElementById('sidebarBrand');
     if (sidebarBrand) {
         sidebarBrand.addEventListener('click', () => {
@@ -2430,7 +2430,7 @@ function setupNavigation() {
     }
 }
 
-// ── 12b: Settings form ──
+// 鈹€鈹€ 12b: Settings form 鈹€鈹€
 function setupSettingsHandlers() {
     const segControl = document.getElementById('thinking-seg-control');
     if (segControl && dom.inputThinkingBudget) {
@@ -2556,7 +2556,7 @@ function setupSettingsHandlers() {
 
     });
 
-    // Reset defaults — fixed: "Confirm" action now correctly triggers the reset
+    // Reset defaults 鈥?fixed: "Confirm" action now correctly triggers the reset
     if (dom.resetDefaultsBtn) {
         dom.resetDefaultsBtn.addEventListener('click', () => {
             toast(t('toast_reset_confirm'), 'warning', {
@@ -2783,8 +2783,8 @@ async function handleSaveConfig() {
     }
 }
 
-// ── 12c: Terminal ──
-// ── 12c: Client Integrations (formerly Terminal) ──
+// 鈹€鈹€ 12c: Terminal 鈹€鈹€
+// 鈹€鈹€ 12c: Client Integrations (formerly Terminal) 鈹€鈹€
 let compactShell = 'powershell';
 
 function setCompactShell(shell, options = {}) {
@@ -3035,7 +3035,7 @@ function renderCompactEnvCode() {
     }
 }
 
-// ── Actions ──
+// 鈹€鈹€ Actions 鈹€鈹€
 
 async function handleLaunchTerminal() {
     const app = getWailsApp();
@@ -3362,11 +3362,11 @@ async function handleClearCodex() {
     }
 }
 
-// ── 12e: History ──
+// 鈹€鈹€ 12e: History 鈹€鈹€
 function setupHistoryHandlers() {
 }
 
-// ── 12f: Theme & preferences center panel ──
+// 鈹€鈹€ 12f: Theme & preferences center panel 鈹€鈹€
 function applyTheme(theme, options = {}) {
     theme = normalizeTheme(theme);
     if (theme === 'system') {
@@ -3536,7 +3536,7 @@ function refreshModelSelects() {
 
 }
 
-// ── 12g: Dashboard actions ──
+// 鈹€鈹€ 12g: Dashboard actions 鈹€鈹€
 
 function setupDashboardHandlers() {
 
@@ -3607,7 +3607,7 @@ function setupRawJsonHandlers() {
     }
 }
 
-// ── 12h: Modals ──
+// 鈹€鈹€ 12h: Modals 鈹€鈹€
 function setupModalHandlers() {
     setupRawJsonHandlers();
 
@@ -3640,7 +3640,7 @@ function setupModalHandlers() {
     });
 }
 
-// ── 12i: Wails runtime events ──
+// 鈹€鈹€ 12i: Wails runtime events 鈹€鈹€
 function setupWailsEvents() {
 
     if (!(window.runtime && typeof window.runtime.EventsOn === 'function')) return;
@@ -3690,7 +3690,7 @@ function setupWailsEvents() {
 
 }
 
-/** Master event handler setup — delegates to focused sub-functions */
+/** Master event handler setup 鈥?delegates to focused sub-functions */
 
 function setupEventHandlers() {
 
@@ -3726,7 +3726,7 @@ function setupEventHandlers() {
     if (syncBtn) {
         syncBtn.addEventListener('click', async () => {
             const origText = syncBtn.textContent;
-            syncBtn.textContent = t('hub_syncing') || '同步中...';
+            syncBtn.textContent = t('hub_syncing') || '鍚屾涓?..';
             syncBtn.disabled = true;
             try {
                 const resp = await apiFetch('/ocgt/api/hub/sync', { method: 'POST' }, 10000);
@@ -3760,11 +3760,11 @@ function setupEnvRepairHandlers() {
     // Env repair UI is handled through integration buttons
 
 }
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
-// ══════════════════════════════════════════════════════
+// 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
-// ── Hub cross-device sync ──
+// 鈹€鈹€ Hub cross-device sync 鈹€鈹€
 
 /** Load hub config from backend and populate the settings form */
 async function loadHubConfig() {
@@ -3780,7 +3780,7 @@ async function loadHubConfig() {
         setVal('hub-interval', cfg.pushIntervalSec || 120);
         if (cfg.hasSecret) {
             const el = document.getElementById('hub-secret');
-            if (el) el.placeholder = '•••••••• (已设置)';
+            if (el) el.placeholder = '鈥⑩€⑩€⑩€⑩€⑩€⑩€⑩€?(宸茶缃?';
         }
     } catch (err) {
         console.error('Failed to load hub config:', err);
@@ -3796,16 +3796,16 @@ async function saveHubConfig() {
     const interval = parseInt(document.getElementById('hub-interval')?.value) || 120;
 
     const statusEl = document.getElementById('hub-config-status');
-    if (statusEl) statusEl.textContent = '保存中...';
+    if (statusEl) statusEl.textContent = '淇濆瓨涓?..';
 
     try {
         const res = await callWails('SaveHubConfig', enabled, hubUrl, secret, deviceName, interval);
         if (statusEl) {
-            statusEl.textContent = res === 'success' ? '✓ 已保存' : '✗ ' + (res || '');
+            statusEl.textContent = res === 'success' ? '鉁?宸蹭繚瀛? : '鉁?' + (res || '');
             setTimeout(() => { statusEl.textContent = ''; }, 3000);
         }
     } catch (err) {
-        if (statusEl) statusEl.textContent = '✗ ' + err.message;
+        if (statusEl) statusEl.textContent = '鉁?' + err.message;
     }
 }
 
@@ -3821,18 +3821,18 @@ async function refreshHubDashboard() {
 
         if (data && data.connected && data.remoteStats) {
             if (statusDot) statusDot.style.background = 'var(--green)';
-            if (statusText) statusText.textContent = t('hub_connected') || '已连接';
+            if (statusText) statusText.textContent = t('hub_connected') || '宸茶繛鎺?;
             if (deviceIdLabel) deviceIdLabel.textContent = 'ID: ' + (data.deviceId || '');
             renderHubStats(data.remoteStats);
         } else {
             if (statusDot) statusDot.style.background = 'var(--text-2)';
-            if (statusText) statusText.textContent = t('hub_disconnected') || '未连接';
+            if (statusText) statusText.textContent = t('hub_disconnected') || '鏈繛鎺?;
             if (deviceIdLabel) deviceIdLabel.textContent = '';
             document.getElementById('hub-total-tokens').textContent = '-';
             document.getElementById('hub-total-cost').textContent = '-';
             document.getElementById('hub-today-tokens').textContent = '';
             document.getElementById('hub-today-cost').textContent = '';
-            document.getElementById('hub-devices-list').innerHTML = '<span>' + (t('hub_no_devices') || '暂无设备数据') + '</span>';
+            document.getElementById('hub-devices-list').innerHTML = '<span>' + (t('hub_no_devices') || '鏆傛棤璁惧鏁版嵁') + '</span>';
         }
     } catch (err) {
         console.error('Failed to refresh hub dashboard:', err);
@@ -3851,22 +3851,22 @@ function renderHubStats(stats) {
 
     document.getElementById('hub-total-tokens').textContent = formatTokens(totalTokens);
     document.getElementById('hub-total-cost').textContent = '$' + Number(totalCost).toFixed(2);
-    document.getElementById('hub-today-tokens').textContent = '今日: ' + formatTokens(todayTokens);
-    document.getElementById('hub-today-cost').textContent = '今日: $' + Number(todayCost).toFixed(2);
+    document.getElementById('hub-today-tokens').textContent = '浠婃棩: ' + formatTokens(todayTokens);
+    document.getElementById('hub-today-cost').textContent = '浠婃棩: $' + Number(todayCost).toFixed(2);
 
     // Device list
     const listEl = document.getElementById('hub-devices-list');
     const countEl = document.getElementById('hub-device-count');
     const devices = stats.devices || [];
-    if (countEl) countEl.textContent = devices.length + ' 台';
+    if (countEl) countEl.textContent = devices.length + ' 鍙?;
 
     if (devices.length === 0) {
-        listEl.innerHTML = '<span class="hub-empty-hint">' + (t('hub_no_devices') || '暂无设备数据') + '</span>';
+        listEl.innerHTML = '<span class="hub-empty-hint">' + (t('hub_no_devices') || '鏆傛棤璁惧鏁版嵁') + '</span>';
     } else {
         listEl.innerHTML = devices.map(d => {
             const isStale = d.stale;
             const dotColor = isStale ? 'var(--text-2)' : 'var(--green)';
-            const statusLabel = isStale ? '离线' : '在线';
+            const statusLabel = isStale ? '绂荤嚎' : '鍦ㄧ嚎';
             const name = d.displayName || d.deviceId || 'Unknown';
             const dToday = d.today || {};
             const dAllTime = d.allTime || {};
@@ -3880,8 +3880,8 @@ function renderHubStats(stats) {
                 (hostname ? '<div class="hub-device-meta">' + escHtml(hostname) + '</div>' : '') +
                 '</div>' +
                 '<div class="hub-device-stats">' +
-                '<span class="hub-device-today">今日 ' + formatTokens(todayT) + '</span>' +
-                '<span class="hub-device-total">总计 ' + formatTokens(allTimeT) + '</span>' +
+                '<span class="hub-device-today">浠婃棩 ' + formatTokens(todayT) + '</span>' +
+                '<span class="hub-device-total">鎬昏 ' + formatTokens(allTimeT) + '</span>' +
                 '</div>' +
                 '<span class="hub-device-status" data-status="' + (isStale ? 'offline' : 'online') + '">' + statusLabel + '</span>' +
                 '</div>';
@@ -3956,7 +3956,7 @@ function formatTokens(n) {
     return String(n);
 }
 
-// ── Sessions ──
+// 鈹€鈹€ Sessions 鈹€鈹€
 
 let allSessionsData = [];
 let sCurrentPeriod = 'today';
@@ -3965,7 +3965,7 @@ async function refreshSessions() {
     const listEl = document.getElementById('sessions-list');
     if (!listEl) return;
     try {
-        listEl.innerHTML = '<div class="s-loading">加载中...</div>';
+        listEl.innerHTML = '<div class="s-loading">鍔犺浇涓?..</div>';
         const resp = await apiFetch('/ocgt/api/sessions');
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
@@ -3975,7 +3975,7 @@ async function refreshSessions() {
         renderSessionsChart();
     } catch (err) {
         console.error('Failed to load sessions:', err);
-        if (listEl) listEl.innerHTML = '<div class="s-loading" style="color:var(--red);">加载失败: ' + escHtml(err.message) + '</div>';
+        if (listEl) listEl.innerHTML = '<div class="s-loading" style="color:var(--red);">鍔犺浇澶辫触: ' + escHtml(err.message) + '</div>';
     }
 }
 
@@ -3987,7 +3987,7 @@ function populateModelFilter() {
         if (s.model) models.add(s.model);
     }
     const current = sel.value;
-    sel.innerHTML = '<option value="">' + (t('sessions_filter_all') || '全部模型') + '</option>';
+    sel.innerHTML = '<option value="">' + (t('sessions_filter_all') || '鍏ㄩ儴妯″瀷') + '</option>';
     [...models].sort().forEach(m => {
         const opt = document.createElement('option');
         opt.value = m;
@@ -3997,7 +3997,7 @@ function populateModelFilter() {
     sel.value = current;
 }
 
-/** 按时段过滤 */
+/** 鎸夋椂娈佃繃婊?*/
 function filterByPeriod(sessions, period) {
     if (period === 'all') return sessions;
     const now = new Date();
@@ -4014,13 +4014,13 @@ function filterByPeriod(sessions, period) {
     });
 }
 
-/** 简化会话 ID —— 去掉常见前缀 */
+/** 绠€鍖栦細璇?ID 鈥斺€?鍘绘帀甯歌鍓嶇紑 */
 function shortSessionId(id) {
     if (!id) return '';
-    // 去掉 rollout-YYYY-MM-DDTHH-MM-SS- 或类似前缀
+    // 鍘绘帀 rollout-YYYY-MM-DDTHH-MM-SS- 鎴栫被浼煎墠缂€
     const cleaned = id.replace(/^rollout-\d{4}-\d{2}-\d{2}T\d{2}[\-:]\d{2}[\-:]\d{2}-/i, '');
     if (cleaned.length <= 14) return cleaned;
-    return cleaned.slice(0, 14) + '…';
+    return cleaned.slice(0, 14) + '鈥?;
 }
 
 let sessionsFilterTimer;
@@ -4035,7 +4035,7 @@ function setupSessionsControls() {
     if (modelFilter) modelFilter.addEventListener('change', applySessionsFilters);
     if (sortSelect) sortSelect.addEventListener('change', applySessionsFilters);
 
-    // 时段切换
+    // 鏃舵鍒囨崲
     document.querySelectorAll('.s-period-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.s-period-btn').forEach(b => b.classList.remove('active'));
@@ -4045,7 +4045,7 @@ function setupSessionsControls() {
         });
     });
 
-    // 模型分布图折叠
+    // 妯″瀷鍒嗗竷鍥炬姌鍙?
     const chartToggle = document.getElementById('s-chart-toggle');
     if (chartToggle) {
         chartToggle.addEventListener('click', () => {
@@ -4059,14 +4059,14 @@ function setupSessionsControls() {
         });
     }
 
-    // 内容显示切换 — 实时更新详情弹窗
+    // 鍐呭鏄剧ず鍒囨崲 鈥?瀹炴椂鏇存柊璇︽儏寮圭獥
     const contentToggle = document.getElementById('sessions-content-toggle');
     if (contentToggle) {
         const saved = localStorage.getItem('sessions_show_content');
         if (saved === 'true') contentToggle.checked = true;
         contentToggle.addEventListener('change', () => {
             localStorage.setItem('sessions_show_content', contentToggle.checked);
-            // 详情弹窗打开时实时重渲染
+            // 璇︽儏寮圭獥鎵撳紑鏃跺疄鏃堕噸娓叉煋
             const content = document.getElementById('session-detail-content');
             if (content?._detailData && content.style.display !== 'none') {
                 renderSessionDetail(content._detailData, content);
@@ -4074,7 +4074,7 @@ function setupSessionsControls() {
         });
     }
 
-    // 详情排序按钮
+    // 璇︽儏鎺掑簭鎸夐挳
     const sortBtn = document.getElementById('sd-sort-btn');
     if (sortBtn) {
         sortBtn.dataset.sort = 'time';
@@ -4097,10 +4097,10 @@ function applySessionsFilters() {
     const modelFilter = document.getElementById('sessions-model-filter')?.value || '';
     const sortVal = document.getElementById('sessions-sort')?.value || 'time-desc';
 
-    // 1. 时段过滤
+    // 1. 鏃舵杩囨护
     let filtered = filterByPeriod(allSessionsData, sCurrentPeriod);
 
-    // 2. 搜索过滤
+    // 2. 鎼滅储杩囨护
     if (searchVal) {
         filtered = filtered.filter(s =>
             s.sessionId.toLowerCase().includes(searchVal) ||
@@ -4108,12 +4108,12 @@ function applySessionsFilters() {
         );
     }
 
-    // 3. 模型过滤
+    // 3. 妯″瀷杩囨护
     if (modelFilter) {
         filtered = filtered.filter(s => s.model === modelFilter);
     }
 
-    // 4. 排序
+    // 4. 鎺掑簭
     filtered.sort((a, b) => {
         switch (sortVal) {
             case 'time-asc': return (a.startTime || '').localeCompare(b.startTime || '');
@@ -4149,7 +4149,7 @@ function renderSessionsList(sessions) {
     if (sessions.length === 0) {
         listEl.innerHTML = '<div class="s-empty">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="s-empty-icon"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
-            '<div>' + (t('sessions_no_data') || '暂无会话记录') + '</div>' +
+            '<div>' + (t('sessions_no_data') || '鏆傛棤浼氳瘽璁板綍') + '</div>' +
             '</div>';
         return;
     }
@@ -4163,9 +4163,9 @@ function renderSessionsList(sessions) {
         const modelShort = (s.model || '?').replace(/^claude-/i, '');
         const sidShort = shortSessionId(s.sessionId);
 
-        // 时间显示
+        // 鏃堕棿鏄剧ず
         const timeStr = s.lastTime ? formatSessionTime(s.lastTime) : '';
-        const msgLabel = s.messageCount + ' 条';
+        const msgLabel = s.messageCount + ' 鏉?;
 
         return '<div class="s-row" data-session-id="' + escHtml(s.sessionId) + '">' +
             '<div class="s-row-main">' +
@@ -4173,13 +4173,13 @@ function renderSessionsList(sessions) {
             '<span class="s-row-dot" style="background:' + dotColor + ';"></span>' +
             '<div class="s-row-info">' +
             '<span class="s-row-title">' + escHtml(modelShort) + '</span>' +
-            '<span class="s-row-meta">' + timeStr + ' · ' + msgLabel + ' · ' + escHtml(sidShort) + '</span>' +
+            '<span class="s-row-meta">' + timeStr + ' 路 ' + msgLabel + ' 路 ' + escHtml(sidShort) + '</span>' +
             '</div>' +
             '</div>' +
             '<div class="s-row-right">' +
             '<span class="s-row-value">' + formatTokens(s.totalTokens) + '</span>' +
             '<span class="s-row-cost">$' + cost.toFixed(2) + '</span>' +
-            '<span class="s-row-chevron">›</span>' +
+            '<span class="s-row-chevron">鈥?/span>' +
             '</div>' +
             '</div>' +
             '<div class="s-row-bar">' +
@@ -4188,7 +4188,7 @@ function renderSessionsList(sessions) {
             '</div>';
     }).join('');
 
-    // 点击行 → 详情
+    // 鐐瑰嚮琛?鈫?璇︽儏
     listEl.querySelectorAll('.s-row').forEach(row => {
         row.addEventListener('click', () => {
             const sid = row.dataset.sessionId;
@@ -4220,8 +4220,8 @@ function renderSessionsChart() {
         return;
     }
 
-    // 只对当前过滤后的会话做统计 —— 但图表显示全部数据
-    // 使用 allSessionsData（原始数据）
+    // 鍙褰撳墠杩囨护鍚庣殑浼氳瘽鍋氱粺璁?鈥斺€?浣嗗浘琛ㄦ樉绀哄叏閮ㄦ暟鎹?
+    // 浣跨敤 allSessionsData锛堝師濮嬫暟鎹級
     const modelCounts = {};
     let totalSessions = 0;
     for (const s of allSessionsData) {
@@ -4235,7 +4235,7 @@ function renderSessionsChart() {
         return;
     }
     container.style.display = 'block';
-    if (countLabel) countLabel.textContent = labels.length + ' 模型';
+    if (countLabel) countLabel.textContent = labels.length + ' 妯″瀷';
 
     if (window.__sessionsChart) window.__sessionsChart.destroy();
 
@@ -4264,7 +4264,7 @@ function renderSessionsChart() {
     });
 }
 
-/** 费用估算 */
+/** 璐圭敤浼扮畻 */
 function sessionCost(model, inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens) {
     const rates = {
         'deepseek-v4-flash': { in: 0.3e-6, out: 1.1e-6, cr: 0, cc: 0 },
@@ -4286,7 +4286,7 @@ function sessionCost(model, inputTokens, outputTokens, cacheReadTokens, cacheCre
     return inputTokens * r.in + outputTokens * r.out + cr * r.cr + cc * r.cc;
 }
 
-/** 打开会话详情弹窗 */
+/** 鎵撳紑浼氳瘽璇︽儏寮圭獥 */
 async function openSessionDetail(sessionId) {
     const overlay = document.getElementById('sessionDetailOverlay');
     const loading = document.getElementById('session-detail-loading');
@@ -4297,28 +4297,28 @@ async function openSessionDetail(sessionId) {
     overlay.classList.add('active');
     loading.style.display = '';
     content.style.display = 'none';
-    title.textContent = '会话: ' + sessionId;
+    title.textContent = '浼氳瘽: ' + sessionId;
 
     try {
         const resp = await apiFetch('/ocgt/api/sessions?id=' + encodeURIComponent(sessionId));
         if (!resp.ok) throw new Error(await resp.text());
         const data = await resp.json();
-        content._detailData = data; // 缓存供排序重渲染
+        content._detailData = data; // 缂撳瓨渚涙帓搴忛噸娓叉煋
         renderSessionDetail(data, content);
     } catch (err) {
-        content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--red);">加载失败: ' + escHtml(err.message) + '</div>';
+        content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--red);">鍔犺浇澶辫触: ' + escHtml(err.message) + '</div>';
     } finally {
         loading.style.display = 'none';
         content.style.display = '';
     }
 }
 
-/** 渲染会话详情（支持排序） */
+/** 娓叉煋浼氳瘽璇︽儏锛堟敮鎸佹帓搴忥級 */
 function renderSessionDetail(data, container) {
     const events = data.events || [];
     const showContent = document.getElementById('sessions-content-toggle')?.checked || false;
 
-    // 1. 构建 exchange 对象数组
+    // 1. 鏋勫缓 exchange 瀵硅薄鏁扮粍
     const exchanges = [];
     let currentEx = null;
 
@@ -4334,7 +4334,7 @@ function renderSessionDetail(data, container) {
             };
         } else if (evt.type === 'assistant') {
             if (!currentEx) {
-                // 无前导 user 事件，创建占位 exchange
+                // 鏃犲墠瀵?user 浜嬩欢锛屽垱寤哄崰浣?exchange
                 currentEx = { time: evt.timestamp || '', tokens: 0, text: '', turns: [] };
             }
             const usage = evt.message?.usage || {};
@@ -4351,10 +4351,10 @@ function renderSessionDetail(data, container) {
     }
     if (currentEx) exchanges.push(currentEx);
 
-    // 过滤掉无 turn 的空 exchange
+    // 杩囨护鎺夋棤 turn 鐨勭┖ exchange
     const valid = exchanges.filter(ex => ex.turns.length > 0);
 
-    // 2. 排序
+    // 2. 鎺掑簭
     const sortBtn = document.getElementById('sd-sort-btn');
     const sortBy = sortBtn?.dataset?.sort || 'time';
     if (sortBy === 'tokens') {
@@ -4363,9 +4363,9 @@ function renderSessionDetail(data, container) {
         valid.sort((a, b) => b.time.localeCompare(a.time) || (b.tokens || 0) - (a.tokens || 0));
     }
 
-    // 3. 渲染
+    // 3. 娓叉煋
     if (valid.length === 0) {
-        container.innerHTML = '<div class="sd-empty">无事件数据</div>';
+        container.innerHTML = '<div class="sd-empty">鏃犱簨浠舵暟鎹?/div>';
         return;
     }
 
@@ -4376,10 +4376,10 @@ function renderSessionDetail(data, container) {
         let preview = '';
         if (ex.text) {
             if (/\[Image #?\d*\]/i.test(ex.text)) {
-                preview = ' 🖼️ ' + escHtml(ex.text.replace(/\[Image #?\d*\]/gi, '').trim().slice(0, 80));
-                if (!preview.trim()) preview = ' 🖼️ [图片]';
+                preview = ' 馃柤锔?' + escHtml(ex.text.replace(/\[Image #?\d*\]/gi, '').trim().slice(0, 80));
+                if (!preview.trim()) preview = ' 馃柤锔?[鍥剧墖]';
             } else {
-                preview = '：' + escHtml(ex.text.slice(0, 200));
+                preview = '锛? + escHtml(ex.text.slice(0, 200));
             }
         }
         const barPct = ((ex.tokens || 0) / maxTokens * 100).toFixed(1);
@@ -4387,8 +4387,8 @@ function renderSessionDetail(data, container) {
 
         html += '<div class="sd-exchange">' +
             '<div class="sd-exchange-head" onclick="toggleExchange(this)">' +
-            '<span class="sd-chevron">▶</span>' +
-            '<span class="sd-role-badge sd-role-user">你</span>' +
+            '<span class="sd-chevron">鈻?/span>' +
+            '<span class="sd-role-badge sd-role-user">浣?/span>' +
             (preview ? '<span class="sd-preview">' + preview + '</span>' : '') +
             '<span class="sd-ex-metrics">' +
             '<span class="sd-ex-value">' + formatTokens(ex.tokens) + '</span>' +
@@ -4400,8 +4400,8 @@ function renderSessionDetail(data, container) {
             '<div class="sd-exchange-body" style="display:none;">';
 
         for (const turn of ex.turns) {
-            const tokStr = '↘ ' + turn.inTok + ' · ↗ ' + turn.outTok;
-            const tToolStr = turn.tools.length ? ' · ⊧ ' + turn.tools.join(' ') : '';
+            const tokStr = '鈫?' + turn.inTok + ' 路 鈫?' + turn.outTok;
+            const tToolStr = turn.tools.length ? ' 路 鈯?' + turn.tools.join(' ') : '';
             html += '<div class="sd-turn">' +
                 '<div class="sd-turn-header">' +
                 '<span class="sd-role-badge sd-role-ai">AI</span>' +
@@ -4418,15 +4418,15 @@ function renderSessionDetail(data, container) {
     container.innerHTML = html;
 }
 
-/** 切换会话详情排序 */
+/** 鍒囨崲浼氳瘽璇︽儏鎺掑簭 */
 function toggleDetailSort() {
     const btn = document.getElementById('sd-sort-btn');
     if (!btn) return;
     const current = btn.dataset.sort || 'time';
     const newSort = current === 'time' ? 'tokens' : 'time';
     btn.dataset.sort = newSort;
-    btn.textContent = newSort === 'time' ? (t('sd_sort_time') || '按时间') : (t('sd_sort_tokens') || '按 Token');
-    // 重新渲染
+    btn.textContent = newSort === 'time' ? (t('sd_sort_time') || '鎸夋椂闂?) : (t('sd_sort_tokens') || '鎸?Token');
+    // 閲嶆柊娓叉煋
     const content = document.getElementById('session-detail-content');
     const data = content?._detailData;
     if (data) renderSessionDetail(data, content);
@@ -4438,7 +4438,7 @@ function toggleExchange(head) {
     if (body && chevron) {
         const isHidden = body.style.display === 'none';
         body.style.display = isHidden ? 'block' : 'none';
-        chevron.textContent = isHidden ? '▼' : '▶';
+        chevron.textContent = isHidden ? '鈻? : '鈻?;
         if (isHidden) {
             const exchanges = head.closest('.session-detail-exchanges');
             if (exchanges) {
@@ -4447,7 +4447,7 @@ function toggleExchange(head) {
                         b.style.display = 'none';
                         if (b.parentElement) {
                             const ch = b.parentElement.querySelector('.sd-chevron');
-                            if (ch) ch.textContent = '▶';
+                            if (ch) ch.textContent = '鈻?;
                         }
                     }
                 });
@@ -4474,13 +4474,13 @@ async function fetchAndRenderQuota() {
     try {
         const result = await window['go']['main']['App']['FetchQuota']();
         if (!result.success) {
-            bars.innerHTML = `<span class="quota-error">${result.error || '未知错误'}</span>`;
+            bars.innerHTML = `<span class="quota-error">${result.error || '鏈煡閿欒'}</span>`;
             if (time) time.textContent = '';
             return;
         }
         const d = result.data;
         if (!d) {
-            bars.innerHTML = '<span class="quota-loading">无数据</span>';
+            bars.innerHTML = '<span class="quota-loading">鏃犳暟鎹?/span>';
             return;
         }
         let html = '';
@@ -4496,9 +4496,9 @@ async function fetchAndRenderQuota() {
             const t = new Date(d.fetched_at);
             time.textContent = t.toLocaleTimeString();
         }
-        if (label) label.textContent = 'OpenCode Go 套餐额度';
+        if (label) label.textContent = 'OpenCode Go 濂楅棰濆害';
     } catch (e) {
-        bars.innerHTML = `<span class="quota-error">获取额度失败: ${e}</span>`;
+        bars.innerHTML = `<span class="quota-error">鑾峰彇棰濆害澶辫触: ${e}</span>`;
         if (time) time.textContent = '';
     }
 }

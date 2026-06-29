@@ -12,6 +12,8 @@ export interface Provider {
   baseUrl: string
   apiKey: string
   models: string[]
+  defaultModel?: string
+  messageModels?: string[]
   priority: number
   enabled: boolean
   health: 'healthy' | 'degraded' | 'down' | 'unknown'
@@ -27,6 +29,12 @@ export interface Provider {
   protocol: ProviderProtocol
   rateLimitPerSecond: number
   rateLimitBurst: number
+  requestTimeoutSeconds?: number
+  thinkingBudgetTokens?: number
+  authMode?: string
+  modelAliases?: Record<string, string>
+  headers?: Record<string, string>
+  env?: Record<string, string>
 }
 
 export interface ProviderFormData {
@@ -34,12 +42,20 @@ export interface ProviderFormData {
   baseUrl: string
   apiKey: string
   models: string[]
+  messageModelsText: string
+  defaultModel: string
   priority: number
   enabled: boolean
   line: AgentLine
   protocol: ProviderProtocol
   rateLimitPerSecond: string
   rateLimitBurst: string
+  requestTimeoutSeconds: string
+  thinkingBudgetTokens: string
+  authMode: string
+  modelAliasesJSON: string
+  headersJSON: string
+  envJSON: string
 }
 
 export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
@@ -47,10 +63,18 @@ export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
   baseUrl: '',
   apiKey: '',
   models: [],
+  messageModelsText: '',
+  defaultModel: '',
   priority: 0,
   enabled: true,
   line: 'claude',
   protocol: 'anthropic',
   rateLimitPerSecond: '',
   rateLimitBurst: '',
+  requestTimeoutSeconds: '',
+  thinkingBudgetTokens: '',
+  authMode: 'bearer',
+  modelAliasesJSON: '{}',
+  headersJSON: '{}',
+  envJSON: '{}',
 }

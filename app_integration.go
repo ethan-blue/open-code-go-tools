@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/ethan-blue/open-code-go-tools/internal/codex"
+	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
 )
 
@@ -719,4 +721,55 @@ func (a *App) GetHubStatus() string {
 
 	data, _ := json.Marshal(status)
 	return string(data)
+}
+
+func (a *App) SetupCodex() string {
+	cfg, err := config.Load("")
+	if err != nil {
+		return "load config error: " + err.Error()
+	}
+	model := "claude-sonnet-4-6"
+	wireAPI := "chat"
+	if p, ok := cfg.Profiles[cfg.ActiveProfile]; ok && p.DefaultModel != "" {
+		model = p.DefaultModel
+	}
+	if provider, ok := activeProviderForLine("codex"); ok {
+		if strings.TrimSpace(provider.DefaultModel) != "" {
+			model = strings.TrimSpace(provider.DefaultModel)
+		}
+		if strings.EqualFold(provider.Protocol, "openai-responses") {
+			wireAPI = "responses"
+		}
+	}
+
+	token := a.localProxyAuthToken()
+	if token != "" {
+		_ = setUserEnvironment("OCGT_CODEX_API_KEY", token)
+	}
+
+	_, err = codex.WriteConfig(codex.ProviderConfig{
+		ProviderName: "ocgt",
+		BaseURL:      "http://" + a.GetListenAddress(),
+		APIKey:       token,
+		EnvKey:       "OCGT_CODEX_API_KEY",
+		Model:        model,
+		WireAPI:      wireAPI,
+	})
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	return "success"
+}
+
+func (a *App) ClearCodex() string {
+	_ = unsetUserEnvironment("OCGT_CODEX_API_KEY")
+	if err := codex.UndoConfig(); err != nil {
+		return "error: " + err.Error()
+	}
+	return "success"
+}
+
+func (a *App) IsCodexConfigured() bool {
+	ok, _ := codex.IsConfigured()
+	return ok
 }

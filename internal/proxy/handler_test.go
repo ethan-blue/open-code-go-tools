@@ -217,3 +217,45 @@ func TestResponsesEmptyInput(t *testing.T) {
 		t.Fatalf("expected 400 for empty input, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestProvidersDefaultToOpenCodeGo(t *testing.T) {
+	cfg := config.Example()
+	cfg.Listen = "127.0.0.1:0"
+	srv, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.SetConfigPath(t.TempDir() + "/config.json")
+
+	req := httptest.NewRequest(http.MethodGet, "/ocgt/api/providers", nil)
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+	var got struct {
+		Providers []struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Line    string `json:"line"`
+			BaseURL string `json:"baseUrl"`
+			Enabled bool   `json:"enabled"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Providers) != 2 {
+		t.Fatalf("unexpected providers count: %+v", got.Providers)
+	}
+	if got.Providers[0].Name != "OpenCode Go" || got.Providers[1].Name != "OpenCode Go" {
+		t.Fatalf("unexpected providers: %+v", got.Providers)
+	}
+	if got.Providers[0].Line == got.Providers[1].Line {
+		t.Fatalf("expected separate claude/codex providers, got %+v", got.Providers)
+	}
+	if !got.Providers[0].Enabled || !got.Providers[1].Enabled {
+		t.Fatalf("unexpected providers: %+v", got.Providers)
+	}
+}

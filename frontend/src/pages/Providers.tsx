@@ -583,10 +583,10 @@ export default function Providers() {
           <h2 className="prov-header-title">{t('prov_title')}</h2>
           <p className="prov-header-sub">Claude / Codex 各自维护当前生效供应商，不再额外引入配置集。</p>
         </div>
-        <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} style={{ marginRight: 8 }} />{t('prov_add')}</button>
+        <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} className="prov-add-icon-gap" />{t('prov_add')}</button>
       </div>
 
-      <div className="segmented" style={{ marginBottom: 12 }}>
+      <div className="segmented prov-filter-gap">
         <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => setLineFilter('claude')}>Claude</button>
         <button className={lineFilter === 'codex' ? 'on' : ''} onClick={() => setLineFilter('codex')}>Codex</button>
       </div>

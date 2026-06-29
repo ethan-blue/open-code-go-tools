@@ -23,8 +23,6 @@ export interface Provider {
   avgLatency: number
   createdAt: number
   sortIndex?: number
-  // Product-line + protocol + per-provider rate limit (added in v4 refactor;
-  // persisted via the Go Provider struct fields Line/Protocol/RateLimitPerSecond/RateLimitBurst)
   line: AgentLine
   protocol: ProviderProtocol
   rateLimitPerSecond: number
@@ -77,4 +75,105 @@ export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
   modelAliasesJSON: '{}',
   headersJSON: '{}',
   envJSON: '{}',
+}
+
+// ── Shared API response types (Dashboard, TrafficMonitor, etc.) ──
+
+export interface ProviderStatus {
+  id: string
+  name: string
+  line: string
+  base_url: string
+  default_model: string
+  protocol: string
+  enabled: boolean
+  api_key_configured: boolean
+}
+
+export interface StatusData {
+  listen: string
+  upstream: string
+  active_profile: string
+  default_model: string
+  uptime_seconds: number
+  request_timeout_seconds: number
+  api_key_configured: boolean
+  rate_limit_per_second: number
+  rate_limit_burst: number
+  rate_limit_per_minute: number
+  providers?: {
+    claude?: ProviderStatus
+    codex?: ProviderStatus
+  }
+}
+
+export interface SummaryTotals {
+  total_requests: number
+  success_count: number
+  success_rate: number
+  avg_latency_ms: number
+  p50_latency_ms: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cache_read_tokens: number
+  total_cache_create_tokens: number
+  total_tokens: number
+  estimated_cost: number
+  cache_hit_rate: number
+}
+
+export interface ClientStat { name: string; requests: number; pct: number }
+
+export interface StatsSummary {
+  period: { from: string; to: string; days: number }
+  summary: SummaryTotals
+  by_client: ClientStat[]
+}
+
+export interface TrendData {
+  daily: { date: string; total_tokens: number; input_tokens: number; output_tokens: number; requests: number }[]
+  granularity: string
+}
+
+export interface ModelStats {
+  name: string
+  requests: number
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  cache_hit_rate: number
+  cost_usd: number
+  pct: number
+}
+
+export interface ModelsData {
+  models: ModelStats[]
+}
+
+export interface HistoryEntry {
+  id: string
+  time: string
+  method: string
+  path: string
+  status: number
+  duration: string
+  model: string
+  route: string
+  client?: string
+  input_tokens?: number
+  output_tokens?: number
+  total_tokens?: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
+  error?: string
+}
+
+export interface QuotaData {
+  success: boolean
+  data?: {
+    rolling: { usage_percent: number; reset_display: string }
+    weekly: { usage_percent: number; reset_display: string }
+    monthly?: { usage_percent: number; reset_display: string }
+  }
 }

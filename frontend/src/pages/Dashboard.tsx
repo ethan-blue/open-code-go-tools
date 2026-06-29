@@ -1,82 +1,10 @@
 ﻿import { useEffect, useState } from 'react'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { apiGet, isWails, wails } from '@/lib/wails'
-import { fmtNum, fmtTokens, fmtCost } from '@/lib/utils'
+import { fmtNum, fmtTokens, fmtCost, fmtMs, fmtUptime, pctDelta, deltaStr } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
-
-interface ProviderStatus {
-  id: string
-  name: string
-  line: string
-  base_url: string
-  default_model: string
-  protocol: string
-  enabled: boolean
-  api_key_configured: boolean
-}
-
-interface StatusData {
-  listen: string
-  upstream: string
-  active_profile: string
-  default_model: string
-  uptime_seconds: number
-  request_timeout_seconds: number
-  api_key_configured: boolean
-  rate_limit_per_second: number
-  rate_limit_burst: number
-  rate_limit_per_minute: number
-  providers?: {
-    claude?: ProviderStatus
-    codex?: ProviderStatus
-  }
-}
-
-interface QuotaData {
-  success: boolean
-  data?: {
-    rolling: { usage_percent: number; reset_display: string }
-    weekly: { usage_percent: number; reset_display: string }
-    monthly?: { usage_percent: number; reset_display: string }
-  }
-}
-
-interface SummaryTotals {
-  total_requests: number
-  success_count: number
-  success_rate: number
-  avg_latency_ms: number
-  p50_latency_ms: number
-  total_input_tokens: number
-  total_output_tokens: number
-  total_cache_read_tokens: number
-  total_cache_create_tokens: number
-  total_tokens: number
-  estimated_cost: number
-  cache_hit_rate: number
-}
-
-interface ClientStat { name: string; requests: number; pct: number }
-interface StatsSummary {
-  period: { from: string; to: string; days: number }
-  summary: SummaryTotals
-  by_client: ClientStat[]
-}
-
-function fmtMs(n: number): string {
-  return Math.round(n) + 'ms'
-}
-
-function fmtUptime(totalSeconds: number): string {
-  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '-'
-  const days = Math.floor(totalSeconds / 86400)
-  const hours = Math.floor((totalSeconds % 86400) / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  if (days > 0) return `${days}d ${hours}h`
-  if (hours > 0) return `${hours}h ${minutes}m`
-  return `${minutes}m`
-}
+import type { StatusData, QuotaData, StatsSummary } from '@/lib/types'
 
 export default function Dashboard() {
   const { t, lang } = useI18n()
@@ -146,9 +74,26 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(() => {
-      loadStatus()
-    }, 30000)
+    let id: ReturnType<typeof setInterval>
+    const start = () => {
+      id = setInterval(() => { loadStatus() }, 30000)
+    }
+    const stop = () => { clearInterval(id) }
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        loadStatus()
+        start()
+      } else {
+        stop()
+      }
+    }
+    start()
+    document.addEventListener('visibilitychange', onVis)
+    return () => { stop(); document.removeEventListener('visibilitychange', onVis) }
+  }, [])
+
+  useEffect(() => {
+    const id = setInterval(() => { loadStats() }, 60000)
     return () => clearInterval(id)
   }, [])
 
@@ -167,10 +112,8 @@ export default function Dashboard() {
 
   const today = trend?.daily?.[trend.daily.length - 1]
   const prev = trend?.daily?.[trend.daily.length - 2]
-  const pctDelta = (cur: number, old: number) => old > 0 ? ((cur - old) / old * 100) : 0
   const reqDelta = today && prev ? pctDelta(today.requests, prev.requests) : null
   const tokDelta = today && prev ? pctDelta(today.total_tokens, prev.total_tokens) : null
-  const deltaStr = (d: number | null, suffix = '%') => d === null ? '' : `${d >= 0 ? '+' : '-'} ${Math.abs(d).toFixed(1)}${suffix}`
 
   const claudeProvider = status?.providers?.claude
   const codexProvider = status?.providers?.codex
@@ -264,7 +207,3 @@ export default function Dashboard() {
     </div>
   )
 }
-
-
-
-

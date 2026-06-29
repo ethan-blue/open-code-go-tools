@@ -27,7 +27,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const dismiss = useCallback((id: number) => {
-    // add .out class for exit animation, then remove after animation ends
     const el = document.querySelector(`[data-toast-id="${id}"]`)
     if (el) {
       el.classList.add('out')
@@ -44,7 +43,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [dismiss])
 
   const icons = { success: CheckCircle, error: AlertCircle, warning: AlertTriangle, info: Info }
-  const iconColors = { success: 'var(--online)', error: 'var(--danger)', warning: 'var(--warn)', info: 'var(--link)' }
+  const iconClass = { success: 'toast-ic-success', error: 'toast-ic-error', warning: 'toast-ic-warning', info: 'toast-ic-info' }
 
   return (
     <ToastContext.Provider value={{ toast }}>
@@ -54,7 +53,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           const Icon = icons[t.type]
           return (
             <div key={t.id} data-toast-id={t.id} className="toast fade-enter" role="alert">
-              <span className="ic" style={{ color: iconColors[t.type] }}><Icon width={15} height={15} /></span>
+              <span className={`ic ${iconClass[t.type]}`}><Icon width={15} height={15} /></span>
               <div>
                 <b>{t.type === 'error' ? ti('toast_error') : t.type === 'success' ? ti('toast_success') : ti('toast_notice')}</b>
                 <p>{t.message}</p>

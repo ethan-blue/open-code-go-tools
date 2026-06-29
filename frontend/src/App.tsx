@@ -149,13 +149,24 @@ function AppShell() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Escape: close dialog
       if (e.key === 'Escape') {
         setShowCloseDialog(false)
+        return
       }
+      // Ctrl/Cmd + K: toggle command palette
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setShowPalette(open => !open)
+        return
+      }
+      // Ctrl/Cmd + ,: open preferences
       if ((e.ctrlKey || e.metaKey) && e.key === ',') {
         e.preventDefault()
         setActiveView('preferences')
+        return
       }
+      // Ctrl/Cmd + 1-6: quick nav
       if (e.ctrlKey || e.metaKey) {
         const idx = parseInt(e.key) - 1
         const views: ViewId[] = ['dashboard', 'terminal', 'history', 'sessions', 'copilot', 'providers']
@@ -168,17 +179,6 @@ function AppShell() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [setActiveView])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
-        setShowPalette((open) => !open)
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
 
   const navGroups = [
     {

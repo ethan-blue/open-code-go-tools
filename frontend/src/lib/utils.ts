@@ -61,3 +61,42 @@ export function delay(ms: number): Promise<void> {
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
+
+/** Format milliseconds: 345 → "345ms" */
+export function fmtMs(n: number): string {
+  return Math.round(n) + 'ms'
+}
+
+/** Format uptime from total seconds: 90000 → "1d 1h" */
+export function fmtUptime(totalSeconds: number): string {
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return '-'
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
+
+/** Percentage delta between two numbers */
+export function pctDelta(cur: number, old: number): number {
+  return old > 0 ? ((cur - old) / old * 100) : 0
+}
+
+/** Format a percentage delta with sign */
+export function deltaStr(d: number | null, suffix = '%'): string {
+  return d === null ? '' : `${d >= 0 ? '+' : '-'} ${Math.abs(d).toFixed(1)}${suffix}`
+}
+
+/** Parse a duration string like "123ms" or "1.5s" into milliseconds */
+export function parseDurationMs(duration: string): number {
+  const value = duration.trim().toLowerCase()
+  if (value.endsWith('ms')) return parseFloat(value.slice(0, -2)) || 0
+  if (value.endsWith('s')) return (parseFloat(value.slice(0, -1)) || 0) * 1000
+  return parseFloat(value) || 0
+}
+
+/** Calculate error rate from totals */
+export function calcErrorRate(totalRequests: number, successCount: number): number {
+  return totalRequests > 0 ? ((totalRequests - successCount) / totalRequests * 100) : 0
+}

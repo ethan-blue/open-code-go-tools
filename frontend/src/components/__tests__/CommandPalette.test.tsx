@@ -48,7 +48,7 @@ describe('CommandPalette', () => {
     render(<CommandPalette {...defaultProps} />)
     expect(screen.getByText('cmd_export_traffic')).toBeInTheDocument()
     expect(screen.queryByText('cmd_restart_proxy')).not.toBeInTheDocument()
-    expect(screen.queryByText('cmd_toggle_theme')).not.toBeInTheDocument()
+    expect(screen.getByText('cmd_toggle_theme')).toBeInTheDocument()
   })
 
   it('routes settings command to a real view', () => {

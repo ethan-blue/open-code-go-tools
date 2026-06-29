@@ -4,7 +4,8 @@ import { EmptyState, Skeleton } from '@/components/ui'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { apiGet } from '@/lib/wails'
-import { fmtTokens, fmtCost, fmtNum } from '@/lib/utils'
+import { fmtTokens, fmtCost, fmtNum, parseDurationMs, pctDelta } from '@/lib/utils'
+import type { StatsSummary, TrendData, ModelsData, HistoryEntry } from '@/lib/types'
 
 const COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
 
@@ -14,67 +15,6 @@ const RANGES = [
   { v: '30d', days: 30 },
   { v: '90d', days: 90 },
 ] as const
-
-interface SummaryData {
-  summary: {
-    total_requests: number
-    success_count: number
-    success_rate: number
-    avg_latency_ms: number
-    total_tokens: number
-    total_input_tokens: number
-    total_output_tokens: number
-    total_cache_read_tokens: number
-    total_cache_create_tokens: number
-    estimated_cost: number
-    cache_hit_rate: number
-  }
-  by_client: { name: string; requests: number; pct: number }[]
-}
-
-interface TrendData {
-  daily: { date: string; total_tokens: number; input_tokens: number; output_tokens: number; requests: number }[]
-  granularity: string
-}
-
-interface ModelsData {
-  models: {
-    name: string
-    requests: number
-    total_tokens: number
-    input_tokens: number
-    output_tokens: number
-    cache_tokens: number
-    cache_hit_rate: number
-    cost_usd: number
-    pct: number
-  }[]
-}
-
-interface HistoryEntry {
-  id: string
-  time: string
-  method: string
-  path: string
-  status: number
-  duration: string
-  model: string
-  route: string
-  client?: string
-  input_tokens?: number
-  output_tokens?: number
-  total_tokens?: number
-  cache_read_tokens?: number
-  cache_creation_tokens?: number
-  error?: string
-}
-
-function parseDurationMs(duration: string): number {
-  const value = duration.trim().toLowerCase()
-  if (value.endsWith('ms')) return parseFloat(value.slice(0, -2)) || 0
-  if (value.endsWith('s')) return (parseFloat(value.slice(0, -1)) || 0) * 1000
-  return parseFloat(value) || 0
-}
 
 
 function AreaChart({ data }: { data: TrendData['daily'] }) {
@@ -100,8 +40,10 @@ function AreaChart({ data }: { data: TrendData['daily'] }) {
     return { line, area }
   }
 
-  const inputPath = buildPath('input_tokens')
-  const outputPath = buildPath('output_tokens')
+  const { inputPath, outputPath } = useMemo(() => ({
+    inputPath: buildPath('input_tokens'),
+    outputPath: buildPath('output_tokens'),
+  }), [data, maxVal, xStep])
 
   const gridY = [0, 0.25, 0.5, 0.75, 1].map(f => PT + ch * (1 - f))
 
@@ -228,7 +170,7 @@ export default function TrafficMonitor() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [range, setRange] = useState('7d')
-  const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [summary, setSummary] = useState<StatsSummary | null>(null)
   const [trend, setTrend] = useState<TrendData | null>(null)
   const [models, setModels] = useState<ModelsData | null>(null)
   const [reqPage, setReqPage] = useState(0)
@@ -241,17 +183,14 @@ export default function TrafficMonitor() {
     setLoading(true)
     const days = RANGES.find((r) => r.v === range)?.days ?? 7
     try {
-      const [s, tr, m] = await Promise.all([
-        apiGet<SummaryData>(`/ocgt/api/stats/summary?days=${days}`),
+      const [s, tr, m, hist] = await Promise.all([
+        apiGet<StatsSummary>(`/ocgt/api/stats/summary?days=${days}`),
         apiGet<TrendData>(`/ocgt/api/stats/trend?days=${days}`),
         apiGet<ModelsData>(`/ocgt/api/stats/models?days=${days}`),
+        apiGet<HistoryEntry[]>(`/ocgt/api/history?days=${days}`).catch(() => []),
       ])
       setSummary(s); setTrend(tr); setModels(m); setLoadError(false)
-      // Fetch recent request history
-      try {
-        const hist = await apiGet<HistoryEntry[]>(`/ocgt/api/history?days=${days}`)
-        setRecentRequests(Array.isArray(hist) ? hist.slice(0, 50) : [])
-      } catch { setRecentRequests([]) }
+      setRecentRequests(Array.isArray(hist) ? hist.slice(0, 50) : [])
     } catch {
       toast(t('toast_traffic_load_failed'), 'error')
       setLoadError(true)
@@ -264,7 +203,6 @@ export default function TrafficMonitor() {
   // Calculate trend delta from daily data
   const today = trend?.daily?.[trend.daily.length - 1]
   const prev = trend?.daily?.[trend.daily.length - 2]
-  const pctDelta = (cur: number, old: number) => old > 0 ? ((cur - old) / old * 100) : 0
   const tokDelta = today && prev ? pctDelta(today.total_tokens, prev.total_tokens) : null
 
   const statCards = [
@@ -501,54 +439,37 @@ export default function TrafficMonitor() {
                     </thead>
                     <tbody>
                       {pageRows.map((r, i) => (
-                        <tr key={i}>
+                        <tr key={r.id || i}>
                           <td className="mono tiny">{r.time}</td>
-                          <td className="mono tiny">{r.id}</td>
-                          <td className="mono tiny">{r.client}</td>
+                          <td className="mono tiny" title={r.id}>{r.id.slice(0, 8)}</td>
+                          <td className="tiny">{r.client}</td>
                           <td className="mono tiny">{r.model}</td>
                           <td className="num mono tiny">{fmtTokens(r.inp)}</td>
                           <td className="num mono tiny">{fmtTokens(r.out)}</td>
-                          <td className="num mono tiny">{Math.round(r.latency)}ms</td>
+                          <td className="num mono tiny">{r.latency ? Math.round(r.latency) + 'ms' : '-'}</td>
                           <td>
-                            <span className={`tm-status-badge ${r.ok ? '' : 'err'}`}>
-                              {r.status || '-'}
-                            </span>
+                            <span className={r.ok ? 'tag green' : 'tag red'} style={{ fontSize: 10 }}>{r.status}</span>
+                            {r.error && <span className="tm-status-badge" title={r.error}>ERR</span>}
                           </td>
                           <td>
-                            <button className="btn btn-sm btn-ghost tm-btn-nav" onClick={() => {
-                              window.dispatchEvent(new CustomEvent('nav-to-detail', { detail: {
-                                id: r.id, time: r.rawTime, model: r.model, status: r.status,
-                                input_tokens: r.inp, output_tokens: r.out,
-                                cache_read_tokens: r.cacheRead, cache_creation_tokens: r.cacheCreate,
-                                total_tokens: r.inp + r.out, duration: r.latency,
-                                client: r.client, route: r.route, error: r.error,
-                              }}))
-                            }}>Open</button>
+                            <button className="btn btn-sm btn-ghost tm-btn-nav" onClick={() => window.dispatchEvent(new CustomEvent('nav-to', { detail: `traffic-detail:${r.id}` }))}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                            </button>
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {/* pagination */}
-                  <div className="row between tm-pagination">
-                    <span>{reqPage * PAGE_SIZE + 1}-{Math.min((reqPage + 1) * PAGE_SIZE, reqTotal)} / {reqTotal}</span>
-                    <div className="row gap-2">
-                       <button aria-label={t('aria_prev_page')} className="btn btn-sm btn-ghost" disabled={reqPage === 0} onClick={() => setReqPage(p => p - 1)}>
-                        <ChevronLeft size={14} /> {t('td_prev')}
-                      </button>
-                       <button aria-label={t('aria_next_page')} className="btn btn-sm btn-ghost" disabled={reqPage >= reqPages - 1} onClick={() => setReqPage(p => p + 1)}>
-                        {t('td_next')} <ChevronRight size={14} />
-                      </button>
-                    </div>
+                  <div className="tm-pagination">
+                    <>Page {reqPage + 1} / {reqPages}</>
+                    <button className="btn btn-sm btn-ghost tm-btn-nav" disabled={reqPage === 0} onClick={() => setReqPage(p => p - 1)}><ChevronLeft width={14} height={14} /></button>
+                    <button className="btn btn-sm btn-ghost tm-btn-nav" disabled={reqPage >= reqPages - 1} onClick={() => setReqPage(p => p + 1)}><ChevronRight width={14} height={14} /></button>
                   </div>
                 </>
               ) : (
-                <EmptyState
-                  icon={<Activity width={24} height={24} />}
-                  title={t('td_no_data')}
-                  description={t('tm_no_data_desc')}
-                  action={<button className="btn btn-sm" onClick={load}>{t('retry')}</button>}
-                />
+                <div className="tm-no-data">
+                  <span className="muted tiny">{t('td_no_data') || 'No recent requests'}</span>
+                </div>
               )}
             </div>
           </div>
@@ -557,9 +478,3 @@ export default function TrafficMonitor() {
     </div>
   )
 }
-
-
-
-
-
-

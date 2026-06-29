@@ -17,17 +17,29 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   };
 
   const navigateItems = [
-    { id: 'dashboard', label: t('cmd_goto_dashboard'), icon: '->', shortcut: 'Ctrl+1', action: () => navTo('dashboard') },
-    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '->', shortcut: 'Ctrl+2', action: () => navTo('terminal') },
-    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '->', shortcut: 'Ctrl+3', action: () => navTo('history') },
-    { id: 'sessions', label: t('cmd_goto_sessions'), icon: '->', shortcut: 'Ctrl+4', action: () => navTo('sessions') },
-    { id: 'copilot', label: t('cmd_copilot'), icon: '->', shortcut: 'Ctrl+5', action: () => navTo('copilot') },
-    { id: 'providers', label: t('cmd_goto_providers'), icon: '->', shortcut: 'Ctrl+6', action: () => navTo('providers') },
-    { id: 'settings', label: t('cmd_open_settings'), icon: '->', shortcut: 'Ctrl+,', action: () => navTo('preferences') },
+    { id: 'dashboard', label: t('cmd_goto_dashboard'), icon: '📊', shortcut: 'Ctrl+1', action: () => navTo('dashboard') },
+    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '🔌', shortcut: 'Ctrl+2', action: () => navTo('terminal') },
+    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '📈', shortcut: 'Ctrl+3', action: () => navTo('history') },
+    { id: 'sessions', label: t('cmd_goto_sessions'), icon: '💬', shortcut: 'Ctrl+4', action: () => navTo('sessions') },
+    { id: 'copilot', label: t('cmd_copilot'), icon: '🤖', shortcut: 'Ctrl+5', action: () => navTo('copilot') },
+    { id: 'providers', label: t('cmd_goto_providers'), icon: '🖥', shortcut: 'Ctrl+6', action: () => navTo('providers') },
+    { id: 'model-mapping', label: t('sett_s02_title') || 'Model Mapping', icon: '🗺', action: () => navTo('model-mapping') },
+    { id: 'runtime-rules', label: t('sett_section_security') || 'Security', icon: '🛡', action: () => navTo('security') },
+    { id: 'hub', label: t('cmd_goto_hub') || 'Multi-Device Sync', icon: '☁', action: () => navTo('hub') },
+    { id: 'settings', label: t('cmd_open_settings'), icon: '⚙', shortcut: 'Ctrl+,', action: () => navTo('preferences') },
+    { id: 'logs', label: t('sett_log_title') || 'Logs', icon: '📋', action: () => navTo('logs') },
+    { id: 'backups', label: t('sett_section_backups') || 'Backups', icon: '💾', action: () => navTo('backups') },
+    { id: 'about', label: t('sett_section_about') || 'About', icon: 'ℹ', action: () => navTo('about') },
   ];
 
   const actionItems = [
-    { id: 'export', label: t('cmd_export_traffic'), icon: 'dl', shortcut: 'Ctrl+E', action: () => navTo('history') },
+    { id: 'export', label: t('cmd_export_traffic'), icon: '⬇', shortcut: 'Ctrl+E', action: () => navTo('history') },
+    { id: 'theme', label: t('cmd_toggle_theme') || 'Toggle Theme', icon: '🎨', action: () => {
+      const current = document.documentElement.getAttribute('data-theme')
+      const next = current === 'dark' ? 'light' : 'dark'
+      document.documentElement.setAttribute('data-theme', next)
+      localStorage.setItem('theme', next)
+    }},
   ];
 
   const allItems = [...navigateItems, ...actionItems].filter(item =>

@@ -4,7 +4,7 @@
 import { type ButtonHTMLAttributes, type ReactNode, forwardRef } from 'react'
 import { cn } from '@/lib/utils'
 
-// ── Button ──
+// — Button —
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
@@ -34,7 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = 'Button'
 
-// ── Card ──
+// — Card —
 export function Card({ className, children, ...props }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div {...props} className={cn('card', className)}>
@@ -43,7 +43,7 @@ export function Card({ className, children, ...props }: { className?: string; ch
   )
 }
 
-// ── Badge ──
+// — Badge —
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'accent'
 
 export function Badge({
@@ -63,19 +63,15 @@ export function Badge({
   )
 }
 
-// ── Input ──
+// — Input —
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      className={cn('input', className)}
-      {...props}
-    />
+    <input ref={ref} className={cn('input', className)} {...props} />
   ),
 )
 Input.displayName = 'Input'
 
-// ── Select ──
+// — Select —
 export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
   ({ className, children, ...props }, ref) => (
     <select ref={ref} className={cn('select', className)} {...props}>
@@ -85,7 +81,7 @@ export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<H
 )
 Select.displayName = 'Select'
 
-// ── Toggle Switch ──
+// — Toggle Switch —
 export function Toggle({
   checked,
   onChange,
@@ -96,7 +92,7 @@ export function Toggle({
   label?: string
 }) {
   return (
-    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+    <label className="toggle-wrap">
       <button
         type="button"
         role="switch"
@@ -104,27 +100,24 @@ export function Toggle({
         onClick={() => onChange(!checked)}
         className={cn('toggle', checked && 'on')}
       />
-      {label && <span style={{ fontSize: 12, color: 'var(--ink-700)' }}>{label}</span>}
+      {label && <span className="toggle-label">{label}</span>}
     </label>
   )
 }
 
-// ── Spinner ──
+// — Spinner —
 export function Spinner({ size = 16 }: { size?: number }) {
   return (
     <span
       role="status"
       aria-label="Loading"
-      style={{
-        display: 'inline-block', width: size, height: size,
-        border: '2px solid var(--line)', borderTopColor: 'var(--ink-950)',
-        borderRadius: '50%', animation: 'spin 0.8s linear infinite',
-      }}
+      className="spinner-wrap"
+      style={{ width: size, height: size }}
     />
   )
 }
 
-// ── Empty State ──
+// — Empty State —
 export function EmptyState({
   icon,
   title,
@@ -137,23 +130,23 @@ export function EmptyState({
   action?: ReactNode
 }) {
   return (
-    <div role="status" aria-label={title} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '64px 0', textAlign: 'center' }}>
-      {icon && <div style={{ color: 'var(--ink-400)', opacity: 0.3 }}>{icon}</div>}
+    <div role="status" aria-label={title} className="empty-state">
+      {icon && <div className="empty-state-icon">{icon}</div>}
       <div>
-        <p style={{ color: 'var(--ink-700)', fontSize: 13, fontWeight: 500 }}>{title}</p>
-        {description && <p style={{ color: 'var(--ink-500)', fontSize: 11, marginTop: 4 }}>{description}</p>}
+        <p className="empty-state-title">{title}</p>
+        {description && <p className="empty-state-desc">{description}</p>}
       </div>
       {action}
     </div>
   )
 }
 
-// ── Status Dot ──
+// — Status Dot —
 export function StatusDot({ status }: { status: 'online' | 'offline' | 'connecting' }) {
   return <span className={cn('dot', status === 'online' ? 'online' : status === 'connecting' ? 'warn' : 'off')} />
 }
 
-// ── Skeleton ──
+// — Skeleton —
 export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
   return <div className={cn('skel', className)} style={style} aria-hidden="true" />
 }

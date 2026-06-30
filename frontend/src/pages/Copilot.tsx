@@ -11,6 +11,8 @@ interface Message {
   content: string
   data?: Record<string, unknown>
   loading?: boolean
+  /** Original user query that produced an assistant message (for retry). */
+  query?: string
 }
 
 interface Insight {
@@ -106,7 +108,7 @@ export default function Copilot() {
     if (!query.trim() || loading) return
 
     if (!retryQuery) {
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: query }])
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: query, query }])
       setInput('')
     }
 
@@ -224,7 +226,17 @@ export default function Copilot() {
                   )}
                   {msg.role === 'assistant' && msg.content === t('copilot_error') && (
                     <div className="copilot-msg-retry">
-                      <button className="btn btn-sm" onClick={() => handleAsk(messages[messages.findIndex((m) => m.id === msg.id) - 1]?.content)}>
+                      <button className="btn btn-sm" onClick={() => {
+                        // Find the user message that produced this failed reply by
+                        // scanning backwards for the nearest message carrying a query.
+                        const idx = messages.findIndex((m) => m.id === msg.id)
+                        for (let i = idx - 1; i >= 0; i--) {
+                          if (messages[i].role === 'user' && messages[i].query) {
+                            handleAsk(messages[i].query)
+                            return
+                          }
+                        }
+                      }}>
                         {t('copilot_retry') || 'Retry'}
                       </button>
                     </div>

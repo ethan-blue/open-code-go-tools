@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { apiGet, isWails, wails } from '@/lib/wails'
 import { fmtNum, fmtTokens, fmtCost, fmtMs, fmtUptime, pctDelta, deltaStr } from '@/lib/utils'
@@ -67,21 +67,29 @@ export default function Dashboard() {
     }
   }
 
+  // Keep latest loader functions in refs so the polling intervals below always
+  // invoke the current closure (avoids stale-capture bugs and avoids re-arming
+  // the intervals on every render).
+  const loadStatusRef = useRef(loadStatus)
+  const loadStatsRef = useRef(loadStats)
+  loadStatusRef.current = loadStatus
+  loadStatsRef.current = loadStats
+
   useEffect(() => {
-    loadStatus()
-    loadStats()
+    loadStatusRef.current()
+    loadStatsRef.current()
     refreshQuota()
   }, [])
 
   useEffect(() => {
     let id: ReturnType<typeof setInterval>
     const start = () => {
-      id = setInterval(() => { loadStatus() }, 30000)
+      id = setInterval(() => { loadStatusRef.current() }, 30000)
     }
     const stop = () => { clearInterval(id) }
     const onVis = () => {
       if (document.visibilityState === 'visible') {
-        loadStatus()
+        loadStatusRef.current()
         start()
       } else {
         stop()
@@ -93,7 +101,7 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    const id = setInterval(() => { loadStats() }, 60000)
+    const id = setInterval(() => { loadStatsRef.current() }, 60000)
     return () => clearInterval(id)
   }, [])
 

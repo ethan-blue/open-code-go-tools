@@ -107,7 +107,7 @@ export default function QuickConnect() {
   }
 
   const handleRemove = async (type: string) => {
-    if (!confirm(t('prov_confirm_delete'))) return
+    if (!confirm(t('qc_remove_confirm'))) return
     try {
       let result: string
       switch (type) {

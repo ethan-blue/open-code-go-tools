@@ -80,4 +80,33 @@ describe('Providers', () => {
     expect(await screen.findByLabelText('Default Model')).toHaveValue('claude-3-5-sonnet')
     expect(screen.getByText('Env / Runtime')).toBeInTheDocument()
   })
+
+  it('preserves a valid protocol when switching line, resets when invalid', async () => {
+    render(<Providers />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
+
+    // The seeded provider uses openai-chat, which is valid for both lines.
+    const protocolSelect = await screen.findByLabelText('Protocol')
+    expect(protocolSelect).toHaveValue('openai-chat')
+
+    // The page has two "Claude"/"Codex" segmented controls: the line filter at
+    // the top and the in-editor line switch. The editor switch is the second
+    // matching button for each name.
+    const codexButtons = () => screen.getAllByRole('button', { name: 'Codex' })
+    const claudeButtons = () => screen.getAllByRole('button', { name: 'Claude' })
+
+    // Switch line Claude -> Codex in the editor: openai-chat is valid for codex.
+    fireEvent.click(codexButtons()[1])
+    expect(screen.getByLabelText('Protocol')).toHaveValue('openai-chat')
+
+    // anthropic is only valid for claude. Pick it on Claude, then switch to
+    // Codex: it must reset to the codex default (openai-responses).
+    fireEvent.click(claudeButtons()[1])
+    fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: 'anthropic' } })
+    expect(screen.getByLabelText('Protocol')).toHaveValue('anthropic')
+
+    fireEvent.click(codexButtons()[1])
+    expect(screen.getByLabelText('Protocol')).toHaveValue('openai-responses')
+  })
 })

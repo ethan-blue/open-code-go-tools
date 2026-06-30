@@ -241,7 +241,7 @@ const zh = {
   // QuickConnect page
   qc_hero: '一键连接你的', qc_hero_em: '客户端', qc_lede: '所有支持的工具都可以从这里安装、暂停或解绑。注册表由网关分发 — 新工具无需更新应用即可出现。',
   qc_filter_all: '全部', qc_filter_cli: 'CLI', qc_filter_editors: '编辑器', qc_filter_desktop: '桌面',
-  qc_install_ok: '安装成功', qc_install_fail: '安装失败', qc_remove_ok: '移除成功', qc_remove_fail: '移除失败',
+  qc_install_ok: '安装成功', qc_install_fail: '安装失败', qc_remove_ok: '移除成功', qc_remove_fail: '移除失败', qc_remove_confirm: '确定移除此客户端集成？',
   qc_installed: '已安装', qc_not_installed: '未安装', qc_new: '新',
   qc_open_config: '打开配置', qc_edit_config: '编辑配置', qc_docs: '文档', qc_install: '安装', qc_remove: '移除',
   qc_reqs_24h: '次请求 · 24h',
@@ -700,7 +700,7 @@ const en: Dict = {
   // QuickConnect page
   qc_hero: 'Wire up your', qc_hero_em: 'clients', qc_lede: 'Every supported tool can be installed, paused, or unlinked from here. Registry is delivered by the gateway — new tools appear without an app update.',
   qc_filter_all: 'All', qc_filter_cli: 'CLI', qc_filter_editors: 'Editors', qc_filter_desktop: 'Desktop',
-  qc_install_ok: 'Installation successful', qc_install_fail: 'Installation failed', qc_remove_ok: 'Removal successful', qc_remove_fail: 'Removal failed',
+  qc_install_ok: 'Installation successful', qc_install_fail: 'Installation failed', qc_remove_ok: 'Removal successful', qc_remove_fail: 'Removal failed', qc_remove_confirm: 'Remove this client integration?',
   qc_installed: 'installed', qc_not_installed: 'not installed', qc_new: 'new',
   qc_open_config: 'Open config', qc_edit_config: 'Edit config', qc_docs: 'Docs', qc_install: 'Install', qc_remove: 'Remove',
   qc_reqs_24h: 'req · 24h',

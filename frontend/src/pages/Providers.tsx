@@ -169,8 +169,16 @@ function ProviderEditor({
           <div className="field">
             <label className="prov-form-label">Line</label>
             <div className="segmented">
-              <button className={form.line === 'claude' ? 'on' : ''} type="button" onClick={() => setForm(f => ({ ...f, line: 'claude', protocol: defaultProtocol('claude') }))}>Claude</button>
-              <button className={form.line === 'codex' ? 'on' : ''} type="button" onClick={() => setForm(f => ({ ...f, line: 'codex', protocol: defaultProtocol('codex') }))}>Codex</button>
+              <button className={form.line === 'claude' ? 'on' : ''} type="button" onClick={() => setForm(f => {
+                // Only reset protocol if the current one isn't valid for the new
+                // line — preserves a user's manual protocol choice when it carries over.
+                const validForClaude = PROTOCOL_OPTIONS.claude.some(o => o.value === f.protocol)
+                return { ...f, line: 'claude', protocol: validForClaude ? f.protocol : defaultProtocol('claude') }
+              })}>Claude</button>
+              <button className={form.line === 'codex' ? 'on' : ''} type="button" onClick={() => setForm(f => {
+                const validForCodex = PROTOCOL_OPTIONS.codex.some(o => o.value === f.protocol)
+                return { ...f, line: 'codex', protocol: validForCodex ? f.protocol : defaultProtocol('codex') }
+              })}>Codex</button>
             </div>
           </div>
           <div className="field">

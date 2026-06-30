@@ -23,6 +23,7 @@ type Provider struct {
 	Models                []string          `json:"models,omitempty"`
 	DefaultModel          string            `json:"defaultModel,omitempty"`
 	MessageModels         []string          `json:"messageModels,omitempty"`
+	FallbackChain         []string          `json:"fallbackChain,omitempty"` // Models to retry on failure, in order
 	Priority              int               `json:"priority"`
 	Enabled               bool              `json:"enabled"`
 	Health                string            `json:"health"` // "healthy", "degraded", "down", "unknown"

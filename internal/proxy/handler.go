@@ -53,8 +53,6 @@ func (s *Server) Handler() http.Handler {
 
 	// Web Dashboard API
 	mux.HandleFunc("/ocgt/api/status", s.apiStatus)
-	mux.HandleFunc("/ocgt/api/profiles", s.apiProfiles)
-	mux.HandleFunc("/ocgt/api/profiles/active", s.apiSetActiveProfile)
 	mux.HandleFunc("/ocgt/api/key", s.apiSetKey)
 	mux.HandleFunc("/ocgt/api/history", s.apiHistory)
 	mux.HandleFunc("/ocgt/api/syslog", s.apiSyslog)

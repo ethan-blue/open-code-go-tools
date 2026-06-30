@@ -5,7 +5,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
@@ -30,72 +29,51 @@ func (s *Server) seedDefaultProviders() {
 	if s.providerStore == nil {
 		return
 	}
-	profile, name, err := s.config.Profile("")
-	if err != nil {
-		return
-	}
-	modelSet := map[string]bool{}
-	for _, model := range profile.ModelAliases {
-		if model != "" {
-			modelSet[model] = true
-		}
-	}
-	for _, model := range append(profile.MessageModels, profile.FallbackChain...) {
-		if model != "" {
-			modelSet[model] = true
-		}
-	}
-	if profile.DefaultModel != "" {
-		modelSet[profile.DefaultModel] = true
-	}
-	models := make([]string, 0, len(modelSet))
-	for model := range modelSet {
-		models = append(models, model)
-	}
-	sort.Strings(models)
-	claudeEnv := config.DefaultClaudeEnv(profile)
+	// Seed is decoupled from the (now optional) profile map. Take a read-locked
+	// snapshot of the global config so we don't race config_watcher hot reloads.
+	s.configMu.RLock()
+	upstream := s.config.Upstream
+	timeout := s.config.RequestTimeoutSeconds
+	thinking := s.config.MaxThinkingBudgetTokens
+	var claudeEnv map[string]string
 	if len(s.config.ClaudeEnv) > 0 {
 		claudeEnv = copyStringMap(s.config.ClaudeEnv)
+	} else {
+		claudeEnv = config.DefaultClaudeEnv(config.Profile{})
 	}
+	s.configMu.RUnlock()
 
+	// Minimal, line-appropriate defaults. Users configure real credentials via
+	// the Providers UI; the seed only guarantees both lines exist on cold start.
 	defaults := []providers.Provider{
 		{
-			ID:                    name + "-claude",
+			ID:                    "default-claude",
 			Name:                  "OpenCode Go",
-			BaseURL:               s.config.Upstream,
-			APIKey:                profile.APIKey,
-			Models:                models,
-			DefaultModel:          profile.DefaultModel,
-			MessageModels:         append([]string(nil), profile.MessageModels...),
+			BaseURL:               upstream,
+			Models:                []string{},
 			Priority:              0,
 			Enabled:               true,
 			Health:                "unknown",
 			Line:                  "claude",
 			Protocol:              "openai-chat",
-			RequestTimeoutSeconds: s.config.RequestTimeoutSeconds,
-			ThinkingBudgetTokens:  s.config.MaxThinkingBudgetTokens,
-			AuthMode:              profile.AuthMode,
-			ModelAliases:          copyStringMap(profile.ModelAliases),
-			Headers:               copyStringMap(profile.Headers),
+			RequestTimeoutSeconds: timeout,
+			ThinkingBudgetTokens:  thinking,
+			AuthMode:              config.DefaultAuthMode,
 			Env:                   claudeEnv,
 		},
 		{
-			ID:                    name + "-codex",
+			ID:                    "default-codex",
 			Name:                  "OpenCode Go",
-			BaseURL:               s.config.Upstream,
-			APIKey:                profile.APIKey,
-			Models:                models,
-			DefaultModel:          profile.DefaultModel,
+			BaseURL:               upstream,
+			Models:                []string{},
 			Priority:              0,
 			Enabled:               true,
 			Health:                "unknown",
 			Line:                  "codex",
 			Protocol:              "openai-responses",
-			RequestTimeoutSeconds: s.config.RequestTimeoutSeconds,
-			ThinkingBudgetTokens:  s.config.MaxThinkingBudgetTokens,
-			AuthMode:              profile.AuthMode,
-			ModelAliases:          copyStringMap(profile.ModelAliases),
-			Headers:               copyStringMap(profile.Headers),
+			RequestTimeoutSeconds: timeout,
+			ThinkingBudgetTokens:  thinking,
+			AuthMode:              config.DefaultAuthMode,
 		},
 	}
 
@@ -212,7 +190,11 @@ func (s *Server) apiProvidersDelete(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// apiProvidersToggle handles PATCH /ocgt/api/providers/{id}/toggle
+// apiProvidersToggle handles PATCH /ocgt/api/providers/{id}/toggle.
+// Despite the name, this endpoint only ACTIVATES a provider (and disables its
+// siblings on the same line) — it cannot turn a provider off. The route name is
+// retained for client compatibility; activate-via-toggle semantics are the
+// intended behavior for the single-active-per-line provider model.
 func (s *Server) apiProvidersToggle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPatch {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -250,7 +232,7 @@ func (s *Server) apiProvidersSort(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []string `json:"ids"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxProviderBodySize)).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}

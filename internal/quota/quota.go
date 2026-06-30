@@ -15,17 +15,17 @@ import (
 	"time"
 )
 
-// openCodeGoBaseURL and serverURL are package-level vars (not consts) so that
-// tests can redirect them to a local httptest server without touching the network.
-var (
-	openCodeGoBaseURL = "https://opencode.ai"
-	serverURL         = "https://opencode.ai/_server"
-)
-
-const (
-	// From codexbar 0.32.4 — TanStack server function ID for workspace resolution.
-	// Can break when opencode.ai redeploys.
-	workspacesServerID = "def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f"
+// openCodeGoBaseURL and serverURL are package-level vars (not consts) so that
+// tests can redirect them to a local httptest server without touching the network.
+var (
+	openCodeGoBaseURL = "https://opencode.ai"
+	serverURL         = "https://opencode.ai/_server"
+)
+
+const (
+	// From codexbar 0.32.4 — TanStack server function ID for workspace resolution.
+	// Can break when opencode.ai redeploys.
+	workspacesServerID = "def39973159c7f0483d8793a822b8dbb10d067e12c65455fcb4608459ba0234f"
 )
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
@@ -92,7 +92,7 @@ type serverRequest struct {
 func FetchOpenCodeGoQuota(cookie, workspaceID string) (*QuotaData, error) {
 	cookie = sanitizeCookie(cookie)
 	if cookie == "" {
-		return nil, fmt.Errorf("OpenCode Go auth cookie not configured (see quota_cookie in profile config)")
+		return nil, fmt.Errorf("OpenCode Go auth cookie not configured (see quota_cookie in config.json or OPENCODE_GO_AUTH_COOKIE env var)")
 	}
 
 	// Primary: auto-resolve workspace ID then scrape page

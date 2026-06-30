@@ -45,19 +45,15 @@ func TestExampleIncludesAllDocumentedGoAliases(t *testing.T) {
 	}
 }
 
-func TestLoadUsesSplitProfilesWhenConfigHasNone(t *testing.T) {
+func TestLoadWithNoProfilesIsValid(t *testing.T) {
+	// Since v4 an empty profile map is valid: providers + account-level Config
+	// carry the runtime configuration. config.json with profiles:null must load.
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir)
 
 	configDir := filepath.Join(dir, ".ocgt")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	profiles := DefaultProfiles()
-	profiles.ActiveProfile = "mine"
-	profiles.Profiles["mine"] = Profile{APIKey: "sk-test", DefaultModel: "deepseek-v4-pro"}
-	if err := SaveProfiles(profiles, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -69,10 +65,10 @@ func TestLoadUsesSplitProfilesWhenConfigHasNone(t *testing.T) {
 
 	cfg, err := Load(path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("expected load to succeed with empty profiles, got: %v", err)
 	}
-	if cfg.ActiveProfile != "mine" || cfg.Profiles["mine"].DefaultModel != "deepseek-v4-pro" {
-		t.Fatalf("split profiles were not loaded: %#v", cfg)
+	if cfg.Listen != "127.0.0.1:9999" {
+		t.Fatalf("expected listen 127.0.0.1:9999, got %q", cfg.Listen)
 	}
 }
 
@@ -131,10 +127,17 @@ func TestWarnIfNoAPIKeyPresent(t *testing.T) {
 	}
 }
 
-func TestValidateEmptyProfiles(t *testing.T) {
-	cfg := Config{Listen: "127.0.0.1:8787", Upstream: "https://opencode.ai/zen/go"}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for empty profiles")
+func TestValidateEmptyProfilesAllowed(t *testing.T) {
+	// v4: an empty profile map is valid (providers carry runtime config).
+	cfg := Config{
+		Listen:                "127.0.0.1:8787",
+		Upstream:              "https://opencode.ai/zen/go",
+		RequestTimeoutSeconds: 300,
+		RateLimitPerSecond:    100,
+		RateLimitBurst:        200,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected empty profiles to be valid, got: %v", err)
 	}
 }
 

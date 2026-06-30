@@ -118,8 +118,6 @@ func runCLI(args []string) error {
 		return cmdInit(args[1:])
 	case "serve":
 		return cmdServe(args[1:])
-	case "profiles":
-		return cmdProfiles(args[1:])
 	case "models":
 		return cmdModels(args[1:])
 	case "claude-env":
@@ -165,7 +163,6 @@ func cmdInit(args []string) error {
 func cmdServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
-	profileName := fs.String("profile", "", "profile name")
 	listen := fs.String("listen", "", "listen address")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -173,13 +170,6 @@ func cmdServe(args []string) error {
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		return err
-	}
-	if *profileName != "" {
-		cfg.ActiveProfile = *profileName
-	} else if envProfile := strings.TrimSpace(os.Getenv("OCGT_PROFILE")); envProfile != "" {
-		if _, ok := cfg.Profiles[envProfile]; ok {
-			cfg.ActiveProfile = envProfile
-		}
 	}
 	if *listen != "" {
 		cfg.Listen = *listen
@@ -209,44 +199,14 @@ func cmdServe(args []string) error {
 	return srv.ListenAndServe(ctx)
 }
 
-func cmdProfiles(args []string) error {
-	fs := flag.NewFlagSet("profiles", flag.ExitOnError)
-	configPath := fs.String("config", "", "config path")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	cfg, err := loadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-	names := make([]string, 0, len(cfg.Profiles))
-	for name := range cfg.Profiles {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		marker := " "
-		if name == cfg.ActiveProfile {
-			marker = "*"
-		}
-		p := cfg.Profiles[name]
-		fmt.Printf("%s %s default_model=%s api_key_env=%s\n", marker, name, p.DefaultModel, p.APIKeyEnv)
-	}
-	return nil
-}
-
 func cmdModels(args []string) error {
 	fs := flag.NewFlagSet("models", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
-	profileName := fs.String("profile", "", "profile name")
 	remote := fs.Bool("remote", false, "query upstream /v1/models")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	cfg, profile, _, err := selectedProfile(*configPath, *profileName)
-	if err != nil {
-		return err
-	}
+	cfg, profile := resolveProfile(*configPath)
 	if *remote {
 		data, err := fetchRemoteModels(context.Background(), cfg.Upstream, profile)
 		if err != nil {
@@ -265,16 +225,12 @@ func cmdModels(args []string) error {
 func cmdClaudeEnv(args []string) error {
 	fs := flag.NewFlagSet("claude-env", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
-	profileName := fs.String("profile", "", "profile name")
 	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
 	shell := fs.String("shell", "powershell", "powershell, bash, or cmd")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, _, name, err := selectedProfile(*configPath, *profileName)
-	if err != nil {
-		return err
-	}
+	_, name := resolveProfileName(*configPath)
 	env := map[string]string{
 		"ANTHROPIC_BASE_URL":       *baseURL,
 		"ANTHROPIC_API_KEY":        "ocgt-local-proxy",
@@ -288,17 +244,13 @@ func cmdClaudeEnv(args []string) error {
 func cmdClaudeDesktopEnv(args []string) error {
 	fs := flag.NewFlagSet("claude-desktop-env", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
-	profileName := fs.String("profile", "", "profile name")
 	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
 	apply := fs.Bool("apply", false, "write directly to ~/.claude/settings.json instead of printing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	_, _, name, err := selectedProfile(*configPath, *profileName)
-	if err != nil {
-		return err
-	}
+	_, name := resolveProfileName(*configPath)
 
 	envConfig := map[string]string{
 		"ANTHROPIC_BASE_URL":       *baseURL,
@@ -320,43 +272,28 @@ func cmdClaudeDesktopEnv(args []string) error {
 	buf.WriteString("\n  }\n}\n")
 
 	if *apply {
-
 		if err := syncClaudeSettings(envConfig); err != nil {
-
 			return fmt.Errorf("failed to apply Claude Code desktop settings: %w", err)
-
 		}
-
-		fmt.Println("鉁?Claude Code desktop settings written to ~/.claude/settings.json")
-
+		fmt.Println("✓ Claude Code desktop settings written to ~/.claude/settings.json")
 		fmt.Println("  Restart Claude Code desktop app for changes to take effect.")
-
 		return nil
-
 	}
 
 	fmt.Print(buf.String())
-
 	fmt.Println("# Paste the above JSON block into ~/.claude/settings.json under the \"env\" key.")
-
 	fmt.Println("# Or use --apply to write it automatically (merges with existing settings).")
-
 	return nil
-
 }
 
 func cmdCCSwitch(args []string) error {
 	fs := flag.NewFlagSet("ccswitch", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path")
-	profileName := fs.String("profile", "", "profile name")
 	baseURL := fs.String("base-url", "http://127.0.0.1:8787", "local proxy base URL")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, _, name, err := selectedProfile(*configPath, *profileName)
-	if err != nil {
-		return err
-	}
+	_, name := resolveProfileName(*configPath)
 	payload := map[string]any{
 		"name":    "ocgt-" + name,
 		"type":    "anthropic",
@@ -433,27 +370,41 @@ func cmdHub(args []string) error {
 	if err := srv.Start(); err != nil {
 		return err
 	}
-	log.Printf("[hub] 鐙珛 Hub 鐩戝惉浜?%s", srv.Addr())
+	log.Printf("[hub] standalone Hub listening on %s", srv.Addr())
 
 	// Wait for interrupt signal
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	<-ctx.Done()
 
-	log.Println("[hub] 姝ｅ湪鍏抽棴...")
+	log.Println("[hub] shutting down...")
 	return srv.Stop()
 }
 
-func selectedProfile(configPath, profileName string) (config.Config, config.Profile, string, error) {
+// resolveProfile loads the config and returns the active/default profile.
+// Since v4 the profile is a runtime container (no user-facing profile switching);
+// Profile("") returns a static default when none is configured.
+func resolveProfile(configPath string) (config.Config, config.Profile) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return config.Config{}, config.Profile{}, "", err
+		return config.Config{}, config.Profile{}
 	}
-	profile, name, err := cfg.Profile(profileName)
+	profile, _, _ := cfg.Profile("")
+	return cfg, profile
+}
+
+// resolveProfileName loads the config and returns (config, activeProfileName).
+// The name is still emitted in the X-Ocgt-Profile header for client compat.
+func resolveProfileName(configPath string) (config.Config, string) {
+	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return config.Config{}, config.Profile{}, "", err
+		return config.Config{}, "opencode-go"
 	}
-	return cfg, profile, name, nil
+	_, name, _ := cfg.Profile("")
+	if strings.TrimSpace(name) == "" {
+		name = "opencode-go"
+	}
+	return cfg, name
 }
 
 func loadConfig(path string) (config.Config, error) {
@@ -581,26 +532,22 @@ func printEnv(env map[string]string, shell string) {
 
 func usage() {
 	fmt.Print(`ocgt - official Claude API proxy for Claude Code and CC Switch
-	
+
 Commands:
   gui           run the graphical control panel (default when double-clicked)
   init          create ~/.ocgt/config.json
   serve         run the local proxy (CLI mode)
-  profiles      list configured profiles
   models        show local aliases or query official /v1/models with --remote
   claude-env           print environment variables for Claude Code CLI
-
   claude-desktop-env   print/apply ~/.claude/settings.json for Claude Code Desktop
-
   ccswitch             print a CC Switch-friendly provider JSON snippet
-
   hub                  start a standalone Hub server for cross-device sync
-
   key                  save or show OPENCODE_GO_API_KEY
   version       print version
 
 Typical flow:
-  鍙屽嚮杩愯鍙惎鍔ㄧ綉椤垫帶鍒堕潰鏉匡紝鎴栬€呬娇鐢?CLI锛?  ocgt init
+  Double-click to launch the web control panel, or use the CLI:
+  ocgt init
   ocgt serve
   ocgt claude-env
 `)

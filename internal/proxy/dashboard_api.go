@@ -131,67 +131,6 @@ func maskAPIKey(key string) string {
 	return key[:4] + "..." + key[len(key)-4:]
 }
 
-func (s *Server) apiProfiles(w http.ResponseWriter, r *http.Request) {
-	s.configMu.RLock()
-	defer s.configMu.RUnlock()
-
-	// Mask API keys before sending to frontend
-	masked := make(map[string]any, len(s.config.Profiles))
-	for name, p := range s.config.Profiles {
-		masked[name] = map[string]any{
-			"api_key_env":        p.APIKeyEnv,
-			"api_key":            maskAPIKey(p.APIKey),
-			"api_key_configured": p.APIKeyValue() != "",
-			"default_model":      p.DefaultModel,
-			"model_aliases":      p.ModelAliases,
-			"message_models":     p.MessageModels,
-			"fallback_chain":     p.FallbackChain,
-			"headers":            p.Headers,
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{
-		"active_profile": s.config.ActiveProfile,
-		"profiles":       masked,
-	})
-}
-
-func (s *Server) apiSetActiveProfile(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, errors.New("POST required"))
-		return
-	}
-	var req struct {
-		Profile string `json:"profile"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, MaxBodySize)).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	// Validate profile exists with read lock
-	s.configMu.RLock()
-	_, _, err := s.config.Profile(req.Profile)
-	s.configMu.RUnlock()
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-
-	// Update with write lock
-	s.configMu.Lock()
-	s.config.ActiveProfile = req.Profile
-	err = s.config.Save(s.configPath)
-	s.configMu.Unlock()
-
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("failed to save config: %w", err))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"status": "success", "active_profile": req.Profile})
-}
-
 func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, errors.New("POST required"))
@@ -224,10 +163,16 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 		profileName = s.config.ActiveProfile
 	}
 
-	p, ok := s.config.Profiles[profileName]
-	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("profile %q not found", profileName))
-		return
+	// Profile map is optional since v4. When present, mirror key/model/aliases
+	// into it for backward compatibility; when absent, just apply global fields.
+	var p config.Profile
+	if s.config.Profiles != nil {
+		var ok bool
+		p, ok = s.config.Profiles[profileName]
+		if !ok && profileName != "" {
+			// Tolerate a missing name rather than hard-failing the whole save.
+			p = config.Profile{}
+		}
 	}
 	if req.RequestTimeoutSeconds != 0 && (req.RequestTimeoutSeconds < 1 || req.RequestTimeoutSeconds > 3600) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("request_timeout_seconds must be between 1 and 3600, got %d", req.RequestTimeoutSeconds))
@@ -274,7 +219,9 @@ func (s *Server) apiSetKey(w http.ResponseWriter, r *http.Request) {
 			p.ModelAliases[k] = v
 		}
 	}
-	s.config.Profiles[profileName] = p
+	if s.config.Profiles != nil && profileName != "" {
+		s.config.Profiles[profileName] = p
+	}
 	if req.RequestTimeoutSeconds != 0 {
 		s.config.RequestTimeoutSeconds = req.RequestTimeoutSeconds
 		// Replace client to avoid racing with concurrent readers.
@@ -633,7 +580,8 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveQuotaCredentials resolves from profile config, falling back to env vars.
+// resolveQuotaCredentials resolves quota display credentials from env vars
+// first, then from the account-level top-level Config fields.
 func (s *Server) resolveQuotaCredentials() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
@@ -643,15 +591,11 @@ func (s *Server) resolveQuotaCredentials() (cookie, workspaceID string) {
 
 	s.configMu.RLock()
 	defer s.configMu.RUnlock()
-	profile, _, err := s.config.Profile("")
-	if err != nil {
-		return
+	if cookie == "" && s.config.QuotaCookie != "" {
+		cookie = s.config.QuotaCookie
 	}
-	if cookie == "" && profile.QuotaCookie != "" {
-		cookie = profile.QuotaCookie
-	}
-	if workspaceID == "" && profile.QuotaWorkspaceID != "" {
-		workspaceID = profile.QuotaWorkspaceID
+	if workspaceID == "" && s.config.QuotaWorkspaceID != "" {
+		workspaceID = s.config.QuotaWorkspaceID
 	}
 	return
 }

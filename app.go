@@ -372,13 +372,19 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 		return "load error: " + err.Error()
 	}
 
-	// 3. Find and update profile
+	// 3. Find and update profile (optional since v4 — providers carry credentials).
+	// When no profile map exists, the per-profile key/model fields are skipped
+	// and only the global fields below are applied.
+	var p config.Profile
+	profileResolved := false
 	if strings.TrimSpace(profileName) == "" {
 		profileName = cfg.ActiveProfile
 	}
-	p, ok := cfg.Profiles[profileName]
-	if !ok {
-		return "profile not found: " + profileName
+	if cfg.Profiles != nil && profileName != "" {
+		if existing, ok := cfg.Profiles[profileName]; ok {
+			p = existing
+			profileResolved = true
+		}
 	}
 
 	if apiKey != "" && !isMaskedAPIKey(apiKey) {
@@ -399,7 +405,9 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 	if opusAlias != "" {
 		p.ModelAliases["opus"] = opusAlias
 	}
-	cfg.Profiles[profileName] = p
+	if profileResolved {
+		cfg.Profiles[profileName] = p
+	}
 	if timeoutSeconds != "" {
 		timeout, err := strconv.Atoi(timeoutSeconds)
 		if err != nil {
@@ -458,12 +466,11 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 		cfg.ClaudeEnv = claudeEnv
 	}
 	if strings.TrimSpace(quotaCookie) != "" {
-		p.QuotaCookie = quotaCookie
+		cfg.QuotaCookie = strings.TrimSpace(quotaCookie)
 	}
 	if strings.TrimSpace(quotaWorkspaceID) != "" {
-		p.QuotaWorkspaceID = quotaWorkspaceID
+		cfg.QuotaWorkspaceID = strings.TrimSpace(quotaWorkspaceID)
 	}
-	cfg.Profiles[profileName] = p
 	if err := cfg.Validate(); err != nil {
 		return "validation error: " + err.Error()
 	}
@@ -485,6 +492,101 @@ func (a *App) SaveProfileConfig(profileName, apiKey, defaultModel, sonnetAlias, 
 
 	return "success"
 
+}
+
+// SaveGlobalConfig saves account-level / gateway-level settings only (listen,
+// upstream, timeouts, rate limits, thinking budget, Claude env, and quota
+// credentials). Unlike SaveProfileConfig it does not touch any profile map and
+// does not require a profile to exist — this is the v4 way to persist the
+// "Security & Limits" page. All arguments are optional strings; empty values
+// are ignored (left unchanged).
+func (a *App) SaveGlobalConfig(listenAddr, upstream, timeoutSeconds, thinkingBudgetTokens, rateLimitPerSecond, rateLimitBurst, rateLimitPerMinute, claudeEnvJSON, quotaCookie, quotaWorkspaceID string) string {
+	path, err := config.DefaultPath()
+	if err != nil {
+		return "resolve path error: " + err.Error()
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		return "load error: " + err.Error()
+	}
+
+	if strings.TrimSpace(listenAddr) != "" {
+		cfg.Listen = strings.TrimSpace(listenAddr)
+	}
+	if strings.TrimSpace(upstream) != "" {
+		cfg.Upstream = strings.TrimSpace(upstream)
+	}
+	if timeoutSeconds != "" {
+		timeout, err := strconv.Atoi(timeoutSeconds)
+		if err != nil {
+			return "request timeout must be a number of seconds"
+		}
+		cfg.RequestTimeoutSeconds = timeout
+	}
+	if thinkingBudgetTokens != "" {
+		budget, err := strconv.Atoi(thinkingBudgetTokens)
+		if err != nil {
+			return "thinking budget must be a number of tokens"
+		}
+		cfg.MaxThinkingBudgetTokens = budget
+	}
+	if rateLimitPerSecond != "" {
+		perSecond, err := strconv.Atoi(rateLimitPerSecond)
+		if err != nil {
+			return "rate limit per second must be a number"
+		}
+		if perSecond < 1 || perSecond > 10000 {
+			return "rate limit per second must be between 1 and 10000"
+		}
+		cfg.RateLimitPerSecond = perSecond
+	}
+	if rateLimitBurst != "" {
+		burst, err := strconv.Atoi(rateLimitBurst)
+		if err != nil {
+			return "rate limit burst must be a number"
+		}
+		if burst < 1 || burst > 100000 {
+			return "rate limit burst must be between 1 and 100000"
+		}
+		cfg.RateLimitBurst = burst
+	}
+	if rateLimitPerMinute != "" {
+		perMinute, err := strconv.Atoi(rateLimitPerMinute)
+		if err != nil {
+			return "rate limit per minute must be a number"
+		}
+		if perMinute < 0 || perMinute > 100000 {
+			return "rate limit per minute must be between 0 and 100000"
+		}
+		cfg.RateLimitPerMinute = perMinute
+	}
+	if strings.TrimSpace(claudeEnvJSON) != "" {
+		claudeEnv := map[string]string{}
+		if err := json.Unmarshal([]byte(claudeEnvJSON), &claudeEnv); err != nil {
+			return "Claude env template must be a JSON object with string values"
+		}
+		cfg.ClaudeEnv = claudeEnv
+	}
+	if strings.TrimSpace(quotaCookie) != "" {
+		cfg.QuotaCookie = strings.TrimSpace(quotaCookie)
+	}
+	if strings.TrimSpace(quotaWorkspaceID) != "" {
+		cfg.QuotaWorkspaceID = strings.TrimSpace(quotaWorkspaceID)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return "validation error: " + err.Error()
+	}
+	if err := cfg.Save(path); err != nil {
+		return "save error: " + err.Error()
+	}
+	if a.srv != nil {
+		a.srv.ApplyConfig(cfg)
+	}
+	if errStr := a.SyncConfiguredIntegrations(); errStr != "success" {
+		return errStr
+	}
+	return "success"
 }
 
 // SetAuthEnabled enables or disables local auth token for proxy access.
@@ -1492,8 +1594,8 @@ func (a *App) TestUpstreamConnection(upstream, apiKey string) map[string]any {
 
 }
 
-// resolveQuotaCredentials resolves quota credentials from config or env vars.
-// Priority: Profile.QuotaCookie/QuotaWorkspaceID 鈫?env vars.
+// resolveQuotaCredentials resolves quota display credentials.
+// Priority: env vars → account-level Config.QuotaCookie/QuotaWorkspaceID.
 func (a *App) resolveQuotaCredentials() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
@@ -1505,13 +1607,11 @@ func (a *App) resolveQuotaCredentials() (cookie, workspaceID string) {
 	if err == nil {
 		cfg, err := config.Load(path)
 		if err == nil {
-			if profile, _, err := cfg.Profile(""); err == nil {
-				if cookie == "" && profile.QuotaCookie != "" {
-					cookie = profile.QuotaCookie
-				}
-				if workspaceID == "" && profile.QuotaWorkspaceID != "" {
-					workspaceID = profile.QuotaWorkspaceID
-				}
+			if cookie == "" && cfg.QuotaCookie != "" {
+				cookie = cfg.QuotaCookie
+			}
+			if workspaceID == "" && cfg.QuotaWorkspaceID != "" {
+				workspaceID = cfg.QuotaWorkspaceID
 			}
 		}
 	}

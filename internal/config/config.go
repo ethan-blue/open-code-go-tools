@@ -39,8 +39,8 @@ type Config struct {
 	Upstream                string             `json:"upstream"`
 	RequestTimeoutSeconds   int                `json:"request_timeout_seconds,omitempty"`
 	MaxThinkingBudgetTokens int                `json:"max_thinking_budget_tokens,omitempty"`
-	ActiveProfile           string             `json:"active_profile"`
-	Profiles                map[string]Profile `json:"profiles"`
+	ActiveProfile           string             `json:"active_profile,omitempty"`
+	Profiles                map[string]Profile `json:"profiles,omitempty"`
 	LocalAuthToken          string             `json:"local_auth_token,omitempty"`        // Optional local auth token for proxy access
 	MaxConcurrentRequests   int                `json:"max_concurrent_requests,omitempty"` // Optional concurrent request limit
 	RateLimitPerSecond      int                `json:"rate_limit_per_second,omitempty"`   // Rate limit: requests per second per IP
@@ -49,10 +49,20 @@ type Config struct {
 	ClaudeEnv               map[string]string  `json:"claude_env,omitempty"`              // User-editable Claude Code env template
 	Plugins                 map[string]bool    `json:"plugins,omitempty"`                 // Enabled plugins
 	AuthEnabled             bool               `json:"auth_enabled,omitempty"`            // Whether local auth token is enabled for proxy access
+	QuotaCookie             string             `json:"quota_cookie,omitempty"`            // OpenCode Go auth cookie for quota display (account-level)
+	QuotaWorkspaceID        string             `json:"quota_workspace_id,omitempty"`      // OpenCode Go workspace ID for quota display (account-level)
 }
 
-// Profile holds configuration for a specific API backend.
-// Multiple profiles allow switching between different providers/keys.
+// Profile is a runtime-normalized view of an upstream backend, consumed by the
+// proxy core during request forwarding. Since v4 it is no longer persisted as a
+// user-facing "configuration set" (that role moved to providers + account-level
+// Config fields). It now serves as the in-memory container that
+// runtime_target.go folds a providers.Provider into, so handler.go/messages.go/
+// responses.go can keep reading target.profile.XXX unchanged.
+//
+// Historical profile maps in config.json are still tolerated (for migration),
+// but no longer required: Config.Validate() permits an empty profile map and
+// Config.Profile("") returns a static default when none is configured.
 //
 // Known Limitation: When using OpenAI-compatible endpoints (non-Anthropic upstream),
 // usage statistics will lack cache-related fields (cache_creation_input_tokens,
@@ -60,16 +70,14 @@ type Config struct {
 // support Anthropic's prompt caching metrics. This affects used_percentage
 // calculations in downstream tools like Claude Code's status line.
 type Profile struct {
-	APIKeyEnv        string            `json:"api_key_env"`       // Environment variable name for API key
-	APIKey           string            `json:"api_key,omitempty"` // Direct API key (takes precedence over APIKeyEnv)
-	DefaultModel     string            `json:"default_model,omitempty"`
-	ModelAliases     map[string]string `json:"model_aliases,omitempty"`      // Model name mappings (e.g., "sonnet" -> "deepseek-v4-pro")
-	MessageModels    []string          `json:"message_models,omitempty"`     // Models using Anthropic native endpoint (bypass OpenAI conversion)
-	FallbackChain    []string          `json:"fallback_chain,omitempty"`     // Automatic fallback models on failure
-	Headers          map[string]string `json:"headers,omitempty"`            // Custom headers for upstream requests
-	AuthMode         string            `json:"auth_mode,omitempty"`          // How the proxy authenticates to this upstream: "bearer" (default) | "x-api-key" | "both"
-	QuotaCookie      string            `json:"quota_cookie,omitempty"`       // OpenCode Go auth cookie for quota display
-	QuotaWorkspaceID string            `json:"quota_workspace_id,omitempty"` // OpenCode Go workspace ID for quota display
+	APIKeyEnv     string            `json:"api_key_env,omitempty"`          // Environment variable name for API key
+	APIKey        string            `json:"api_key,omitempty"`              // Direct API key (takes precedence over APIKeyEnv)
+	DefaultModel  string            `json:"default_model,omitempty"`        // Resolved default model id
+	ModelAliases  map[string]string `json:"model_aliases,omitempty"`        // Model name mappings (e.g., "sonnet" -> "deepseek-v4-pro")
+	MessageModels []string          `json:"message_models,omitempty"`       // Models using Anthropic native endpoint (bypass OpenAI conversion)
+	FallbackChain []string          `json:"fallback_chain,omitempty"`       // Automatic fallback models on failure
+	Headers       map[string]string `json:"headers,omitempty"`              // Custom headers for upstream requests
+	AuthMode      string            `json:"auth_mode,omitempty"`            // How the proxy authenticates to this upstream: "bearer" (default) | "x-api-key" | "both"
 }
 
 func DefaultPath() (string, error) {
@@ -104,10 +112,8 @@ func Example() Config {
 			"sonnet":   "deepseek-v4-pro",
 			"haiku":    "deepseek-v4-flash",
 		},
-		MessageModels:    []string{"minimax-m2.5", "minimax-m2.7"},
-		FallbackChain:    []string{"kimi-k2.6", "qwen3.6-plus", "deepseek-v4-flash"},
-		QuotaCookie:      "${OPENCODE_GO_AUTH_COOKIE}",
-		QuotaWorkspaceID: "${OPENCODE_GO_WORKSPACE_ID}",
+		MessageModels: []string{"minimax-m2.5", "minimax-m2.7"},
+		FallbackChain: []string{"kimi-k2.6", "qwen3.6-plus", "deepseek-v4-flash"},
 	}
 	return Config{
 		Version:                 CurrentConfigVersion,
@@ -124,7 +130,9 @@ func Example() Config {
 			"session_save":  true,
 			"git_sync":      false,
 		},
-		ActiveProfile: "opencode-go",
+		ActiveProfile:    "opencode-go",
+		QuotaCookie:      "${OPENCODE_GO_AUTH_COOKIE}",
+		QuotaWorkspaceID: "${OPENCODE_GO_WORKSPACE_ID}",
 		Profiles: map[string]Profile{
 			"opencode-go": defaultProfile,
 		},
@@ -162,9 +170,10 @@ func Load(path string) (Config, error) {
 		}
 	}
 
-	// Auto-migrate legacy config.json → config.json + profiles.json
+	// One-time legacy migration: folds any old profiles.json back into
+	// config.json and promotes profile quota fields to the Config top level.
 	if err := EnsureMigration(); err != nil {
-		// Non-fatal: log but continue with legacy format
+		// Non-fatal: log but continue with whatever is on disk.
 		fmt.Printf("warning: config migration failed: %v\n", err)
 	}
 
@@ -177,17 +186,6 @@ func Load(path string) (Config, error) {
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return Config{}, fmt.Errorf("failed to parse config file %q: %w", path, err)
-	}
-	if len(cfg.Profiles) == 0 {
-		profiles, err := LoadProfiles("")
-		if err != nil {
-			return Config{}, fmt.Errorf("failed to load profiles: %w", err)
-		}
-		cfg.ActiveProfile = profiles.ActiveProfile
-		cfg.Profiles = profiles.Profiles
-		if len(cfg.ClaudeEnv) == 0 {
-			cfg.ClaudeEnv = profiles.ClaudeEnv
-		}
 	}
 	cfg.applyDefaults()
 	cfg.Migrate()
@@ -292,9 +290,8 @@ func (c *Config) applyDefaults() {
 	if c.RateLimitBurst == 0 {
 		c.RateLimitBurst = DefaultRateLimitBurst
 	}
-	if c.Profiles == nil {
-		c.Profiles = map[string]Profile{}
-	}
+	// Profiles are optional since v4 (providers + account-level Config replaced
+	// them). Historical profile maps are tolerated but never required.
 	if c.ActiveProfile == "" && len(c.Profiles) == 1 {
 		for name := range c.Profiles {
 			c.ActiveProfile = name
@@ -324,11 +321,12 @@ func (c Config) Validate() error {
 	if c.RateLimitPerMinute < 0 || c.RateLimitPerMinute > 100000 {
 		return fmt.Errorf("rate_limit_per_minute must be between 0 and 100000, got %d", c.RateLimitPerMinute)
 	}
-	if len(c.Profiles) == 0 {
-		return errors.New("at least one profile is required")
-	}
-	if _, ok := c.Profiles[c.ActiveProfile]; !ok {
-		return fmt.Errorf("active profile %q does not exist", c.ActiveProfile)
+	// A non-empty ActiveProfile must still resolve if profiles are configured;
+	// an empty profile map is valid (providers carry the runtime config now).
+	if c.ActiveProfile != "" && len(c.Profiles) > 0 {
+		if _, ok := c.Profiles[c.ActiveProfile]; !ok {
+			return fmt.Errorf("active profile %q does not exist", c.ActiveProfile)
+		}
 	}
 	return nil
 }
@@ -375,8 +373,13 @@ func (c Config) RequestTimeout() time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-// WarnIfNoAPIKey checks if the active profile has an API key and returns a warning message if not.
+// WarnIfNoAPIKey checks if the active profile has an API key and returns a
+// warning message if not. With an empty profile map (v4 default) it reports
+// nothing — provider credentials live in providers.json and are checked there.
 func (c Config) WarnIfNoAPIKey() string {
+	if len(c.Profiles) == 0 {
+		return ""
+	}
 	profile, name, err := c.Profile("")
 	if err != nil {
 		return ""
@@ -387,12 +390,24 @@ func (c Config) WarnIfNoAPIKey() string {
 	return ""
 }
 
+// Profile returns the named profile, or the active profile when name is empty.
+// It never returns an error for an empty/missing profile map: callers rely on a
+// non-nil runtime container, so a static default Profile{} is returned instead.
+// An error is only returned when an explicit name is requested but not found.
 func (c Config) Profile(name string) (Profile, string, error) {
 	if strings.TrimSpace(name) == "" {
 		name = c.ActiveProfile
 	}
+	if len(c.Profiles) == 0 {
+		return Profile{}, name, nil
+	}
 	p, ok := c.Profiles[name]
 	if !ok {
+		if name == c.ActiveProfile {
+			// Active profile unset but map non-empty: fall back to a static
+			// default rather than erroring so request forwarding still works.
+			return Profile{}, name, nil
+		}
 		return Profile{}, name, fmt.Errorf("profile %q does not exist", name)
 	}
 	return p, name, nil

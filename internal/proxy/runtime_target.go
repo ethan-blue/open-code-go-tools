@@ -69,6 +69,9 @@ func (s *Server) runtimeTargetForRequest(r *http.Request) (requestTarget, error)
 }
 
 func targetFromProvider(p providers.Provider, fallback config.Profile, fallbackUpstream, line string, defaultTimeout, defaultThinking int) requestTarget {
+	// Start from the fallback profile (a static default under v4 — Profile("")
+	// returns an empty config.Profile{} when no profile map is configured), then
+	// overlay the provider's own fields. Provider fields win wherever set.
 	profile := fallback
 	if strings.TrimSpace(p.APIKey) != "" && !config.IsMaskedAPIKey(p.APIKey) {
 		profile.APIKey = p.APIKey
@@ -78,6 +81,9 @@ func targetFromProvider(p providers.Provider, fallback config.Profile, fallbackU
 	}
 	if len(p.MessageModels) > 0 {
 		profile.MessageModels = append([]string(nil), p.MessageModels...)
+	}
+	if len(p.FallbackChain) > 0 {
+		profile.FallbackChain = append([]string(nil), p.FallbackChain...)
 	}
 	if len(p.ModelAliases) > 0 {
 		profile.ModelAliases = copyStringMap(p.ModelAliases)

@@ -7,87 +7,118 @@ import (
 	"testing"
 )
 
-func TestMigrateLegacyConfig_SplitsCorrectly(t *testing.T) {
+func TestMigrateLegacyConfig_PromotesQuotaToTopLevel(t *testing.T) {
 	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "config.json")
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 
-	// Create legacy config with mixed L1 + L2 fields
+	configPath := filepath.Join(dir, "config.json")
+	// Legacy layout: quota fields buried inside a profile entry, no top-level
+	// quota_cookie / quota_workspace_id yet.
 	legacy := map[string]interface{}{
-		"listen":                    "127.0.0.1:9999",
-		"upstream":                  "https://custom.upstream.com",
-		"request_timeout_seconds":   600,
-		"max_thinking_budget_tokens": 4096,
-		"rate_limit_per_second":     50,
-		"local_auth_token":          "token-abc",
-		"active_profile":            "myprofile",
+		"listen":          "127.0.0.1:9999",
+		"upstream":        "https://custom.upstream.com",
+		"active_profile":  "myprofile",
+		"quota_cookie":    "",
+		"quota_workspace": "",
 		"profiles": map[string]interface{}{
 			"myprofile": map[string]interface{}{
-				"api_key":       "sk-test",
-				"default_model": "deepseek-v4-pro",
+				"api_key":             "sk-test",
+				"default_model":       "deepseek-v4-pro",
+				"quota_cookie":        "cookie-abc",
+				"quota_workspace_id":  "ws-123",
 			},
 		},
 	}
-
 	data, _ := json.MarshalIndent(legacy, "", "  ")
-	os.WriteFile(oldPath, data, 0o600)
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	// Run migration — saves to default paths (home/.ocgt/), not temp dir
-	if err := MigrateLegacyConfig(oldPath); err != nil {
+	if err := MigrateLegacyConfig(configPath); err != nil {
 		t.Fatalf("migration failed: %v", err)
 	}
 
-	// Verify backup was created in the same directory
-	if _, err := os.Stat(oldPath + ".bak"); err != nil {
-		t.Error("expected backup file to be created")
+	migrated, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(migrated, &got); err != nil {
+		t.Fatalf("failed to parse migrated config: %v", err)
 	}
 
-	// Verify default config.json was created
-	defaultPath, _ := DefaultPath()
-	if _, err := os.Stat(defaultPath); err != nil {
-		t.Errorf("new config.json not created at default path: %v", err)
+	if got["quota_cookie"] != "cookie-abc" {
+		t.Errorf("expected quota_cookie promoted to 'cookie-abc', got %v", got["quota_cookie"])
+	}
+	if got["quota_workspace_id"] != "ws-123" {
+		t.Errorf("expected quota_workspace_id promoted to 'ws-123', got %v", got["quota_workspace_id"])
+	}
+}
+
+func TestMigrateLegacyConfig_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	configPath := filepath.Join(dir, "config.json")
+	// Already-migrated layout: quota at top level, no profiles.
+	already := `{
+	  "listen": "127.0.0.1:9999",
+	  "upstream": "https://custom.upstream.com",
+	  "quota_cookie": "cookie-abc",
+	  "quota_workspace_id": "ws-123"
+	}`
+	if err := os.WriteFile(configPath, []byte(already), 0o600); err != nil {
+		t.Fatal(err)
 	}
 
-	// Verify profiles.json was created
-	profilesPath, _ := ProfilesPath()
-	if _, err := os.Stat(profilesPath); err != nil {
-		t.Errorf("profiles.json not created: %v", err)
+	before, _ := os.ReadFile(configPath)
+	if err := MigrateLegacyConfig(configPath); err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+	after, _ := os.ReadFile(configPath)
+
+	// Re-marshalling may reorder keys, so compare parsed values not bytes.
+	var b, a map[string]interface{}
+	json.Unmarshal(before, &b)
+	json.Unmarshal(after, &a)
+	if a["quota_cookie"] != b["quota_cookie"] || a["quota_workspace_id"] != b["quota_workspace_id"] {
+		t.Errorf("idempotent migration changed quota fields: before=%v after=%v", b, a)
 	}
 }
 
 func TestMigrateLegacyConfig_NoFile(t *testing.T) {
 	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "config.json")
+	configPath := filepath.Join(dir, "config.json")
 
 	// No file → no error
-	if err := MigrateLegacyConfig(oldPath); err != nil {
+	if err := MigrateLegacyConfig(configPath); err != nil {
 		t.Fatalf("expected no error for missing file, got: %v", err)
 	}
 }
 
 func TestMigrateLegacyConfig_InvalidJSON(t *testing.T) {
 	dir := t.TempDir()
-	oldPath := filepath.Join(dir, "config.json")
-	os.WriteFile(oldPath, []byte("not json"), 0o600)
+	configPath := filepath.Join(dir, "config.json")
+	os.WriteFile(configPath, []byte("not json"), 0o600)
 
-	err := MigrateLegacyConfig(oldPath)
+	err := MigrateLegacyConfig(configPath)
 	if err == nil {
 		t.Error("expected error for invalid JSON")
 	}
 }
 
-func TestNeedsMigration_WhenNoProfiles(t *testing.T) {
-	// This test depends on the home directory state, so we test the logic indirectly
-	// by checking that NeedsMigration returns a bool without panic
+func TestNeedsMigration(t *testing.T) {
+	// Should return a bool without panic regardless of home state.
 	_ = NeedsMigration()
 }
 
 func TestEnsureMigration_Idempotent(t *testing.T) {
-	// EnsureMigration should be safe to call multiple times
-	// If no migration needed, it returns nil
+	// EnsureMigration should be safe to call multiple times.
 	if err := EnsureMigration(); err != nil {
 		t.Fatalf("EnsureMigration failed: %v", err)
 	}
-	// Call again — should be idempotent
 	if err := EnsureMigration(); err != nil {
 		t.Fatalf("EnsureMigration failed on second call: %v", err)
 	}

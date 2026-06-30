@@ -20,8 +20,6 @@ const TrafficDetail = lazy(() => import('@/pages/TrafficDetail'))
 import type { DetailRecord } from '@/pages/TrafficDetail'
 const QuickConnect = lazy(() => import('@/pages/QuickConnect'))
 const Providers = lazy(() => import('@/pages/Providers'))
-const ModelMappingPage = lazy(() => import('@/pages/config/ModelMappingPage'))
-const RuntimeRulesPage = lazy(() => import('@/pages/config/RuntimeRulesPage'))
 const SecurityLimitsPage = lazy(() => import('@/pages/config/SecurityLimitsPage'))
 const HubSyncPage = lazy(() => import('@/pages/config/HubSyncPage'))
 const PreferencesPage = lazy(() => import('@/pages/app/PreferencesPage'))
@@ -32,13 +30,13 @@ const AboutPage = lazy(() => import('@/pages/app/AboutPage'))
 type ViewId =
   | 'dashboard' | 'history' | 'sessions' | 'copilot'
   | 'terminal' | 'providers'
-  | 'model-mapping' | 'runtime-rules' | 'security' | 'plugins' | 'hub'
+  | 'security' | 'hub'
   | 'preferences' | 'logs' | 'backups' | 'about'
   | 'detail'
 
 const SAVED_VIEWS: ViewId[] = [
   'dashboard', 'history', 'sessions', 'copilot', 'terminal', 'providers',
-  'model-mapping', 'runtime-rules', 'security', 'plugins', 'hub',
+  'security', 'hub',
   'preferences', 'logs', 'backups', 'about',
 ]
 
@@ -341,8 +339,6 @@ function AppShell() {
                   {activeView === 'sessions' && <ErrorBoundary><Sessions /></ErrorBoundary>}
                   {activeView === 'copilot' && <ErrorBoundary><Copilot /></ErrorBoundary>}
                   {activeView === 'providers' && <ErrorBoundary><Providers /></ErrorBoundary>}
-                  {activeView === 'model-mapping' && <ErrorBoundary><ModelMappingPage /></ErrorBoundary>}
-                  {activeView === 'runtime-rules' && <ErrorBoundary><RuntimeRulesPage /></ErrorBoundary>}
                   {activeView === 'security' && <ErrorBoundary><SecurityLimitsPage /></ErrorBoundary>}
                   {activeView === 'hub' && <ErrorBoundary><HubSyncPage /></ErrorBoundary>}
                   {activeView === 'preferences' && <ErrorBoundary><PreferencesPage /></ErrorBoundary>}

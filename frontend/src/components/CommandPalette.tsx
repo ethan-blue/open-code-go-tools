@@ -23,13 +23,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
     { id: 'sessions', label: t('cmd_goto_sessions'), icon: '💬', shortcut: 'Ctrl+4', action: () => navTo('sessions') },
     { id: 'copilot', label: t('cmd_copilot'), icon: '🤖', shortcut: 'Ctrl+5', action: () => navTo('copilot') },
     { id: 'providers', label: t('cmd_goto_providers'), icon: '🖥', shortcut: 'Ctrl+6', action: () => navTo('providers') },
-    { id: 'model-mapping', label: t('sett_s02_title') || 'Model Mapping', icon: '🗺', action: () => navTo('model-mapping') },
-    { id: 'runtime-rules', label: t('sett_section_security') || 'Security', icon: '🛡', action: () => navTo('security') },
-    { id: 'hub', label: t('cmd_goto_hub') || 'Multi-Device Sync', icon: '☁', action: () => navTo('hub') },
+    { id: 'security', label: t('sett_section_security'), icon: '🛡', action: () => navTo('security') },
+    { id: 'hub', label: t('cmd_goto_hub'), icon: '☁', action: () => navTo('hub') },
     { id: 'settings', label: t('cmd_open_settings'), icon: '⚙', shortcut: 'Ctrl+,', action: () => navTo('preferences') },
-    { id: 'logs', label: t('sett_log_title') || 'Logs', icon: '📋', action: () => navTo('logs') },
-    { id: 'backups', label: t('sett_section_backups') || 'Backups', icon: '💾', action: () => navTo('backups') },
-    { id: 'about', label: t('sett_section_about') || 'About', icon: 'ℹ', action: () => navTo('about') },
+    { id: 'logs', label: t('sett_log_title'), icon: '📋', action: () => navTo('logs') },
+    { id: 'backups', label: t('sett_section_backups'), icon: '💾', action: () => navTo('backups') },
+    { id: 'about', label: t('sett_section_about'), icon: 'ℹ', action: () => navTo('about') },
   ];
 
   const actionItems = [

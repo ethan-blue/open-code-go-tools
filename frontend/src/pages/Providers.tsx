@@ -91,6 +91,7 @@ function toForm(provider: Provider): FormData {
     apiKey: provider.apiKey,
     models: provider.models || [],
     messageModelsText: csvText(provider.messageModels),
+    fallbackChainText: csvText(provider.fallbackChain),
     defaultModel: provider.defaultModel || '',
     priority: provider.priority,
     enabled: provider.enabled,
@@ -129,6 +130,7 @@ function ProviderEditor({
         envDesc: '这个供应商生效时，Claude Code 会应用这里的运行时覆盖。',
         messageLabel: '消息模型链',
         messageDesc: '按顺序填写 Claude message routing 可用模型。',
+        fallbackDesc: '请求失败时按顺序重试的模型链（逗号分隔）。',
         thinkingLabel: '思考预算',
       }
     : {
@@ -138,6 +140,7 @@ function ProviderEditor({
         envDesc: 'Codex 只使用上面的协议、鉴权、默认模型和 Header，不额外注入 env。',
         messageLabel: '响应模型链',
         messageDesc: '可选的 Codex fallback / compatibility 模型顺序。',
+        fallbackDesc: '请求失败时按顺序重试的模型链（逗号分隔）。',
         thinkingLabel: '推理预算',
       }
 
@@ -225,6 +228,11 @@ function ProviderEditor({
             <input id="provider-burst" className="input prov-input" type="number" min="0" value={form.rateLimitBurst} onChange={e => setForm(f => ({ ...f, rateLimitBurst: e.target.value }))} placeholder="0" />
           </div>
           <div className="field">
+            <label className="prov-form-label" htmlFor="provider-fallback">Fallback Chain</label>
+            <input id="provider-fallback" className="input prov-input" value={form.fallbackChainText} onChange={e => setForm(f => ({ ...f, fallbackChainText: e.target.value }))} placeholder="model-a, model-b" />
+            <div className="prov-field-hint">{runtimeCopy.fallbackDesc}</div>
+          </div>
+          <div className="field">
             <label className="prov-form-label" htmlFor="provider-priority">{t('prov_priority_hint')}</label>
             <input id="provider-priority" className="input prov-input" type="number" min="0" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
           </div>
@@ -285,6 +293,22 @@ function ProviderEditor({
                         onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_THINKING', e.target.checked ? '1' : null) }))}
                       />
                       <span>禁用 Thinking</span>
+                    </label>
+                    <label className="prov-editor-check">
+                      <input
+                        type="checkbox"
+                        checked={parseEnvMap(form.envJSON).CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1'}
+                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', e.target.checked ? '1' : null) }))}
+                      />
+                      <span>禁用非必要流量</span>
+                    </label>
+                    <label className="prov-editor-check">
+                      <input
+                        type="checkbox"
+                        checked={parseEnvMap(form.envJSON).CLAUDE_CODE_ATTRIBUTION_HEADER === '0'}
+                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_ATTRIBUTION_HEADER', e.target.checked ? '0' : null) }))}
+                      />
+                      <span>禁用 Attribution</span>
                     </label>
                   </div>
                   <div className="prov-editor-grid">
@@ -542,6 +566,7 @@ export default function Providers() {
       body = {
         ...form,
         messageModels: parseStringList(form.messageModelsText),
+        fallbackChain: parseStringList(form.fallbackChainText),
         rateLimitPerSecond: form.rateLimitPerSecond ? parseInt(form.rateLimitPerSecond, 10) : 0,
         rateLimitBurst: form.rateLimitBurst ? parseInt(form.rateLimitBurst, 10) : 0,
         requestTimeoutSeconds: form.requestTimeoutSeconds ? parseInt(form.requestTimeoutSeconds, 10) : 0,
@@ -554,6 +579,7 @@ export default function Providers() {
       delete body.headersJSON
       delete body.envJSON
       delete body.messageModelsText
+      delete body.fallbackChainText
     } catch (error) {
       toast(error instanceof Error ? error.message : t('toast_save_failed'), 'error')
       return

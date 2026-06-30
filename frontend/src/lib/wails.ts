@@ -75,6 +75,7 @@ export const wails = {
   OpenConfigLocation: () => callWails<string>('OpenConfigLocation'),
   OpenLogLocation: () => callWails<string>('OpenLogLocation'),
   SaveProfileConfig: (...args: string[]) => callWails<string>('SaveProfileConfig', ...args),
+  SaveGlobalConfig: (...args: string[]) => callWails<string>('SaveGlobalConfig', ...args),
   InstallClaudeUserEnv: () => callWails<string>('InstallClaudeUserEnv'),
   ClearSystemEnv: () => callWails<string>('ClearSystemEnv'),
   IsSystemEnvConfigured: () => callWails<boolean>('IsSystemEnvConfigured'),

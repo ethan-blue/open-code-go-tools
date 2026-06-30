@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { wails, apiGet } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
-import type { AgentLine } from '@/lib/types'
 
 export default function SecurityLimitsPage() {
   const { t } = useI18n()
@@ -14,38 +13,36 @@ export default function SecurityLimitsPage() {
   const [rateLimitBurst, setRateLimitBurst] = useState('0')
   const [rateLimitPerMinute, setRateLimitPerMinute] = useState('0')
   const [listenAddr, setListenAddr] = useState('127.0.0.1:8787')
-  const [upstream, setUpstream] = useState('')
-  const [activeProfile, setActiveProfile] = useState('')
 
   useEffect(() => {
     apiGet('/ocgt/api/status').then(d => {
       if (!d) return
-      setActiveProfile(d.active_profile ?? d.activeProfile ?? '')
       setAuthEnabled(!!d.auth_enabled)
       setRateLimitPerSecond(String(d.rateLimitPerSecond ?? d.rate_limit_per_second ?? '0'))
       setRateLimitBurst(String(d.rateLimitBurst ?? d.rate_limit_burst ?? '0'))
       setRateLimitPerMinute(String(d.rateLimitPerMinute ?? d.rate_limit_per_minute ?? '0'))
       setRateLimitingEnabled(parseInt(String(d.rate_limit_per_second ?? '0')) > 0 || parseInt(String(d.rate_limit_burst ?? '0')) > 0)
       setListenAddr(d.listenAddr ?? d.listen ?? '127.0.0.1:8787')
-      setUpstream(d.upstream ?? '')
     }).catch(() => {})
   }, [])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
+      // rate limiting disabled → send empty strings so the backend keeps prior values
       const rps = rateLimitingEnabled ? rateLimitPerSecond : ''
       const burst = rateLimitingEnabled ? rateLimitBurst : ''
       const rpm = rateLimitingEnabled ? rateLimitPerMinute : ''
-      if (!activeProfile) throw new Error('active profile not found')
-      const err = await wails.SaveProfileConfig(activeProfile, '', '', '', '', '', '', '', listenAddr, upstream, rps, burst, rpm, '{}', '', '')
+      // SaveGlobalConfig writes only gateway-level fields (listen, rate limits);
+      // upstream/quota/timeout are left untouched by passing empty strings.
+      const err = await wails.SaveGlobalConfig(listenAddr, '', '', '', rps, burst, rpm, '', '', '')
       if (err && typeof err === 'string' && err !== 'success') throw new Error(err)
       const authErr = await wails.SetAuthEnabled(authEnabled)
       if (authErr && typeof authErr === 'string' && authErr !== 'success') throw new Error(authErr)
       toast(t('toast_saved'), 'success')
     } catch { toast(t('toast_save_failed'), 'error') }
     finally { setSaving(false) }
-  }, [activeProfile, authEnabled, rateLimitingEnabled, rateLimitPerSecond, rateLimitBurst, rateLimitPerMinute, listenAddr, upstream, t, toast])
+  }, [authEnabled, rateLimitingEnabled, rateLimitPerSecond, rateLimitBurst, rateLimitPerMinute, listenAddr, t, toast])
 
   const Toggle = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
     <button role="switch" aria-checked={checked} aria-label={label} className={`toggle${checked ? ' on' : ''}`} onClick={onChange} type="button"><span /></button>

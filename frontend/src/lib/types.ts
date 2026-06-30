@@ -14,6 +14,7 @@ export interface Provider {
   models: string[]
   defaultModel?: string
   messageModels?: string[]
+  fallbackChain?: string[]
   priority: number
   enabled: boolean
   health: 'healthy' | 'degraded' | 'down' | 'unknown'
@@ -41,6 +42,7 @@ export interface ProviderFormData {
   apiKey: string
   models: string[]
   messageModelsText: string
+  fallbackChainText: string
   defaultModel: string
   priority: number
   enabled: boolean
@@ -62,6 +64,7 @@ export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
   apiKey: '',
   models: [],
   messageModelsText: '',
+  fallbackChainText: '',
   defaultModel: '',
   priority: 0,
   enabled: true,
@@ -93,7 +96,6 @@ export interface ProviderStatus {
 export interface StatusData {
   listen: string
   upstream: string
-  active_profile: string
   default_model: string
   uptime_seconds: number
   request_timeout_seconds: number

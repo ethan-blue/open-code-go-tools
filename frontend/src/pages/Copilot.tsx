@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, useMemo } from 'react'
 import { Calendar, SendHorizontal, Shield } from 'lucide-react'
 import { EmptyState, Skeleton } from '@/components/ui'
 import { useI18n } from '@/i18n'
 import { apiFetchRaw, apiGet } from '@/lib/wails'
+import type { StatsSummary } from '@/lib/types'
 
 interface Message {
   id: string
@@ -23,16 +24,6 @@ interface Insight {
 }
 
 type InsightFilter = 'all' | 'savings' | 'anomaly' | 'suggestion'
-
-interface SummaryData {
-  summary?: {
-    total_requests: number
-    total_tokens: number
-    estimated_cost: number
-    success_rate: number
-    cache_hit_rate: number
-  }
-}
 
 const GLYPH_SVG: Record<string, React.ReactElement> = {
   savings: (
@@ -73,7 +64,7 @@ export default function Copilot() {
   const [insights, setInsights] = useState<Insight[]>([])
   const [insightsLoading, setInsightsLoading] = useState(true)
   const [insightsError, setInsightsError] = useState(false)
-  const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [summary, setSummary] = useState<StatsSummary | null>(null)
   const [filter, setFilter] = useState<InsightFilter>('all')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -104,7 +95,7 @@ export default function Copilot() {
 
   const loadSummary = async () => {
     try {
-      setSummary(await apiGet<SummaryData>('/ocgt/api/stats/summary?days=7'))
+      setSummary(await apiGet<StatsSummary>('/ocgt/api/stats/summary?days=7'))
     } catch {
       setSummary(null)
     }
@@ -176,12 +167,12 @@ export default function Copilot() {
     ? insights
     : insights.filter((insight) => insight.type === filter)
 
-  const suggestions = [
+  const suggestions = useMemo(() => [
     t('copilot_suggest1'),
     t('copilot_suggest2'),
     t('copilot_suggest3'),
     t('copilot_suggest4'),
-  ]
+  ], [t])
 
   const digestSummary = summary?.summary
 
@@ -310,24 +301,28 @@ export default function Copilot() {
               <div className="ico">7d</div>
               <div>
                 <div className="digest-title">{t('copilot_digest_weekly')}</div>
-                <div className="digest-period">最近 7 天</div>
+                <div className="digest-period">{t('copilot_digest_period')}</div>
               </div>
             </div>
             <div className="body">
               <div>
                 <p>
-                  <b>摘要。</b> 最近 7 天网关共处理 {digestSummary.total_requests} 个请求，
-                  消耗 {digestSummary.total_tokens.toLocaleString()} tokens，成功率 {digestSummary.success_rate.toFixed(1)}%。
+                  {t('copilot_digest_summary')
+                    .replace('{{requests}}', String(digestSummary.total_requests))
+                    .replace('{{tokens}}', digestSummary.total_tokens.toLocaleString())
+                    .replace('{{rate}}', digestSummary.success_rate.toFixed(1))}
                 </p>
                 <p>
-                  预估费用 ${digestSummary.estimated_cost.toFixed(2)}，缓存命中率 {digestSummary.cache_hit_rate.toFixed(1)}%。
+                  {t('copilot_digest_cost_rate')
+                    .replace('{{cost}}', digestSummary.estimated_cost.toFixed(2))
+                    .replace('{{cache_rate}}', digestSummary.cache_hit_rate.toFixed(1))}
                 </p>
               </div>
               <div className="stats">
                 <div className="r"><span className="k">{t('copilot_digest_total')}</span><span className="v">{digestSummary.total_requests}</span></div>
                 <div className="r"><span className="k">Token</span><span className="v">{digestSummary.total_tokens.toLocaleString()}</span></div>
                 <div className="r"><span className="k">{t('copilot_digest_cost')}</span><span className="v">${digestSummary.estimated_cost.toFixed(2)}</span></div>
-                <div className="r"><span className="k">缓存命中</span><span className="v">{digestSummary.cache_hit_rate.toFixed(1)}%</span></div>
+                <div className="r"><span className="k">{t('copilot_digest_cache_hit')}</span><span className="v">{digestSummary.cache_hit_rate.toFixed(1)}%</span></div>
               </div>
             </div>
           </>

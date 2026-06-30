@@ -4,7 +4,8 @@ import { apiGet, apiFetch, isWails, wails } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { Skeleton } from '@/components/ui'
-import { fmtTokens } from '@/lib/utils'
+import { fmtTokens, fmtCost, fmtNum } from '@/lib/utils'
+import type { ModelsData } from '@/lib/types'
 
 interface HubStatus {
   connected: boolean
@@ -27,28 +28,7 @@ interface Device {
   label: string
 }
 
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-function fmtCost(n: number): string { return '$' + n.toFixed(2) }
-
 const COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
-
-interface ModelsData {
-  models: {
-    name: string
-    requests: number
-    total_tokens: number
-    input_tokens: number
-    output_tokens: number
-    cache_tokens: number
-    cache_hit_rate: number
-    cost_usd: number
-    pct: number
-  }[]
-}
 
 function DonutChart({ models }: { models: ModelsData['models'] }) {
   const { t } = useI18n()
@@ -144,14 +124,8 @@ export default memo(function Hub() {
         if (mData) {
           setModels(mData)
         }
-      } catch (e) {
-        setModels({
-          models: [
-            { name: 'claude-3-5-sonnet', requests: 120, total_tokens: 450000, input_tokens: 350000, output_tokens: 100000, cache_tokens: 0, cache_hit_rate: 0, cost_usd: 1.5, pct: 65.5 },
-            { name: 'claude-3-opus', requests: 15, total_tokens: 120000, input_tokens: 100000, output_tokens: 20000, cache_tokens: 0, cache_hit_rate: 0, cost_usd: 2.1, pct: 17.5 },
-            { name: 'gpt-4o', requests: 45, total_tokens: 116000, input_tokens: 80000, output_tokens: 36000, cache_tokens: 0, cache_hit_rate: 0, cost_usd: 0.8, pct: 17.0 }
-          ]
-        })
+      } catch {
+        setModels(null)
       }
     } finally { setLoading(false) }
   }

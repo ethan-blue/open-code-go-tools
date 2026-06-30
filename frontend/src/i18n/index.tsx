@@ -316,6 +316,10 @@ const zh = {
   copilot_suggest3: '哪个客户端延迟最高？', copilot_suggest4: '总结今天的流量。',
   copilot_digest_total: '总请求量', copilot_digest_cost: '总成本', copilot_digest_saved: '预估节省', copilot_digest_uptime: '正常运行时间',
   copilot_no_digest: '暂无摘要', copilot_no_digest_desc: '每周摘要将在积累足够使用数据后自动生成。',
+  copilot_digest_period: '最近 7 天',
+  copilot_digest_summary: '摘要。最近 7 天网关共处理 {{requests}} 个请求，消耗 {{tokens}} tokens，成功率 {{rate}}%。',
+  copilot_digest_cost_rate: '预估费用 ${{cost}}，缓存命中率 {{cache_rate}}%。',
+  copilot_digest_cache_hit: '缓存命中',
   toast_sync_models_failed: '同步模型失败',
   // Sessions page extra
   sessions_hero_title: '会话，', sessions_hero_title_em: '重新整理。',
@@ -771,6 +775,10 @@ const en: Dict = {
   copilot_suggest3: 'Which client has the highest latency?', copilot_suggest4: "Summarize today's traffic.",
   copilot_digest_total: 'Total requests', copilot_digest_cost: 'Total cost', copilot_digest_saved: 'Estimated savings', copilot_digest_uptime: 'Uptime',
   copilot_no_digest: 'No digest available', copilot_no_digest_desc: 'Weekly digests will appear here once enough usage data has been collected.',
+  copilot_digest_period: 'Last 7 days',
+  copilot_digest_summary: 'Summary. Over the past 7 days, the gateway processed {{requests}} requests, consumed {{tokens}} tokens, with a {{rate}}% success rate.',
+  copilot_digest_cost_rate: 'Estimated cost ${{cost}}, cache hit rate {{cache_rate}}%.',
+  copilot_digest_cache_hit: 'Cache Hit',
   toast_sync_models_failed: 'Failed to sync models',
   // Sessions page extra
   sessions_hero_title: 'Conversations, ', sessions_hero_title_em: 'reassembled.',

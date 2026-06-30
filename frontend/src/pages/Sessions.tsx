@@ -54,6 +54,8 @@ function sessionCost(
   return input * r.in + output * r.out + cacheRead * r.cr + cacheCreate * r.cc
 }
 
+const SESSION_COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
+
 export default memo(function Sessions() {
   const { t } = useI18n()
   const { toast } = useToast()
@@ -205,11 +207,9 @@ export default memo(function Sessions() {
       .sort((a, b) => b.total_tokens - a.total_tokens)
   }, [filtered])
 
-  const COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
-
   return (
     <div id="page-sessions">
-      <div className="hero-row" style={{ justifyContent: 'flex-end' }}>
+      <div className="hero-row row-reverse">
         <div className="row gap-2">
           <div className="segmented">
             {periods.map((p) => (<button key={p.v} className={period === p.v ? 'on' : ''} onClick={() => setPeriod(p.v)}>{p.l}</button>))}
@@ -220,7 +220,7 @@ export default memo(function Sessions() {
             const url = URL.createObjectURL(blob)
             const a = document.createElement("a"); a.href = url; a.download = `ocgt-sessions-${new Date().toISOString().slice(0,10)}.jsonl`; a.click(); URL.revokeObjectURL(url)
           }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="tm-mr-4">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
@@ -245,13 +245,13 @@ export default memo(function Sessions() {
             <div className="v sess-v">{fmtCost(summary.totalCost)}</div>
           </div>
         </div>
-        <div className="row gap-2" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <input className="sess-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sessions_search_placeholder')} aria-label={t('sessions_search_placeholder')} style={{ height: 30, width: 180 }} />
-          <select value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} className="sess-search" style={{ height: 30, flex: 'none' }}>
+        <div className="row gap-2 items-center flex-wrap">
+          <input className="sess-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sessions_search_placeholder')} aria-label={t('sessions_search_placeholder')} />
+          <select value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} className="sess-search sess-search-fixed">
             <option value="">{t('sessions_filter_all')}</option>
             {models.map((m) => (<option key={m} value={m}>{m}</option>))}
           </select>
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="sess-search" style={{ height: 30, flex: 'none' }}>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="sess-search sess-search-fixed">
             <option value="time-desc">{t('sessions_sort_time_desc')}</option>
             <option value="time-asc">{t('sessions_sort_time_asc')}</option>
             <option value="tokens-desc">{t('sessions_sort_tokens_desc')}</option>
@@ -280,7 +280,7 @@ export default memo(function Sessions() {
                       const dash = pct * circ
                       const el = (
                         <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-                          stroke={COLORS[i % COLORS.length]} strokeWidth={sw}
+                          stroke={SESSION_COLORS[i % SESSION_COLORS.length]} strokeWidth={sw}
                           strokeDasharray={`${dash} ${circ - dash}`}
                           strokeDashoffset={-offset} />
                       )
@@ -298,7 +298,7 @@ export default memo(function Sessions() {
               <div className="legend2 sess-legend-wrapper">
                 {chartModels.map((m, i) => (
                   <div className="row sess-legend-item" key={i}>
-                    <span className="sw sess-legend-sw" style={{ background: COLORS[i % COLORS.length] }} />
+                    <span className="sw sess-legend-sw" style={{ background: SESSION_COLORS[i % SESSION_COLORS.length] }} />
                     <span className="nm sess-legend-nm">{m.name}</span>
                     <span className="vv muted">{m.requests} {t('tm_requests')}</span>
                     <span className="vv muted sess-legend-vv">{m.pct.toFixed(1)}%</span>
@@ -313,7 +313,7 @@ export default memo(function Sessions() {
       {loading ? (
         <div className="session-list" style={{ padding: '16px 0' }}>
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="item" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div key={i} className="item sess-skel-item">
               <Skeleton style={{ width: '60%', height: 12 }} />
               <Skeleton style={{ width: '40%', height: 10 }} />
             </div>
@@ -365,7 +365,7 @@ export default memo(function Sessions() {
             ) : (
               <>
                 <div className="crumb">
-                  <Hash size={11} className="tm-mr-4" style={{ display: 'inline', verticalAlign: 'middle' }} />
+                  <Hash size={11} className="tm-mr-4 inline-middle" />
                   {selectedSession.sessionId} | {selectedSession.messageCount} {t('sessions_messages')} | {fmtTokens(selectedSession.totalTokens)} {t('sessions_tokens_label')}
                 </div>
                 <h2>{selectedSession.model || t('sessions_title')}</h2>

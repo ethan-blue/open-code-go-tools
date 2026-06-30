@@ -80,8 +80,21 @@ export default function QuickConnect() {
   useEffect(() => {
     checkIntegrations(); loadStats(); loadConfigStatus()
     wails.GetLocalToken().then(token => setLocalToken(token || '')).catch(() => {})
-    const timer = setInterval(() => { checkIntegrations(); loadStats(); loadConfigStatus() }, 12000)
-    return () => clearInterval(timer)
+    let timer: ReturnType<typeof setInterval> | null = null
+    const startPolling = () => {
+      if (timer) return
+      timer = setInterval(() => { checkIntegrations(); loadStats(); loadConfigStatus() }, 30000)
+    }
+    const stopPolling = () => {
+      if (timer) { clearInterval(timer); timer = null }
+    }
+    const onVisibility = () => {
+      if (document.hidden) stopPolling()
+      else { startPolling(); checkIntegrations(); loadStats(); loadConfigStatus() }
+    }
+    startPolling()
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { stopPolling(); document.removeEventListener('visibilitychange', onVisibility) }
   }, [checkIntegrations, loadStats, loadConfigStatus])
 
   const handleInstall = async (type: string) => {
@@ -143,9 +156,9 @@ export default function QuickConnect() {
       <div className={`conn-card${client.isNew ? ' is-new-corner' : ''}`} key={client.id}>
         <div className="head">
           <div className={`ic-lg ${client.iconBg === 'light' ? 'alt' : ''}`}>
-            {client.iconText ? <span style={{ fontSize: 13, fontWeight: 600 }}>{client.iconText}</span> : <Icon width={20} height={20} />}
+            {client.iconText ? <span className="qc-icon-text">{client.iconText}</span> : <Icon width={20} height={20} />}
           </div>
-          <div style={{ minWidth: 0 }}>
+          <div className="min-w-0">
             <h3>{client.name}</h3>
             <div className="sub">{client.version}</div>
           </div>
@@ -168,7 +181,7 @@ export default function QuickConnect() {
   return (
     <div id="page-connect">
       <div className="page">
-        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'flex-end' }}>
+        <div className="qc-filter-bar">
           <div className="segmented" aria-label="Client line">
             <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => setLineFilter('claude')}>Claude</button>
             <button className={lineFilter === 'codex' ? 'on' : ''} onClick={() => setLineFilter('codex')}>Codex</button>
@@ -176,7 +189,7 @@ export default function QuickConnect() {
         </div>
 
         {!configReady && (
-          <div className="card" style={{ marginBottom: 16, padding: 16 }}>
+          <div className="card qc-config-warning">
             <div className="row between" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <b style={{ fontSize: 13 }}>{t('status_api_key_not_configured')}</b>

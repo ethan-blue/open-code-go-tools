@@ -10,6 +10,7 @@
 import { memo, useEffect, useState } from 'react'
 import { ArrowLeft, Share2 } from 'lucide-react'
 import { useI18n } from '@/i18n'
+import { useToast } from '@/hooks/toast'
 
 /** Mirror the HistoryRecord shape from TrafficMonitor */
 export interface DetailRecord {
@@ -35,6 +36,7 @@ interface Props {
 
 export default memo(function TrafficDetail({ record, onBack }: Props) {
   const { t } = useI18n()
+  const { toast } = useToast()
   const [bodyView, setBodyView] = useState<'rendered' | 'raw' | 'sse'>('rendered')
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
         const target = e.target as HTMLElement
         if (target && target.innerText) {
           navigator.clipboard.writeText(target.innerText).then(() => {
-            window.dispatchEvent(new CustomEvent('app-toast', { detail: { message: t('td_copied_clipboard') || 'Copied to clipboard' } }))
+            toast(t('td_copied_clipboard') || 'Copied to clipboard', 'success')
           })
         }
       }
@@ -82,10 +84,10 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
           <button className="btn btn-sm btn-ghost" onClick={onBack}>
             <ArrowLeft width={14} height={14} /> {t('td_back')}
           </button>
-          {(record as any).id && (
+          {record.id && (
             <button className="btn btn-sm" onClick={() => {
               navigator.clipboard.writeText(`${window.location.origin}/traffic/${reqId}`)
-              window.dispatchEvent(new CustomEvent('app-toast', { detail: { message: t('td_link_copied') } }))
+              toast(t('td_link_copied'), 'success')
             }}><Share2 width={14} height={14} /> {t('td_share')}</button>
           )}
         </div>

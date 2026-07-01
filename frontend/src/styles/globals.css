@@ -38,7 +38,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
 [data-theme="dark"] ::-webkit-scrollbar-thumb { background: var(--ink-300); }
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: var(--ink-200); }
 
-/* ── Modal (consolidated in v4-design.css) ── */
+/* ── Modal ── */
 .modal-content {
   width: 480px; max-height: 80vh; overflow-y: auto; padding: 24px;
   background: var(--paper); border: 1px solid var(--line-strong);

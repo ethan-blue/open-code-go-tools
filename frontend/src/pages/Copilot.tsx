@@ -203,7 +203,7 @@ export default function Copilot() {
         </div>
         <div className="copilot-actions-bar">
           <button className="btn btn-sm btn-ghost" onClick={() => setMessages([])} disabled={messages.length === 0}>
-            {t('copilot_clear_context') || 'Clear context'}
+            {t('copilot_clear_context')}
           </button>
         </div>
         <div className="suggestions">
@@ -237,7 +237,7 @@ export default function Copilot() {
                           }
                         }
                       }}>
-                        {t('copilot_retry') || 'Retry'}
+                        {t('copilot_retry')}
                       </button>
                     </div>
                   )}
@@ -284,8 +284,8 @@ export default function Copilot() {
           <div className="copilot-insights-grid-full">
             <EmptyState
               icon={<Calendar size={20} />}
-              title={t('copilot_no_insights') || 'No insights yet'}
-              description={t('copilot_no_insights_desc') || 'Insights will appear as your usage patterns emerge.'}
+              title={t('copilot_no_insights')}
+              description={t('copilot_no_insights_desc')}
             />
           </div>
         ) : filteredInsights.map((insight) => (
@@ -341,8 +341,8 @@ export default function Copilot() {
         ) : (
           <EmptyState
             icon={<Calendar size={20} />}
-            title={t('copilot_no_digest') || 'No digest available'}
-            description={t('copilot_no_digest_desc') || 'Weekly digests will appear here once enough usage data has been collected.'}
+            title={t('copilot_no_digest')}
+            description={t('copilot_no_digest_desc')}
           />
         )}
       </div>

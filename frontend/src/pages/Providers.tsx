@@ -124,24 +124,24 @@ function ProviderEditor({
   const lineLabel = isClaude ? 'Claude' : 'Codex'
   const runtimeCopy = isClaude
     ? {
-        modelLabel: '模型映射',
-        modelDesc: '当前 Claude 供应商专用的别名映射，例如 sonnet -> claude-sonnet-4-5。',
-        envLabel: 'Env / Runtime',
-        envDesc: '这个供应商生效时，Claude Code 会应用这里的运行时覆盖。',
-        messageLabel: '消息模型链',
-        messageDesc: '按顺序填写 Claude message routing 可用模型。',
-        fallbackDesc: '请求失败时按顺序重试的模型链（逗号分隔）。',
-        thinkingLabel: '思考预算',
+        modelLabel: t('prov_rt_model_label'),
+        modelDesc: t('prov_rt_claude_model_desc'),
+        envLabel: t('prov_rt_claude_env_label'),
+        envDesc: t('prov_rt_claude_env_desc'),
+        messageLabel: t('prov_rt_claude_message_label'),
+        messageDesc: t('prov_rt_claude_message_desc'),
+        fallbackDesc: t('prov_rt_fallback_desc'),
+        thinkingLabel: t('prov_rt_claude_thinking_label'),
       }
     : {
-        modelLabel: '模型映射',
-        modelDesc: '当前 Codex 供应商使用的别名映射，适合兼容客户端发来的简写模型名。',
-        envLabel: '运行说明',
-        envDesc: 'Codex 只使用上面的协议、鉴权、默认模型和 Header，不额外注入 env。',
-        messageLabel: '响应模型链',
-        messageDesc: '可选的 Codex fallback / compatibility 模型顺序。',
-        fallbackDesc: '请求失败时按顺序重试的模型链（逗号分隔）。',
-        thinkingLabel: '推理预算',
+        modelLabel: t('prov_rt_model_label'),
+        modelDesc: t('prov_rt_codex_model_desc'),
+        envLabel: t('prov_rt_codex_env_label'),
+        envDesc: t('prov_rt_codex_env_desc'),
+        messageLabel: t('prov_rt_codex_message_label'),
+        messageDesc: t('prov_rt_codex_message_desc'),
+        fallbackDesc: t('prov_rt_fallback_desc'),
+        thinkingLabel: t('prov_rt_codex_thinking_label'),
       }
 
   return (
@@ -149,8 +149,8 @@ function ProviderEditor({
       <div className="prov-editor-section">
         <div className="prov-editor-section-head">
           <div>
-            <h4>{lineLabel} Connection</h4>
-            <p>下面的配置只属于当前线路。切换 Claude 不会改 Codex，反过来也一样。</p>
+            <h4>{t('prov_conn_title').replace('{{line}}', lineLabel)}</h4>
+            <p>{t('prov_conn_desc')}</p>
           </div>
         </div>
         <div className="prov-editor-grid">
@@ -167,7 +167,7 @@ function ProviderEditor({
             <input id="provider-api-key" className="input prov-input" type="password" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="sk-..." />
           </div>
           <div className="field">
-            <label className="prov-form-label">Line</label>
+            <label className="prov-form-label">{t('prov_field_line')}</label>
             <div className="segmented">
               <button className={form.line === 'claude' ? 'on' : ''} type="button" onClick={() => setForm(f => {
                 // Only reset protocol if the current one isn't valid for the new
@@ -182,19 +182,19 @@ function ProviderEditor({
             </div>
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-protocol">Protocol</label>
+            <label className="prov-form-label" htmlFor="provider-protocol">{t('prov_field_protocol')}</label>
             <select id="provider-protocol" className="select prov-input" value={form.protocol} onChange={e => setForm(f => ({ ...f, protocol: e.target.value as ProviderProtocol }))}>
               {PROTOCOL_OPTIONS[form.line].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-auth-mode">Auth Mode</label>
+            <label className="prov-form-label" htmlFor="provider-auth-mode">{t('prov_field_auth_mode')}</label>
             <select id="provider-auth-mode" className="select prov-input" value={form.authMode} onChange={e => setForm(f => ({ ...f, authMode: e.target.value }))}>
               {AUTH_MODE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-default-model">Default Model</label>
+            <label className="prov-form-label" htmlFor="provider-default-model">{t('prov_field_default_model')}</label>
             <input id="provider-default-model" className="input prov-input" value={form.defaultModel} onChange={e => setForm(f => ({ ...f, defaultModel: e.target.value }))} placeholder="model id" />
           </div>
           <div className="field">
@@ -214,13 +214,13 @@ function ProviderEditor({
       <div className="prov-editor-section">
         <div className="prov-editor-section-head">
           <div>
-            <h4>{lineLabel} Runtime</h4>
-            <p>模型、超时、思考强度和限流，都跟着当前生效供应商走。</p>
+            <h4>{t('prov_runtime_title').replace('{{line}}', lineLabel)}</h4>
+            <p>{t('prov_runtime_desc')}</p>
           </div>
         </div>
         <div className="prov-editor-grid">
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-timeout">Request Timeout (s)</label>
+            <label className="prov-form-label" htmlFor="provider-timeout">{t('prov_field_timeout')}</label>
             <input id="provider-timeout" className="input prov-input" type="number" min="1" value={form.requestTimeoutSeconds} onChange={e => setForm(f => ({ ...f, requestTimeoutSeconds: e.target.value }))} placeholder="300" />
           </div>
           <div className="field">
@@ -228,15 +228,15 @@ function ProviderEditor({
             <input id="provider-thinking" className="input prov-input" type="number" min="-1" value={form.thinkingBudgetTokens} onChange={e => setForm(f => ({ ...f, thinkingBudgetTokens: e.target.value }))} placeholder="2048" />
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-rate-limit">Rate Limit /s</label>
+            <label className="prov-form-label" htmlFor="provider-rate-limit">{t('prov_field_rate_limit')}</label>
             <input id="provider-rate-limit" className="input prov-input" type="number" min="0" value={form.rateLimitPerSecond} onChange={e => setForm(f => ({ ...f, rateLimitPerSecond: e.target.value }))} placeholder="0 = unlimited" />
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-burst">Burst</label>
+            <label className="prov-form-label" htmlFor="provider-burst">{t('prov_field_burst')}</label>
             <input id="provider-burst" className="input prov-input" type="number" min="0" value={form.rateLimitBurst} onChange={e => setForm(f => ({ ...f, rateLimitBurst: e.target.value }))} placeholder="0" />
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-fallback">Fallback Chain</label>
+            <label className="prov-form-label" htmlFor="provider-fallback">{t('prov_field_fallback')}</label>
             <input id="provider-fallback" className="input prov-input" value={form.fallbackChainText} onChange={e => setForm(f => ({ ...f, fallbackChainText: e.target.value }))} placeholder="model-a, model-b" />
             <div className="prov-field-hint">{runtimeCopy.fallbackDesc}</div>
           </div>
@@ -254,8 +254,8 @@ function ProviderEditor({
       <div className="prov-editor-section">
         <div className="prov-editor-section-head">
           <div>
-            <h4>{lineLabel} Advanced</h4>
-            <p>只有当前启用供应商的映射、Header 和运行时参数会被应用。</p>
+            <h4>{t('prov_advanced_title').replace('{{line}}', lineLabel)}</h4>
+            <p>{t('prov_advanced_desc')}</p>
           </div>
         </div>
         <div className="set-card">
@@ -281,8 +281,8 @@ function ProviderEditor({
             <>
               <div className="set-row">
                 <div className="label">
-                  <b>Claude 常用开关</b>
-                  <p>把最常改的开关直接露出来，其他高级项继续保留在下面的 JSON 里。</p>
+                  <b>{t('prov_quick_title')}</b>
+                  <p>{t('prov_quick_desc')}</p>
                 </div>
                 <div className="control">
                   <div className="prov-quick-grid">
@@ -292,7 +292,7 @@ function ProviderEditor({
                         checked={parseEnvMap(form.envJSON).ENABLE_TOOL_SEARCH === 'true'}
                         onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'ENABLE_TOOL_SEARCH', e.target.checked ? 'true' : null) }))}
                       />
-                      <span>启用 Tool Search</span>
+                      <span>{t('prov_quick_tool_search')}</span>
                     </label>
                     <label className="prov-editor-check">
                       <input
@@ -300,7 +300,7 @@ function ProviderEditor({
                         checked={parseEnvMap(form.envJSON).CLAUDE_CODE_DISABLE_THINKING === '1'}
                         onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_THINKING', e.target.checked ? '1' : null) }))}
                       />
-                      <span>禁用 Thinking</span>
+                      <span>{t('prov_quick_disable_thinking')}</span>
                     </label>
                     <label className="prov-editor-check">
                       <input
@@ -308,7 +308,7 @@ function ProviderEditor({
                         checked={parseEnvMap(form.envJSON).CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1'}
                         onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', e.target.checked ? '1' : null) }))}
                       />
-                      <span>禁用非必要流量</span>
+                      <span>{t('prov_quick_disable_nonessential')}</span>
                     </label>
                     <label className="prov-editor-check">
                       <input
@@ -316,12 +316,12 @@ function ProviderEditor({
                         checked={parseEnvMap(form.envJSON).CLAUDE_CODE_ATTRIBUTION_HEADER === '0'}
                         onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_ATTRIBUTION_HEADER', e.target.checked ? '0' : null) }))}
                       />
-                      <span>禁用 Attribution</span>
+                      <span>{t('prov_quick_disable_attribution')}</span>
                     </label>
                   </div>
                   <div className="prov-editor-grid">
                     <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-max-output">最大输出 Token</label>
+                      <label className="prov-form-label" htmlFor="claude-max-output">{t('prov_quick_max_output')}</label>
                       <input
                         id="claude-max-output"
                         className="input prov-input"
@@ -331,7 +331,7 @@ function ProviderEditor({
                       />
                     </div>
                     <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-api-timeout">API 超时 (ms)</label>
+                      <label className="prov-form-label" htmlFor="claude-api-timeout">{t('prov_quick_api_timeout')}</label>
                       <input
                         id="claude-api-timeout"
                         className="input prov-input"
@@ -341,7 +341,7 @@ function ProviderEditor({
                       />
                     </div>
                     <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-mcp-timeout">MCP 超时 (ms)</label>
+                      <label className="prov-form-label" htmlFor="claude-mcp-timeout">{t('prov_quick_mcp_timeout')}</label>
                       <input
                         id="claude-mcp-timeout"
                         className="input prov-input"
@@ -371,7 +371,7 @@ function ProviderEditor({
               </div>
               <div className="control">
                 <div className="prov-runtime-note">
-                  Codex 默认优先 `openai-responses`。只有当上游或客户端还锁在 chat completions 时，才退回 `openai-chat`。
+                  {t('prov_codex_runtime_note')}
                 </div>
               </div>
             </div>
@@ -419,10 +419,10 @@ function SortableProviderCard({
     borderLeft: `3px solid ${LINE_COLORS[(provider.line || 'claude') as AgentLine]}`,
   }
   const healthConfig = {
-    healthy: { icon: Zap, color: 'var(--online)', bg: 'var(--green-soft)', label: 'Healthy' },
-    degraded: { icon: AlertTriangle, color: 'var(--warn)', bg: 'rgba(245,158,11,0.1)', label: 'Degraded' },
-    down: { icon: Shield, color: 'var(--danger)', bg: 'rgba(239,68,68,0.1)', label: 'Down' },
-    unknown: { icon: Shield, color: 'var(--ink-400)', bg: 'var(--ink-100)', label: 'Unknown' },
+    healthy: { icon: Zap, color: 'var(--online)', bg: 'var(--green-soft)', label: t('prov_health_healthy') },
+    degraded: { icon: AlertTriangle, color: 'var(--warn)', bg: 'rgba(245,158,11,0.1)', label: t('prov_health_degraded') },
+    down: { icon: Shield, color: 'var(--danger)', bg: 'rgba(239,68,68,0.1)', label: t('prov_health_down') },
+    unknown: { icon: Shield, color: 'var(--ink-400)', bg: 'var(--ink-100)', label: t('prov_health_unknown') },
   }
   const health = healthConfig[provider.health] || healthConfig.unknown
   const HealthIcon = health.icon
@@ -436,7 +436,7 @@ function SortableProviderCard({
             <span className="prov-name">{provider.name}</span>
             <span className="tag" style={{ background: LINE_COLORS[(provider.line || 'claude') as AgentLine], color: '#fff', fontSize: 10, padding: '1px 6px' }}>{provider.line || 'claude'}</span>
             <span className="prov-health-badge" style={{ background: health.bg, color: health.color }}><HealthIcon width={12} height={12} /> {health.label}</span>
-            {provider.enabled && <span className="tag green" style={{ fontSize: 10 }}>当前</span>}
+            {provider.enabled && <span className="tag green" style={{ fontSize: 10 }}>{t('prov_card_active_tag')}</span>}
           </div>
           <div className="prov-meta">{provider.baseUrl}</div>
           <div className="prov-stats">
@@ -450,11 +450,11 @@ function SortableProviderCard({
         <div className="prov-row-controls">
           <span className="prov-priority">P{provider.priority}</span>
           <button className={provider.enabled ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'} onClick={() => onActivate(provider.id)} disabled={provider.enabled}>
-            {provider.enabled ? '当前' : '启用'}
+            {provider.enabled ? t('prov_card_current') : t('prov_card_enable')}
           </button>
           <button className="btn btn-sm btn-ghost" onClick={() => onToggleExpand(provider)}>
             {expanded ? <ChevronUp width={14} height={14} /> : <ChevronDown width={14} height={14} />}
-            {expanded ? '收起' : '编辑'}
+            {expanded ? t('prov_card_collapse') : t('prov_card_edit')}
           </button>
           <button className="prov-icon-btn red" onClick={() => onDelete(provider.id)}><Trash2 width={16} height={16} /></button>
         </div>
@@ -615,7 +615,7 @@ export default function Providers() {
       <div className="prov-header">
         <div>
           <h2 className="prov-header-title">{t('prov_title')}</h2>
-          <p className="prov-header-sub">Claude / Codex 各自维护当前生效供应商，不再额外引入配置集。</p>
+          <p className="prov-header-sub">{t('prov_page_subtitle')}</p>
         </div>
         <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} className="prov-add-icon-gap" />{t('prov_add')}</button>
       </div>
@@ -628,9 +628,11 @@ export default function Providers() {
       <section className="set-section">
         <div className="head">
           <div>
-            <h3>{lineFilter === 'claude' ? 'Claude 当前供应商' : 'Codex 当前供应商'}</h3>
+            <h3>{t('prov_current_provider_title').replace('{{line}}', lineFilter === 'claude' ? 'Claude' : 'Codex')}</h3>
             <div className="sub">
-              {activeProvider ? `${activeProvider.name} 正在承载当前 ${lineFilter} 线路。` : `当前还没有启用 ${lineFilter} 供应商。`}
+              {activeProvider
+                ? t('prov_active_carrying').replace('{{name}}', activeProvider.name).replace('{{line}}', lineFilter)
+                : t('prov_no_active_provider').replace('{{line}}', lineFilter)}
             </div>
           </div>
         </div>

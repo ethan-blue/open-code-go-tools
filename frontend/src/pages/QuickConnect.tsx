@@ -193,7 +193,7 @@ export default function QuickConnect() {
             <div className="row between" style={{ gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <b style={{ fontSize: 13 }}>{t('status_api_key_not_configured')}</b>
-                <p className="muted tiny" style={{ marginTop: 4 }}>Configure provider credentials and model mapping before installing client integrations.</p>
+                <p className="muted tiny" style={{ marginTop: 4 }}>{t('qc_config_warning')}</p>
               </div>
               <div className="row gap-2">
                 <button className="btn btn-sm btn-primary" onClick={() => window.dispatchEvent(new CustomEvent('nav-to', { detail: 'providers' }))}>{t('nav_providers')}</button>

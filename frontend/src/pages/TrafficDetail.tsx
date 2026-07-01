@@ -45,7 +45,7 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
         const target = e.target as HTMLElement
         if (target && target.innerText) {
           navigator.clipboard.writeText(target.innerText).then(() => {
-            toast(t('td_copied_clipboard') || 'Copied to clipboard', 'success')
+            toast(t('td_copied_clipboard'), 'success')
           })
         }
       }

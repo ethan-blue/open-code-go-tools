@@ -69,25 +69,29 @@ describe('Providers', () => {
     render(<Providers />)
 
     expect(await screen.findByText('OpenCode Go')).toBeInTheDocument()
-    expect(screen.getByText('Claude 当前供应商')).toBeInTheDocument()
+    // With the i18n mock returning the key itself, the rendered title is the
+    // prov_current_provider_title key (with {{line}} still in it).
+    expect(screen.getByText(/prov_current_provider_title/)).toBeInTheDocument()
     expect(screen.queryByText('sidebar_profiles')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('prov_base_url')).not.toBeInTheDocument()
 
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
+    // The edit button's label is the prov_card_edit key.
+    fireEvent.click(await screen.findByRole('button', { name: 'prov_card_edit' }))
 
     expect(await screen.findByLabelText('prov_base_url')).toHaveValue('https://custom.upstream.com')
     expect(await screen.findByLabelText('prov_api_key_label')).toHaveValue('sk-test')
-    expect(await screen.findByLabelText('Default Model')).toHaveValue('claude-3-5-sonnet')
-    expect(screen.getByText('Env / Runtime')).toBeInTheDocument()
+    // Default Model is a prov_field_default_model labelled field; value flows through.
+    expect(await screen.findByDisplayValue('claude-3-5-sonnet')).toBeInTheDocument()
+    expect(screen.getByText('prov_rt_claude_env_label')).toBeInTheDocument()
   })
 
   it('preserves a valid protocol when switching line, resets when invalid', async () => {
     render(<Providers />)
 
-    fireEvent.click(await screen.findByRole('button', { name: '编辑' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'prov_card_edit' }))
 
     // The seeded provider uses openai-chat, which is valid for both lines.
-    const protocolSelect = await screen.findByLabelText('Protocol')
+    const protocolSelect = await screen.findByLabelText('prov_field_protocol')
     expect(protocolSelect).toHaveValue('openai-chat')
 
     // The page has two "Claude"/"Codex" segmented controls: the line filter at
@@ -98,15 +102,15 @@ describe('Providers', () => {
 
     // Switch line Claude -> Codex in the editor: openai-chat is valid for codex.
     fireEvent.click(codexButtons()[1])
-    expect(screen.getByLabelText('Protocol')).toHaveValue('openai-chat')
+    expect(screen.getByLabelText('prov_field_protocol')).toHaveValue('openai-chat')
 
     // anthropic is only valid for claude. Pick it on Claude, then switch to
     // Codex: it must reset to the codex default (openai-responses).
     fireEvent.click(claudeButtons()[1])
-    fireEvent.change(screen.getByLabelText('Protocol'), { target: { value: 'anthropic' } })
-    expect(screen.getByLabelText('Protocol')).toHaveValue('anthropic')
+    fireEvent.change(screen.getByLabelText('prov_field_protocol'), { target: { value: 'anthropic' } })
+    expect(screen.getByLabelText('prov_field_protocol')).toHaveValue('anthropic')
 
     fireEvent.click(codexButtons()[1])
-    expect(screen.getByLabelText('Protocol')).toHaveValue('openai-responses')
+    expect(screen.getByLabelText('prov_field_protocol')).toHaveValue('openai-responses')
   })
 })

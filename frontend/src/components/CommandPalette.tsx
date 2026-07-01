@@ -33,7 +33,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
   const actionItems = [
     { id: 'export', label: t('cmd_export_traffic'), icon: '⬇', shortcut: 'Ctrl+E', action: () => navTo('history') },
-    { id: 'theme', label: t('cmd_toggle_theme') || 'Toggle Theme', icon: '🎨', action: () => {
+    { id: 'theme', label: t('cmd_toggle_theme'), icon: '🎨', action: () => {
       const current = document.documentElement.getAttribute('data-theme')
       const next = current === 'dark' ? 'light' : 'dark'
       document.documentElement.setAttribute('data-theme', next)

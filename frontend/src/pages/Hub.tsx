@@ -194,7 +194,7 @@ export default memo(function Hub() {
         <div className="card device-table">
           <div className="card-h">{t('hub_lbl_devices')} · {displayDevices.length}
             <div className="actions">
-              <button className="btn btn-sm btn-ghost" onClick={() => { window.dispatchEvent(new CustomEvent('nav-to', { detail: 'terminal' })) }}>{t('hub_add_device') || '+ Add device'}</button>
+              <button className="btn btn-sm btn-ghost" onClick={() => { window.dispatchEvent(new CustomEvent('nav-to', { detail: 'terminal' })) }}>{t('hub_add_device')}</button>
               <span className="tag">{status?.connected ? t('hub_lbl_synced') : t('hub_lbl_local')}</span>
             </div>
           </div>

@@ -241,7 +241,7 @@ export default memo(function Sessions() {
             <div className="v sess-v">{fmtTokens(summary.totalTokens)}</div>
           </div>
           <div className="stat sess-stat-card">
-            <div className="lbl">{t('tm_cost') || 'Cost'}</div>
+            <div className="lbl">{t('tm_cost')}</div>
             <div className="v sess-v">{fmtCost(summary.totalCost)}</div>
           </div>
         </div>
@@ -264,7 +264,7 @@ export default memo(function Sessions() {
         <div className="s-chart-collapse">
           <div className={`s-chart-header${chartOpen ? ' open' : ''}`} role="button" tabIndex={0} onClick={() => setChartOpen(!chartOpen)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChartOpen(!chartOpen) } }} aria-expanded={chartOpen}>
             <ChevronRight size={16} className={`s-chart-chevron${chartOpen ? ' open' : ''}`} />
-            <span className="s-chart-title">{t('sessions_model_chart') || 'Model Distribution'}</span>
+            <span className="s-chart-title">{t('sessions_model_chart')}</span>
             <span className="s-chart-count tag muted">{chartModels.length} {t('sessions_models')}</span>
           </div>
           {chartOpen && (
@@ -323,8 +323,8 @@ export default memo(function Sessions() {
         <div className="card">
           <EmptyState
             icon={<Hash width={28} height={28} />}
-            title={loadError ? t('td_load_failed') : (t('sessions_empty_title') || 'No active sessions')}
-            description={loadError ? t('td_proxy_offline') : (t('sessions_empty_desc') || 'Sessions will appear here when you start using connected clients.')}
+            title={loadError ? t('td_load_failed') : t('sessions_empty_title')}
+            description={loadError ? t('td_proxy_offline') : t('sessions_empty_desc')}
             action={
               loadError
                 ? <button className="btn btn-sm" onClick={load}>{t('retry')}</button>

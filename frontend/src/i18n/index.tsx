@@ -245,6 +245,7 @@ const zh = {
   qc_installed: '已安装', qc_not_installed: '未安装', qc_new: '新',
   qc_open_config: '打开配置', qc_edit_config: '编辑配置', qc_docs: '文档', qc_install: '安装', qc_remove: '移除',
   qc_reqs_24h: '次请求 · 24h',
+  qc_config_warning: '安装客户端集成前，请先在供应商页面配置好凭证和模型映射。',
   qc_add_custom: '添加自定义客户端', qc_add_custom_sub: 'openapi · 环境映射',
   qc_add_custom_desc: '接入你自己的工具：将它指向网关，让 OCGT 注入正确的请求头。插件格式注册表。',
   qc_create: '创建 →',
@@ -286,6 +287,48 @@ const zh = {
   prov_no_providers: '暂无提供者配置', prov_add_first: '添加第一个提供者',
   prov_edit: '编辑提供者',
   prov_load_failed: '加载提供者失败',
+  // Providers health labels
+  prov_health_healthy: '健康', prov_health_degraded: '降级', prov_health_down: '离线', prov_health_unknown: '未知',
+  // Providers card labels
+  prov_card_current: '当前', prov_card_enable: '启用', prov_card_edit: '编辑', prov_card_collapse: '收起',
+  prov_card_active_tag: '当前',
+  // Providers section headings (Claude/Codex)
+  prov_conn_title: '{{line}} Connection', prov_conn_desc: '下面的配置只属于当前线路。切换 Claude 不会改 Codex，反过来也一样。',
+  prov_runtime_title: '{{line}} Runtime', prov_runtime_desc: '模型、超时、思考强度和限流，都跟着当前生效供应商走。',
+  prov_advanced_title: '{{line}} Advanced', prov_advanced_desc: '只有当前启用供应商的映射、Header 和运行时参数会被应用。',
+  // Providers editor form labels
+  prov_field_line: 'Line', prov_field_protocol: 'Protocol', prov_field_auth_mode: 'Auth Mode',
+  prov_field_default_model: 'Default Model', prov_field_timeout: 'Request Timeout (s)',
+  prov_field_rate_limit: 'Rate Limit /s', prov_field_burst: 'Burst', prov_field_fallback: 'Fallback Chain',
+  prov_label_headers: 'Headers', prov_headers_desc: 'Extra upstream headers for this provider.',
+  // Providers Claude quick switches
+  prov_quick_title: 'Claude 常用开关', prov_quick_desc: '把最常改的开关直接露出来，其他高级项继续保留在下面的 JSON 里。',
+  prov_quick_tool_search: '启用 Tool Search', prov_quick_disable_thinking: '禁用 Thinking',
+  prov_quick_disable_nonessential: '禁用非必要流量', prov_quick_disable_attribution: '禁用 Attribution',
+  prov_quick_max_output: '最大输出 Token', prov_quick_api_timeout: 'API 超时 (ms)', prov_quick_mcp_timeout: 'MCP 超时 (ms)',
+  // Providers runtime copy (Claude)
+  prov_rt_model_label: '模型映射',
+  prov_rt_claude_model_desc: '当前 Claude 供应商专用的别名映射，例如 sonnet -> claude-sonnet-4-5。',
+  prov_rt_claude_env_label: 'Env / Runtime',
+  prov_rt_claude_env_desc: '这个供应商生效时，Claude Code 会应用这里的运行时覆盖。',
+  prov_rt_claude_message_label: '消息模型链',
+  prov_rt_claude_message_desc: '按顺序填写 Claude message routing 可用模型。',
+  prov_rt_fallback_desc: '请求失败时按顺序重试的模型链（逗号分隔）。',
+  prov_rt_claude_thinking_label: '思考预算',
+  // Providers runtime copy (Codex)
+  prov_rt_codex_model_desc: '当前 Codex 供应商使用的别名映射，适合兼容客户端发来的简写模型名。',
+  prov_rt_codex_env_label: '运行说明',
+  prov_rt_codex_env_desc: 'Codex 只使用上面的协议、鉴权、默认模型和 Header，不额外注入 env。',
+  prov_rt_codex_message_label: '响应模型链',
+  prov_rt_codex_message_desc: '可选的 Codex fallback / compatibility 模型顺序。',
+  prov_rt_codex_thinking_label: '推理预算',
+  prov_codex_runtime_note: 'Codex 默认优先 `openai-responses`。只有当上游或客户端还锁在 chat completions 时，才退回 `openai-chat`。',
+  // Providers page header & active section
+  prov_page_subtitle: 'Claude / Codex 各自维护当前生效供应商，不再额外引入配置集。',
+  prov_current_provider_title: '{{line}} 当前供应商',
+  prov_active_carrying: '{{name}} 正在承载当前 {{line}} 线路。',
+  prov_no_active_provider: '当前还没有启用 {{line}} 供应商。',
+  prov_empty_desc: '为当前线路创建第一个供应商。',
   // Toast titles
   toast_error: '错误', toast_success: '成功', toast_notice: '提示',
   // Dashboard fallback
@@ -704,6 +747,7 @@ const en: Dict = {
   qc_installed: 'installed', qc_not_installed: 'not installed', qc_new: 'new',
   qc_open_config: 'Open config', qc_edit_config: 'Edit config', qc_docs: 'Docs', qc_install: 'Install', qc_remove: 'Remove',
   qc_reqs_24h: 'req · 24h',
+  qc_config_warning: 'Configure provider credentials and model mapping before installing client integrations.',
   qc_add_custom: 'Add custom client', qc_add_custom_sub: 'openapi · env mapping',
   qc_add_custom_desc: 'Bring your own tool: point it at the gateway and let OCGT inject the right headers. Registry plugin format.',
   qc_create: 'Create →',
@@ -745,6 +789,48 @@ const en: Dict = {
   prov_no_providers: 'No providers configured', prov_add_first: 'Add your first provider',
   prov_edit: 'Edit Provider',
   prov_load_failed: 'Failed to load providers',
+  // Providers health labels
+  prov_health_healthy: 'Healthy', prov_health_degraded: 'Degraded', prov_health_down: 'Down', prov_health_unknown: 'Unknown',
+  // Providers card labels
+  prov_card_current: 'Current', prov_card_enable: 'Enable', prov_card_edit: 'Edit', prov_card_collapse: 'Collapse',
+  prov_card_active_tag: 'Current',
+  // Providers section headings (Claude/Codex)
+  prov_conn_title: '{{line}} Connection', prov_conn_desc: 'Settings below belong to this line only. Switching Claude does not change Codex, and vice versa.',
+  prov_runtime_title: '{{line}} Runtime', prov_runtime_desc: 'Model, timeout, reasoning intensity and rate limits all follow the active provider.',
+  prov_advanced_title: '{{line}} Advanced', prov_advanced_desc: 'Only the mapping, headers and runtime params of the active provider are applied.',
+  // Providers editor form labels
+  prov_field_line: 'Line', prov_field_protocol: 'Protocol', prov_field_auth_mode: 'Auth Mode',
+  prov_field_default_model: 'Default Model', prov_field_timeout: 'Request Timeout (s)',
+  prov_field_rate_limit: 'Rate Limit /s', prov_field_burst: 'Burst', prov_field_fallback: 'Fallback Chain',
+  prov_label_headers: 'Headers', prov_headers_desc: 'Extra upstream headers for this provider.',
+  // Providers Claude quick switches
+  prov_quick_title: 'Common Claude Switches', prov_quick_desc: 'Surface the most-used switches; other advanced options remain in the JSON below.',
+  prov_quick_tool_search: 'Enable Tool Search', prov_quick_disable_thinking: 'Disable Thinking',
+  prov_quick_disable_nonessential: 'Disable Nonessential Traffic', prov_quick_disable_attribution: 'Disable Attribution',
+  prov_quick_max_output: 'Max Output Tokens', prov_quick_api_timeout: 'API Timeout (ms)', prov_quick_mcp_timeout: 'MCP Timeout (ms)',
+  // Providers runtime copy (Claude)
+  prov_rt_model_label: 'Model Mapping',
+  prov_rt_claude_model_desc: 'Alias mapping specific to the current Claude provider, e.g. sonnet -> claude-sonnet-4-5.',
+  prov_rt_claude_env_label: 'Env / Runtime',
+  prov_rt_claude_env_desc: 'When this provider is active, Claude Code applies the runtime overrides here.',
+  prov_rt_claude_message_label: 'Message Model Chain',
+  prov_rt_claude_message_desc: 'List the available Claude message routing models in order.',
+  prov_rt_fallback_desc: 'Model chain retried in order on request failure (comma-separated).',
+  prov_rt_claude_thinking_label: 'Thinking Budget',
+  // Providers runtime copy (Codex)
+  prov_rt_codex_model_desc: 'Alias mapping used by the current Codex provider, handy for client shorthand model names.',
+  prov_rt_codex_env_label: 'Runtime Notes',
+  prov_rt_codex_env_desc: 'Codex only uses the protocol, auth, default model and headers above; no extra env is injected.',
+  prov_rt_codex_message_label: 'Response Model Chain',
+  prov_rt_codex_message_desc: 'Optional Codex fallback / compatibility model order.',
+  prov_rt_codex_thinking_label: 'Reasoning Budget',
+  prov_codex_runtime_note: 'Codex defaults to `openai-responses`. It falls back to `openai-chat` only when the upstream or client is still locked to chat completions.',
+  // Providers page header & active section
+  prov_page_subtitle: 'Claude / Codex each maintain their own active provider; no extra profile is introduced.',
+  prov_current_provider_title: '{{line}} Active Provider',
+  prov_active_carrying: '{{name}} is currently serving the {{line}} line.',
+  prov_no_active_provider: 'No {{line}} provider is active yet.',
+  prov_empty_desc: 'Create the first provider for this line.',
   // Toast titles
   toast_error: 'Error', toast_success: 'Success', toast_notice: 'Notice',
   // Dashboard fallback

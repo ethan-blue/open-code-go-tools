@@ -236,8 +236,8 @@ export default function TrafficMonitor() {
         <div className="card">
           <EmptyState
             icon={<Activity width={28} height={28} />}
-            title={loadError ? t('td_load_failed') : (t('td_no_data') || 'No data yet')}
-            description={loadError ? t('td_proxy_offline') : (t('tm_no_data_desc') || 'No traffic recorded for this period.')}
+            title={loadError ? t('td_load_failed') : t('td_no_data')}
+            description={loadError ? t('td_proxy_offline') : t('tm_no_data_desc')}
             action={<button className="btn btn-sm" onClick={load}>{t('retry')}</button>}
           />
         </div>
@@ -425,7 +425,7 @@ export default function TrafficMonitor() {
                 </>
               ) : (
                 <div className="tm-no-data">
-                  <span className="muted tiny">{t('td_no_data') || 'No recent requests'}</span>
+                  <span className="muted tiny">{t('td_no_data')}</span>
                 </div>
               )}
             </div>

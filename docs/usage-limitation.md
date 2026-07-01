@@ -70,16 +70,18 @@ usage := map[string]int{
 
 ### 2. 配置层面 - Profile 文档化
 
+> 注：v4 起 Profile 结构体仅作为运行时归一化容器（供 proxy 核心使用），用户面的配置集概念已废弃，改为 Claude/Codex 双供应商线 + 账号级 Config 字段。
+
 **config.go**:
 ```go
-// Profile holds configuration for a specific API backend.
-// Multiple profiles allow switching between different providers/keys.
+// Profile is a runtime-normalized view of an upstream backend, consumed by the
+// proxy core during request forwarding. Since v4 it is no longer persisted as a
+// user-facing "configuration set" (that role moved to providers + account-level
+// Config fields). It now serves as the in-memory container that
+// runtime_target.go folds a providers.Provider into.
 //
 // Known Limitation: When using OpenAI-compatible endpoints (non-Anthropic upstream),
-// usage statistics will lack cache-related fields (cache_creation_input_tokens,
-// cache_read_input_tokens) because the OpenAI Chat Completions protocol does not
-// support Anthropic's prompt caching metrics. This affects used_percentage
-// calculations in downstream tools like Claude Code's status line.
+// usage statistics will lack cache-related fields ...
 type Profile struct { ... }
 ```
 

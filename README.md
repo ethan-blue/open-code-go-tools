@@ -106,7 +106,7 @@
 
 - **热重载**：检测文件修改时间，3 秒轮询，外部编辑自动生效
 
-- **多 Profile**：`X-Ocgt-Profile` header 或默认走 `active_profile`
+- **双供应商线**：Claude / Codex 各自维护当前生效上游供应商（providers.json），切换即热重载
 
 ---
 
@@ -115,7 +115,7 @@
 ```powershell
 ocgt init       # 初始化默认配置
 ocgt serve      # 后台运行代理服务
-ocgt claude-env # 打印当前 Profile 环境变量
+ocgt claude-env # 打印当前供应商的 Claude Code 环境变量
 ocgt ccswitch   # 输出 CC Switch provider JSON
 ocgt version    # 查看版本
 ```

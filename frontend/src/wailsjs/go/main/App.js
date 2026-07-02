@@ -102,16 +102,16 @@ export function RepairAllConfigurations() {
   return window['go']['main']['App']['RepairAllConfigurations']();
 }
 
+export function SaveGlobalConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
+  return window['go']['main']['App']['SaveGlobalConfig'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
+}
+
 export function SaveHubConfig(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['SaveHubConfig'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function SaveLogPreferences(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveLogPreferences'](arg1, arg2, arg3);
-}
-
-export function SaveGlobalConfig(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
-  return window['go']['main']['App']['SaveGlobalConfig'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
 }
 
 export function SavePlugins(arg1) {

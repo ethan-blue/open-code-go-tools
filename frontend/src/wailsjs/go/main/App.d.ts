@@ -51,11 +51,11 @@ export function RemoveVSCodeEnv():Promise<string>;
 
 export function RepairAllConfigurations():Promise<string>;
 
+export function SaveGlobalConfig(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string):Promise<string>;
+
 export function SaveHubConfig(arg1:boolean,arg2:string,arg3:string,arg4:string,arg5:number):Promise<string>;
 
 export function SaveLogPreferences(arg1:boolean,arg2:string,arg3:number):Promise<string>;
-
-export function SaveGlobalConfig(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string):Promise<string>;
 
 export function SavePlugins(arg1:string):Promise<string>;
 

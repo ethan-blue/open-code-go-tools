@@ -816,6 +816,7 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 }
 
 /* ============ TRAFFIC ============ */
+#page-traffic .hero-row{margin-bottom:18px}
 #page-traffic .controls{display:flex; align-items:center; gap:10px; margin-bottom:18px}
 #page-traffic .controls .spacer{flex:1}
 #page-traffic .chart-card{padding:18px 22px}
@@ -866,6 +867,9 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 .json-block .c{color:#71717a}
 
 /* ============ SESSIONS ============ */
+#page-sessions .hero-row{margin-bottom:18px}
+#page-sessions .sessions-filters{margin-bottom:18px}
+#page-sessions .sessions-stats-grid{grid-template-columns:repeat(3,1fr); min-width:0}
 #page-sessions .sessions-layout{display:grid; grid-template-columns:340px 1fr; gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--paper)}
 .session-list{border-right:1px solid var(--line); max-height:560px; overflow:auto}
 .session-list .item{padding:14px 16px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .12s}
@@ -1778,8 +1782,8 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 .sess-bar { height: 100%; border-radius: 4px 4px 0 0; background: var(--link); transition: height 0.3s; }
 .sess-chart-label { font-size: 11px; color: var(--ink-500); text-align: center; }
 .sess-search { flex: 1; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; background: var(--ink-0); }
-.sess-stat-card { padding: 10px 14px; background: var(--paper); border-radius: 10px; border: 1px solid var(--line); }
-.sess-v { font-size: 20px; margin-top: 4px; }
+.sess-stat-card { padding: 10px 14px; background: var(--paper); border-radius: 10px; border: 1px solid var(--line); min-width: 0; }
+.sess-v { font-size: 20px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sess-chart-center-wrapper { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .sess-chart-center-val { font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1; }
 .sess-chart-center-lbl { font-size: 10px; color: var(--ink-400); }

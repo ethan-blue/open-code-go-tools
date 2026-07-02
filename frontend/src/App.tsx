@@ -328,7 +328,6 @@ function AppShell() {
           </aside>
 
           <main id="main">
-            <div id="topbar" />
             <div id="page-content">
               <Suspense fallback={<div className="loading-page"><div className="spin" /></div>}>
                 <div key={activeView} className="fade-enter page">

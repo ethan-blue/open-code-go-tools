@@ -271,7 +271,7 @@ export default function TrafficMonitor() {
                 </div>
               ) : (
                 <div className="tm-chart-empty">
-                  <span className="muted tiny">{t('tm_chart_loading')}</span>
+                  <span className="muted tiny">{t('td_no_data')}</span>
                 </div>
               )}
             </div>
@@ -398,7 +398,7 @@ export default function TrafficMonitor() {
                       {pageRows.map((r, i) => (
                         <tr key={r.id || i}>
                           <td className="mono tiny">{r.time}</td>
-                          <td className="mono tiny" title={r.id}>{r.id.slice(0, 8)}</td>
+                          <td className="mono tiny" title={r.id || ''}>{(r.id || '').slice(0, 8) || '-'}</td>
                           <td className="tiny">{r.client}</td>
                           <td className="mono tiny">{r.model}</td>
                           <td className="num mono tiny">{fmtTokens(r.inp)}</td>

@@ -468,14 +468,13 @@ export default function Providers() {
     try {
       await apiFetch(`/ocgt/api/providers/${id}/toggle`, { method: 'PATCH' })
       setProviders(prev => prev.map(p => (p.line || 'claude') === line ? { ...p, enabled: p.id === id } : p))
-      if (editingId === id) {
-        setForm(current => ({ ...current, enabled: true }))
-      }
       toast(t('prov_enabled'), 'success')
+      // Collapse the editor after activating so the card doesn't stay stuck open.
+      closeEditor()
     } catch {
       toast(t('prov_toggle_fail'), 'error')
     }
-  }, [editingId, providers, t, toast])
+  }, [closeEditor, providers, t, toast])
 
   const handleSave = useCallback(async () => {
     if (!form.name || !form.baseUrl) {
@@ -534,8 +533,8 @@ export default function Providers() {
       </div>
 
       <div className="segmented prov-filter-gap">
-        <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => setLineFilter('claude')}>Claude</button>
-        <button className={lineFilter === 'codex' ? 'on' : ''} onClick={() => setLineFilter('codex')}>Codex</button>
+        <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => { setLineFilter('claude'); closeEditor() }}>Claude</button>
+        <button className={lineFilter === 'codex' ? 'on' : ''} onClick={() => { setLineFilter('codex'); closeEditor() }}>Codex</button>
       </div>
 
       <section className="set-section">

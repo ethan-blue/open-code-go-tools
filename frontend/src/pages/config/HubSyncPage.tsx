@@ -3,6 +3,14 @@ import { wails } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 
+// Defined at module scope (not inside the component) so React doesn't remount it
+// on every parent render — defining a component inside render loses DOM/focus state.
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <button role="switch" aria-checked={checked} aria-label={label} className={`toggle${checked ? ' on' : ''}`} onClick={onChange} type="button"><span /></button>
+  )
+}
+
 export default function HubSyncPage() {
   const { t } = useI18n()
   const { toast } = useToast()
@@ -36,10 +44,6 @@ export default function HubSyncPage() {
     } catch { toast(t('toast_save_failed'), 'error') }
     finally { setSaving(false) }
   }, [hubEnabled, hubUrl, hubSecret, hubDeviceName, hubInterval, t, toast])
-
-  const Toggle = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
-    <button role="switch" aria-checked={checked} aria-label={label} className={`toggle${checked ? ' on' : ''}`} onClick={onChange} type="button"><span /></button>
-  )
 
   return (
     <div>

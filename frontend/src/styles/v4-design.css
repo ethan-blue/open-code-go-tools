@@ -1270,6 +1270,12 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
   .conn-grid{flex-direction:column}
   .conn-card{flex:1 1 100%; max-width:none}
   .sett-grid{grid-template-columns:1fr}
+  /* Settings rows: stack label above control on narrow screens (affects
+     Preferences / Logs / Security / Hub / About — all use .set-row). */
+  .set-row{grid-template-columns:1fr; gap:6px}
+  /* Sessions master/detail: stack vertically instead of 340px | 1fr. */
+  #page-sessions .sessions-layout{grid-template-columns:1fr; grid-template-rows:auto 1fr}
+  .session-list{max-height:280px; border-right:none; border-bottom:1px solid var(--line)}
 }
 @media (max-width:480px){
   :root{--gutter:12px}
@@ -1280,7 +1286,7 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 }
 /* Providers components */
 .prov-list{display:flex; flex-direction:column; gap:12px}
-.prov-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:24px}
+.prov-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:20px}
 .prov-card{border:1px solid var(--line); border-radius:10px; background:var(--paper); overflow:hidden}
 .prov-card-new{margin-bottom:12px}
 .prov-row{display:flex; align-items:center; gap:12px; padding:12px; border-radius:10px; border:1px solid var(--line)}
@@ -1884,7 +1890,7 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 /* QuickConnect extracted styles */
 .qc-icon-text { font-size: 13px; font-weight: 600; }
 .min-w-0 { min-width: 0; }
-.qc-filter-bar { margin-bottom: 16px; display: flex; justify-content: flex-end; }
+.qc-filter-bar { margin-bottom: 20px; display: flex; justify-content: flex-end; }
 .qc-config-warning { margin-bottom: 16px; padding: 16px; }
 
 /* Sessions extracted inline styles */

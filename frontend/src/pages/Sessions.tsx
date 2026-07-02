@@ -32,6 +32,10 @@ interface Session {
   events: SessionEvent[]
 }
 
+// Cap how many session rows are rendered at once. Without this the full list
+// (potentially hundreds under "All") mounts as DOM nodes and stalls first paint.
+const SESSION_RENDER_LIMIT = 100
+
 function sessionCost(
   model: string,
   input: number,
@@ -335,7 +339,7 @@ export default memo(function Sessions() {
       ) : (
         <div className="sessions-layout">
           <div className="session-list">
-            {filtered.map((s) => {
+            {filtered.slice(0, SESSION_RENDER_LIMIT).map((s) => {
               const cost = costMap[s.sessionId] || 0
               const isSelected = selectedId === s.sessionId
                             return (
@@ -357,6 +361,11 @@ export default memo(function Sessions() {
                 </div>
               )
             })}
+            {filtered.length > SESSION_RENDER_LIMIT && (
+              <div className="session-truncated-hint">
+                {t('sessions_truncated').replace('{{shown}}', String(SESSION_RENDER_LIMIT)).replace('{{total}}', String(filtered.length))}
+              </div>
+            )}
           </div>
 
           <div className="session-detail">

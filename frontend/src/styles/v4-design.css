@@ -872,6 +872,7 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 #page-sessions .sessions-stats-grid{grid-template-columns:repeat(3,1fr); min-width:0}
 #page-sessions .sessions-layout{display:grid; grid-template-columns:340px 1fr; gap:0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--paper)}
 .session-list{border-right:1px solid var(--line); max-height:560px; overflow:auto}
+.session-truncated-hint{padding:10px 16px; font-size:11.5px; color:var(--ink-500); text-align:center; background:var(--ink-50); border-top:1px solid var(--line)}
 .session-list .item{padding:14px 16px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .12s}
 .session-list .item:hover{background:var(--ink-50)}
 .session-list .item.on{background:var(--ink-100); border-left:2px solid var(--ink-950); padding-left:14px}

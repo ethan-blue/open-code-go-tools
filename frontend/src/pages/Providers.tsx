@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react'
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -65,22 +65,14 @@ function parseStringList(raw: string): string[] {
     .filter(Boolean)
 }
 
-function parseEnvMap(raw: string): Record<string, string> {
+/** Best-effort JSON object parse — returns fallback on any error. */
+function safeParse<T>(raw: string, fallback: T): T {
   try {
-    return parseStringMap(raw, 'env')
+    const parsed = JSON.parse(raw || '{}')
+    return parsed && typeof parsed === 'object' ? parsed as T : fallback
   } catch {
-    return {}
+    return fallback
   }
-}
-
-function updateEnvValue(raw: string, key: string, value: string | null): string {
-  const next = parseEnvMap(raw)
-  if (value === null || value === '') {
-    delete next[key]
-  } else {
-    next[key] = value
-  }
-  return JSON.stringify(next, null, 2)
 }
 
 function toForm(provider: Provider): FormData {
@@ -120,24 +112,54 @@ function ProviderEditor({
   onCancel: () => void
 }) {
   const { t } = useI18n()
+  const { toast } = useToast()
   const isClaude = form.line === 'claude'
   const lineLabel = isClaude ? 'Claude' : 'Codex'
+
+  // The JSON preview reflects the advanced fields (modelAliases / headers / env
+  // / messageModels / fallbackChain) as a single editable blob. It regenerates
+  // from the form whenever the user hasn't manually overridden it.
+  const advancedJSON = useMemo(() => JSON.stringify({
+    modelAliases: safeParse(form.modelAliasesJSON, {}),
+    headers: safeParse(form.headersJSON, {}),
+    env: safeParse(form.envJSON, {}),
+    messageModels: parseStringList(form.messageModelsText),
+    fallbackChain: parseStringList(form.fallbackChainText),
+  }, null, 2), [form.modelAliasesJSON, form.headersJSON, form.envJSON, form.messageModelsText, form.fallbackChainText])
+
+  const [jsonText, setJsonText] = useState(advancedJSON)
+  const jsonDirty = jsonText !== advancedJSON
+
+  // Re-sync from the form when it changes (e.g. toggling a quick switch) and
+  // the user hasn't manually edited the JSON area.
+  useEffect(() => {
+    if (!jsonDirty) setJsonText(advancedJSON)
+  }, [advancedJSON, jsonDirty])
+
+  const applyJSON = () => {
+    try {
+      const parsed = JSON.parse(jsonText)
+      setForm(f => ({
+        ...f,
+        modelAliasesJSON: JSON.stringify(parsed.modelAliases && typeof parsed.modelAliases === 'object' ? parsed.modelAliases : {}, null, 2),
+        headersJSON: JSON.stringify(parsed.headers && typeof parsed.headers === 'object' ? parsed.headers : {}, null, 2),
+        envJSON: JSON.stringify(parsed.env && typeof parsed.env === 'object' ? parsed.env : {}, null, 2),
+        messageModelsText: Array.isArray(parsed.messageModels) ? parsed.messageModels.join(', ') : '',
+        fallbackChainText: Array.isArray(parsed.fallbackChain) ? parsed.fallbackChain.join(', ') : '',
+      }))
+      toast(t('prov_json_applied'), 'success')
+    } catch {
+      toast(t('prov_json_invalid'), 'error')
+    }
+  }
   const runtimeCopy = isClaude
     ? {
-        modelLabel: t('prov_rt_model_label'),
-        modelDesc: t('prov_rt_claude_model_desc'),
-        envLabel: t('prov_rt_claude_env_label'),
-        envDesc: t('prov_rt_claude_env_desc'),
         messageLabel: t('prov_rt_claude_message_label'),
         messageDesc: t('prov_rt_claude_message_desc'),
         fallbackDesc: t('prov_rt_fallback_desc'),
         thinkingLabel: t('prov_rt_claude_thinking_label'),
       }
     : {
-        modelLabel: t('prov_rt_model_label'),
-        modelDesc: t('prov_rt_codex_model_desc'),
-        envLabel: t('prov_rt_codex_env_label'),
-        envDesc: t('prov_rt_codex_env_desc'),
         messageLabel: t('prov_rt_codex_message_label'),
         messageDesc: t('prov_rt_codex_message_desc'),
         fallbackDesc: t('prov_rt_fallback_desc'),
@@ -252,131 +274,22 @@ function ProviderEditor({
       </div>
 
       <div className="prov-editor-section">
-        <div className="prov-editor-section-head">
+        <div className="prov-editor-section-head with-action">
           <div>
-            <h4>{t('prov_advanced_title').replace('{{line}}', lineLabel)}</h4>
-            <p>{t('prov_advanced_desc')}</p>
+            <h4>{t('prov_json_section').replace('{{line}}', lineLabel)}</h4>
+            <p>{t('prov_json_hint')}</p>
           </div>
+          <button className="btn btn-sm btn-primary" onClick={applyJSON} disabled={!jsonDirty}>
+            {t('prov_json_apply')}
+          </button>
         </div>
-        <div className="set-card">
-          <div className="set-row">
-            <div className="label">
-              <b>{runtimeCopy.modelLabel}</b>
-              <p>{runtimeCopy.modelDesc}</p>
-            </div>
-            <div className="control">
-              <textarea className="settings-env-key" value={form.modelAliasesJSON} onChange={e => setForm(f => ({ ...f, modelAliasesJSON: e.target.value }))} rows={6} />
-            </div>
-          </div>
-          <div className="set-row">
-            <div className="label">
-              <b>Headers</b>
-              <p>Extra upstream headers for this provider.</p>
-            </div>
-            <div className="control">
-              <textarea className="settings-env-key" value={form.headersJSON} onChange={e => setForm(f => ({ ...f, headersJSON: e.target.value }))} rows={4} />
-            </div>
-          </div>
-          {isClaude ? (
-            <>
-              <div className="set-row">
-                <div className="label">
-                  <b>{t('prov_quick_title')}</b>
-                  <p>{t('prov_quick_desc')}</p>
-                </div>
-                <div className="control">
-                  <div className="prov-quick-grid">
-                    <label className="prov-editor-check">
-                      <input
-                        type="checkbox"
-                        checked={parseEnvMap(form.envJSON).ENABLE_TOOL_SEARCH === 'true'}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'ENABLE_TOOL_SEARCH', e.target.checked ? 'true' : null) }))}
-                      />
-                      <span>{t('prov_quick_tool_search')}</span>
-                    </label>
-                    <label className="prov-editor-check">
-                      <input
-                        type="checkbox"
-                        checked={parseEnvMap(form.envJSON).CLAUDE_CODE_DISABLE_THINKING === '1'}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_THINKING', e.target.checked ? '1' : null) }))}
-                      />
-                      <span>{t('prov_quick_disable_thinking')}</span>
-                    </label>
-                    <label className="prov-editor-check">
-                      <input
-                        type="checkbox"
-                        checked={parseEnvMap(form.envJSON).CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC === '1'}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', e.target.checked ? '1' : null) }))}
-                      />
-                      <span>{t('prov_quick_disable_nonessential')}</span>
-                    </label>
-                    <label className="prov-editor-check">
-                      <input
-                        type="checkbox"
-                        checked={parseEnvMap(form.envJSON).CLAUDE_CODE_ATTRIBUTION_HEADER === '0'}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_ATTRIBUTION_HEADER', e.target.checked ? '0' : null) }))}
-                      />
-                      <span>{t('prov_quick_disable_attribution')}</span>
-                    </label>
-                  </div>
-                  <div className="prov-editor-grid">
-                    <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-max-output">{t('prov_quick_max_output')}</label>
-                      <input
-                        id="claude-max-output"
-                        className="input prov-input"
-                        value={parseEnvMap(form.envJSON).CLAUDE_CODE_MAX_OUTPUT_TOKENS || ''}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'CLAUDE_CODE_MAX_OUTPUT_TOKENS', e.target.value.trim() || null) }))}
-                        placeholder="131072"
-                      />
-                    </div>
-                    <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-api-timeout">{t('prov_quick_api_timeout')}</label>
-                      <input
-                        id="claude-api-timeout"
-                        className="input prov-input"
-                        value={parseEnvMap(form.envJSON).API_TIMEOUT_MS || ''}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'API_TIMEOUT_MS', e.target.value.trim() || null) }))}
-                        placeholder="600000"
-                      />
-                    </div>
-                    <div className="field">
-                      <label className="prov-form-label" htmlFor="claude-mcp-timeout">{t('prov_quick_mcp_timeout')}</label>
-                      <input
-                        id="claude-mcp-timeout"
-                        className="input prov-input"
-                        value={parseEnvMap(form.envJSON).MCP_TIMEOUT || ''}
-                        onChange={e => setForm(f => ({ ...f, envJSON: updateEnvValue(f.envJSON, 'MCP_TIMEOUT', e.target.value.trim() || null) }))}
-                        placeholder="600000"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="set-row">
-                <div className="label">
-                  <b>{runtimeCopy.envLabel}</b>
-                  <p>{runtimeCopy.envDesc}</p>
-                </div>
-                <div className="control">
-                  <textarea className="settings-env-key" value={form.envJSON} onChange={e => setForm(f => ({ ...f, envJSON: e.target.value }))} rows={8} />
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="set-row">
-              <div className="label">
-                <b>{runtimeCopy.envLabel}</b>
-                <p>{runtimeCopy.envDesc}</p>
-              </div>
-              <div className="control">
-                <div className="prov-runtime-note">
-                  {t('prov_codex_runtime_note')}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        <textarea
+          className={`settings-env-key prov-json-area${jsonDirty ? ' prov-json-dirty' : ''}`}
+          value={jsonText}
+          onChange={e => setJsonText(e.target.value)}
+          rows={16}
+          spellCheck={false}
+        />
       </div>
 
       <div className="prov-editor-actions">

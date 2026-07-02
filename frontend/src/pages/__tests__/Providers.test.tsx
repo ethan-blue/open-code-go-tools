@@ -82,7 +82,8 @@ describe('Providers', () => {
     expect(await screen.findByLabelText('prov_api_key_label')).toHaveValue('sk-test')
     // Default Model is a prov_field_default_model labelled field; value flows through.
     expect(await screen.findByDisplayValue('claude-3-5-sonnet')).toBeInTheDocument()
-    expect(screen.getByText('prov_rt_claude_env_label')).toBeInTheDocument()
+    // The advanced config now lives in an auto-generated JSON section.
+    expect(screen.getByText(/prov_json_section/)).toBeInTheDocument()
   })
 
   it('preserves a valid protocol when switching line, resets when invalid', async () => {

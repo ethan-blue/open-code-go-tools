@@ -296,6 +296,11 @@ const zh = {
   prov_conn_title: '{{line}} Connection', prov_conn_desc: '下面的配置只属于当前线路。切换 Claude 不会改 Codex，反过来也一样。',
   prov_runtime_title: '{{line}} Runtime', prov_runtime_desc: '模型、超时、思考强度和限流，都跟着当前生效供应商走。',
   prov_advanced_title: '{{line}} Advanced', prov_advanced_desc: '只有当前启用供应商的映射、Header 和运行时参数会被应用。',
+  prov_json_section: '{{line}} 配置 JSON（自动生成，可直接编辑）',
+  prov_json_hint: '左侧表单的变更会实时同步到这里。编辑后点"应用 JSON"回填表单。',
+  prov_json_apply: '应用 JSON',
+  prov_json_invalid: 'JSON 格式无效，请检查后重试',
+  prov_json_applied: 'JSON 已应用到表单',
   // Providers editor form labels
   prov_field_line: 'Line', prov_field_protocol: 'Protocol', prov_field_auth_mode: 'Auth Mode',
   prov_field_default_model: 'Default Model', prov_field_timeout: 'Request Timeout (s)',
@@ -798,6 +803,11 @@ const en: Dict = {
   prov_conn_title: '{{line}} Connection', prov_conn_desc: 'Settings below belong to this line only. Switching Claude does not change Codex, and vice versa.',
   prov_runtime_title: '{{line}} Runtime', prov_runtime_desc: 'Model, timeout, reasoning intensity and rate limits all follow the active provider.',
   prov_advanced_title: '{{line}} Advanced', prov_advanced_desc: 'Only the mapping, headers and runtime params of the active provider are applied.',
+  prov_json_section: '{{line}} Configuration JSON (auto-generated, directly editable)',
+  prov_json_hint: 'Form changes sync here live. Edit then click "Apply JSON" to push back to the form.',
+  prov_json_apply: 'Apply JSON',
+  prov_json_invalid: 'Invalid JSON — please fix and retry',
+  prov_json_applied: 'JSON applied to form',
   // Providers editor form labels
   prov_field_line: 'Line', prov_field_protocol: 'Protocol', prov_field_auth_mode: 'Auth Mode',
   prov_field_default_model: 'Default Model', prov_field_timeout: 'Request Timeout (s)',

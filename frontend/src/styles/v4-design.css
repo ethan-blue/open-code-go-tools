@@ -1301,6 +1301,11 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 .prov-editor-section:last-of-type{margin-bottom:0}
 .prov-editor-section-head h4{margin:0; font-size:13px; font-weight:600}
 .prov-editor-section-head p{margin:4px 0 0; font-size:11.5px; color:var(--ink-500); line-height:1.5}
+.prov-editor-section-head.with-action{display:flex; align-items:flex-start; justify-content:space-between; gap:12px}
+.prov-editor-section-head.with-action > div{min-width:0}
+.prov-json-area{width:100%; font-family:var(--mono); font-size:11.5px; line-height:1.55; padding:12px; border-radius:8px; border:1px solid var(--line); background:var(--paper); color:var(--ink-800); resize:vertical; min-height:200px}
+.prov-json-area:focus{outline:none; border-color:var(--link)}
+.prov-json-dirty{border-color:var(--warn); background:rgba(245,158,11,0.04)}
 .prov-editor-grid{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px}
 .prov-field-hint{margin-top:6px; font-size:11px; color:var(--ink-500); line-height:1.45}
 .prov-editor-row{display:flex; align-items:end; gap:12px; margin-top:12px}

@@ -710,7 +710,6 @@ body{min-height:100vh}
 /* Fixed-column tables (client source, etc.) */
 .table-fixed{table-layout:fixed}
 .table-fixed td:first-child,.table-fixed th:first-child{width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.table-fixed td.num,.table-fixed th.num{width:auto}
 
 /* Sparkline (svg) */
 .spark{height:28px; width:100%}

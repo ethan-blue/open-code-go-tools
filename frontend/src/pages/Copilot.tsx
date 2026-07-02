@@ -77,9 +77,15 @@ export default function Copilot() {
     return () => clearInterval(interval)
   }, [])
 
+  // Only auto-scroll when a NEW message is added (length changes), not on every
+  // streaming token update — otherwise the page jumps repeatedly while tokens
+  // stream in. block:'nearest' confines the scroll to the nearest scroll
+  // container instead of forcing the whole page down.
+  const messageCount = messages.length
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (messageCount === 0) return
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }, [messageCount])
 
   const loadInsights = async () => {
     setInsightsLoading(true)

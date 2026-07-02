@@ -448,12 +448,22 @@ func (s *Server) apiConfigImport(w http.ResponseWriter, r *http.Request) {
 	home, _ := os.UserHomeDir()
 	configPath := filepath.Join(home, ".claude", "settings.json")
 
-	// Restore config section
+	// Restore config section. Before overwriting, snapshot the current file so
+	// the user can always roll back without a separate "create backup" step.
+	backupPath := ""
 	if raw, ok := bundle["config"]; ok {
 		formatted, _ := json.MarshalIndent(json.RawMessage(raw), "", "  ")
 		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
+		}
+		// Auto-backup the existing config (best-effort, never blocks the import).
+		if existing, rerr := os.ReadFile(configPath); rerr == nil && len(existing) > 0 {
+			backupPath = configPath + ".ocgt-bak-" + time.Now().Format("20060102-150405")
+			if werr := fileutil.AtomicWriteFile(backupPath, existing, 0600); werr != nil {
+				log.Printf("import: auto-backup write failed: %v", werr)
+				backupPath = ""
+			}
 		}
 		if err := fileutil.AtomicWriteFile(configPath, formatted, 0600); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
@@ -461,7 +471,11 @@ func (s *Server) apiConfigImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "success"})
+	resp := map[string]string{"status": "success"}
+	if backupPath != "" {
+		resp["backupPath"] = backupPath
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) apiVersion(w http.ResponseWriter, r *http.Request) {

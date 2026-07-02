@@ -31,9 +31,15 @@ export default function BackupsPage() {
     try {
       const text = await file.text()
       const data = JSON.parse(text)
-      await apiFetch('/ocgt/api/config/import', { method: 'POST', body: JSON.stringify(data) })
-      toast(t('backup_restore_success'), 'success')
-      setTimeout(() => window.location.reload(), 1000)
+      const res = await apiFetch<{ status: string; backupPath?: string }>('/ocgt/api/config/import', { method: 'POST', body: JSON.stringify(data) })
+      // Surface the auto-backup path so the user knows where the pre-import
+      // snapshot was written (the backend backs up settings.json before overwriting).
+      if (res?.backupPath) {
+        toast(t('backup_auto_backed_up').replace('{{path}}', res.backupPath), 'success')
+      } else {
+        toast(t('backup_restore_success'), 'success')
+      }
+      setTimeout(() => window.location.reload(), 1500)
     } catch (err: unknown) { toast(t('backup_restore_failed') + ': ' + errMessage(err), 'error') }
   }
 

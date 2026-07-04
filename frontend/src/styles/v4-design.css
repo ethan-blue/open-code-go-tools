@@ -1100,6 +1100,11 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 .tm-table-wrap { padding: 0; overflow-x: auto; }
 .tm-client-table th,
 .tm-client-table td{white-space:nowrap}
+/* Inside a half-width panel card the page-level table-wrap rules (negative
+   gutter margins + 600px min-width) bleed the table out of the card padding
+   and force a scrollbar — neutralize both for the client-source table. */
+.tm-client-wrap{margin:0}
+.tm-client-wrap table{min-width:0}
 .tm-client-table .tm-client-col-name{width:42%}
 .tm-client-table .tm-client-col-req{width:14%}
 .tm-client-table .tm-client-col-lat{width:14%}
@@ -1328,6 +1333,16 @@ code.inl{font-family:var(--mono); font-size:11.5px; background:var(--ink-100); p
 
 /* Account pool (multi-account rotation) */
 .prov-header-actions{display:flex; align-items:center; gap:10px}
+/* Provider quick switcher */
+.prov-switcher{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px}
+.prov-switch-pill{display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; border:1px solid var(--line); background:var(--paper); cursor:pointer; font-size:12.5px; color:var(--ink-700)}
+.prov-switch-pill.on{border-color:var(--link); background:rgba(59,130,246,0.08); color:var(--ink-900); font-weight:600; cursor:default}
+.prov-switch-pill:hover:not(.on){border-color:var(--ink-300)}
+.prov-switch-pill:focus-visible{outline:2px solid var(--link); outline-offset:2px}
+.prov-switch-name{max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.prov-switch-model{font-family:var(--mono); font-size:11px; color:var(--ink-500)}
+.prov-switch-hint{font-size:11.5px; color:var(--ink-500); line-height:1.5}
+.qc-page-head{margin-bottom:16px}
 .prov-pool-list{display:flex; flex-direction:column; gap:10px}
 .prov-account-row{display:flex; align-items:flex-start; gap:12px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--paper)}
 .prov-account-row.disabled{opacity:0.55}

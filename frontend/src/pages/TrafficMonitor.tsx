@@ -293,7 +293,7 @@ export default function TrafficMonitor() {
 
             <div className="card">
               <div className="card-h">{t('tm_client_source')}</div>
-              <div className="table-wrap">
+              <div className="table-wrap tm-client-wrap">
               <table className="table table-fixed tm-client-table">
                 <colgroup>
                   <col className="tm-client-col-name" />

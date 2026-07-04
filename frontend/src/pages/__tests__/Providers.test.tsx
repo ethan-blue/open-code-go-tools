@@ -71,7 +71,8 @@ describe('Providers', () => {
   it('uses provider rows as the main config flow', async () => {
     render(<Providers />)
 
-    expect(await screen.findByText('OpenCode Go')).toBeInTheDocument()
+    // The provider name renders in both the quick-switcher pill and the card row.
+    expect((await screen.findAllByText('OpenCode Go')).length).toBeGreaterThanOrEqual(1)
     // With the i18n mock returning the key itself, the rendered title is the
     // prov_current_provider_title key (with {{line}} still in it).
     expect(screen.getByText(/prov_current_provider_title/)).toBeInTheDocument()
@@ -86,8 +87,11 @@ describe('Providers', () => {
     // rotation): the legacy key must surface as the pool's primary account so
     // existing configs keep editing the same credential.
     expect(await screen.findByLabelText('prov_pool_key')).toHaveValue('sk-test')
-    // Default Model is a prov_field_default_model labelled field; value flows through.
-    expect(await screen.findByDisplayValue('claude-3-5-sonnet')).toBeInTheDocument()
+    // Default Model field and the new sonnet-alias quick field both surface
+    // the mapping — model aliases are first-class inputs again, not buried
+    // in the JSON blob.
+    expect((await screen.findAllByDisplayValue('claude-3-5-sonnet')).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByLabelText('prov_alias_sonnet')).toHaveValue('claude-3-5-sonnet')
     // The advanced config now lives in an auto-generated JSON section.
     expect(screen.getByText(/prov_json_section/)).toBeInTheDocument()
   })

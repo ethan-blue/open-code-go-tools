@@ -159,6 +159,16 @@ function ProviderEditor({
       toast(t('prov_json_invalid'), 'error')
     }
   }
+
+  // Model-alias quick fields (sonnet/haiku/opus): first-class inputs that
+  // read/write the same modelAliases blob the JSON section edits.
+  const aliasValue = (key: string) => safeParse<Record<string, string>>(form.modelAliasesJSON, {})[key] || ''
+  const setAlias = (key: string, value: string) => setForm(f => {
+    const next = { ...safeParse<Record<string, string>>(f.modelAliasesJSON, {}) }
+    if (value.trim()) next[key] = value.trim()
+    else delete next[key]
+    return { ...f, modelAliasesJSON: JSON.stringify(next, null, 2) }
+  })
   const runtimeCopy = isClaude
     ? {
         messageLabel: t('prov_rt_claude_message_label'),
@@ -276,10 +286,23 @@ function ProviderEditor({
             <label className="prov-form-label" htmlFor="provider-priority">{t('prov_priority_hint')}</label>
             <input id="provider-priority" className="input prov-input" type="number" min="0" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
           </div>
-          <label className="prov-editor-check">
-            <input type="checkbox" checked={form.enabled} onChange={e => setForm(f => ({ ...f, enabled: e.target.checked }))} />
-            <span>{t('prov_enabled_label')}</span>
-          </label>
+          {isClaude && (
+            <>
+              <div className="field">
+                <label className="prov-form-label" htmlFor="provider-alias-sonnet">{t('prov_alias_sonnet')}</label>
+                <input id="provider-alias-sonnet" className="input prov-input" value={aliasValue('sonnet')} onChange={e => setAlias('sonnet', e.target.value)} placeholder="deepseek-v4-pro" />
+              </div>
+              <div className="field">
+                <label className="prov-form-label" htmlFor="provider-alias-haiku">{t('prov_alias_haiku')}</label>
+                <input id="provider-alias-haiku" className="input prov-input" value={aliasValue('haiku')} onChange={e => setAlias('haiku', e.target.value)} placeholder="deepseek-v4-flash" />
+              </div>
+              <div className="field">
+                <label className="prov-form-label" htmlFor="provider-alias-opus">{t('prov_alias_opus')}</label>
+                <input id="provider-alias-opus" className="input prov-input" value={aliasValue('opus')} onChange={e => setAlias('opus', e.target.value)} placeholder="kimi-k2.6" />
+                <div className="prov-field-hint">{t('prov_alias_hint')}</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -597,6 +620,28 @@ export default function Providers() {
             </div>
           </div>
         </div>
+        {/* One-click provider switcher: routing follows the active provider,
+            so switching must not require opening the editor. */}
+        {filteredProviders.length > 0 && (
+          <div className="prov-switcher" role="radiogroup" aria-label={t('prov_switch_hint')}>
+            {filteredProviders.map(p => (
+              <button
+                key={p.id}
+                type="button"
+                role="radio"
+                aria-checked={p.enabled}
+                className={p.enabled ? 'prov-switch-pill on' : 'prov-switch-pill'}
+                onClick={() => { if (!p.enabled) handleActivate(p.id) }}
+                title={p.baseUrl}
+              >
+                <span className={p.enabled ? 'dot online' : 'dot off'} />
+                <span className="prov-switch-name">{p.name}</span>
+                {p.defaultModel ? <span className="prov-switch-model">{p.defaultModel}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="prov-switch-hint">{activeProvider ? t('prov_switch_hint') : t('prov_no_active_warning')}</div>
       </section>
 
       {creating ? <div className="prov-card prov-card-new"><ProviderEditor form={form} setForm={setForm} onSave={handleSave} onCancel={closeEditor} providerId={null} /></div> : null}

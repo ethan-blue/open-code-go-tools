@@ -18,8 +18,9 @@ export function fmtTokens(n: number): string {
   return String(n)
 }
 
-/** Format cost: 0.00234 → "$0.0023" */
+/** Format cost: 0.00234 → "$0.0023"; 317.099 → "$317" (large values drop cents so stat cards don't clip) */
 export function fmtCost(n: number): string {
+  if (n >= 100) return '$' + Math.round(n).toLocaleString('en-US')
   if (n < 0.01) return '$' + n.toFixed(4)
   return '$' + n.toFixed(2)
 }

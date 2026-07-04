@@ -246,7 +246,7 @@ export default memo(function Sessions() {
           </div>
           <div className="stat sess-stat-card">
             <div className="lbl">{t('tm_cost')}</div>
-            <div className="v sess-v">{fmtCost(summary.totalCost)}</div>
+            <div className="v sess-v" title={fmtCost(summary.totalCost)}>{fmtCost(summary.totalCost)}</div>
           </div>
         </div>
         <div className="row gap-2 items-center flex-wrap">

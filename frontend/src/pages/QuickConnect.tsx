@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Terminal, Bot, Monitor, Copy, Check } from 'lucide-react'
-import { wails, apiGet } from '@/lib/wails'
+import { wails, apiGet, isWails } from '@/lib/wails'
 import { errMessage } from '@/lib/utils'
+import { isMacOS } from '@/lib/platform'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 
@@ -34,7 +35,7 @@ interface Client {
 }
 
 export default function QuickConnect() {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { toast } = useToast()
   const [intStatus, setIntStatus] = useState<IntegrationStatus>({ cli: false, vscode: false, claudeDesktopApp: false, codex: false })
   const [clientStats, setClientStats] = useState<ClientStats>({})
@@ -130,6 +131,17 @@ export default function QuickConnect() {
     try { await navigator.clipboard.writeText(localToken); setCopyFeedback(true); setTimeout(() => setCopyFeedback(false), 2000) } catch {}
   }, [localToken])
 
+  // 临时终端：拉起一个已注入全套代理环境变量的新终端窗口(不写系统配置)。
+  const handleLaunchTerminal = useCallback(async (shell: string) => {
+    try {
+      const result = await wails.LaunchClaudeTerminal(shell, lang)
+      if (result === 'success') toast(t('qc_terminal_launched'), 'success')
+      else toast(t('qc_terminal_launch_fail') + ': ' + result, 'error')
+    } catch (err: unknown) {
+      toast(t('qc_terminal_launch_fail') + ': ' + errMessage(err), 'error')
+    }
+  }, [lang, t, toast])
+
   const allClients: Client[] = [
     {
       id: 'claude',
@@ -181,6 +193,12 @@ export default function QuickConnect() {
   return (
     <div id="page-connect">
       <div className="page">
+        <div className="qc-page-head">
+          <div>
+            <h2 className="prov-header-title">{t('title_terminal')}</h2>
+            <p className="prov-header-sub">{t('subtitle_terminal')}</p>
+          </div>
+        </div>
         <div className="qc-filter-bar">
           <div className="segmented" aria-label="Client line">
             <button className={lineFilter === 'claude' ? 'on' : ''} onClick={() => setLineFilter('claude')}>Claude</button>
@@ -205,6 +223,35 @@ export default function QuickConnect() {
         <div className="conn-grid">
           {visibleClients.map(renderClientCard)}
         </div>
+
+        {/* Temporary terminal launcher — was lost in the v4 redesign; the
+            backend binding (LaunchClaudeTerminal) has existed all along. */}
+        {lineFilter === 'claude' && isWails() && (
+          <section className="conn-group">
+            <div className="conn-group-head">
+              <Terminal width={12} height={12} />
+              {t('int_quick_title')}
+            </div>
+            <div className="conn-card" style={{ flex: '1 1 100%', maxWidth: 'none', flexDirection: 'column' }}>
+              <div className="row between" style={{ gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div style={{ minWidth: 200, flex: 1 }}>
+                  <b style={{ fontSize: 13 }}>{t('btn_launch_temp_term')}</b>
+                  <p style={{ margin: '4px 0 0' }}>{t('int_quick_desc')}</p>
+                </div>
+                <div className="row gap-2">
+                  {isMacOS() ? (
+                    <button className="btn btn-sm btn-primary" onClick={() => handleLaunchTerminal('bash')}>{t('btn_launch_temp_term')}</button>
+                  ) : (
+                    <>
+                      <button className="btn btn-sm btn-primary" onClick={() => handleLaunchTerminal('powershell')}>PowerShell</button>
+                      <button className="btn btn-sm" onClick={() => handleLaunchTerminal('cmd')}>CMD</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Local access token reuses card styling for visual consistency. */}
         <section className="conn-group">

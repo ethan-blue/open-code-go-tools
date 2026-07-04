@@ -6,6 +6,7 @@ import { apiGet, wails } from '@/lib/wails'
 vi.mock('@/i18n', () => ({
   useI18n: () => ({
     t: (key: string) => key,
+    lang: 'zh',
   }),
 }))
 
@@ -17,6 +18,7 @@ vi.mock('@/hooks/toast', () => ({
 
 vi.mock('@/lib/wails', () => ({
   apiGet: vi.fn(),
+  isWails: vi.fn(() => false),
   wails: {
     IsSystemEnvConfigured: vi.fn(),
     IsVSCodeConfigured: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/lib/wails', () => ({
     RemoveVSCodeEnv: vi.fn(),
     ClearCodex: vi.fn(),
     ClearClaudeDesktopApp: vi.fn(),
+    LaunchClaudeTerminal: vi.fn(),
   },
 }))
 

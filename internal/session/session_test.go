@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // testdataRoot 返回测试数据根目录
@@ -128,5 +129,83 @@ func TestClaudeProjectsRoot(t *testing.T) {
 	expected := filepath.Join(home, ".claude", "projects")
 	if root != expected {
 		t.Errorf("expected %s, got %s", expected, root)
+	}
+}
+
+// ── Period filtering & file cache ──
+
+// The 今日/本月/全部 selector was previously decorative — the backend ignored
+// the period entirely, so "today" showed months of history. FilterByPeriod
+// must cut by last-activity time relative to local midnight / month start.
+func TestFilterByPeriod(t *testing.T) {
+	now, _ := time.Parse(time.RFC3339, "2026-07-04T15:00:00Z")
+	sessions := []SessionStats{
+		{SessionID: "today", LastTime: "2026-07-04T09:00:00Z"},
+		{SessionID: "this-month", LastTime: "2026-07-01T12:00:00Z"},
+		{SessionID: "last-month", LastTime: "2026-06-20T12:00:00Z"},
+		{SessionID: "bad-ts", LastTime: "not-a-timestamp"},
+	}
+
+	got := FilterByPeriod(sessions, "today", now.UTC())
+	ids := func(list []SessionStats) []string {
+		out := make([]string, len(list))
+		for i, s := range list {
+			out[i] = s.SessionID
+		}
+		return out
+	}
+	if want := []string{"today", "bad-ts"}; strings.Join(ids(got), ",") != strings.Join(want, ",") {
+		t.Fatalf("today filter: expected %v, got %v", want, ids(got))
+	}
+
+	got = FilterByPeriod(sessions, "month", now.UTC())
+	if want := []string{"today", "this-month", "bad-ts"}; strings.Join(ids(got), ",") != strings.Join(want, ",") {
+		t.Fatalf("month filter: expected %v, got %v", want, ids(got))
+	}
+
+	if got = FilterByPeriod(sessions, "all", now.UTC()); len(got) != len(sessions) {
+		t.Fatalf("all/unknown period must return everything, got %d", len(got))
+	}
+}
+
+// The per-file cache must serve unchanged files without re-reading them, but
+// a modified file (new mtime/size) must be re-parsed — otherwise the sessions
+// page would show stale token counts for the active session.
+func TestReadAllSessionsCacheInvalidation(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "proj-a")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	line1 := `{"type":"assistant","uuid":"u1","timestamp":"2026-07-04T10:00:00Z","message":{"id":"m1","model":"test-model","usage":{"input_tokens":10,"output_tokens":5}}}` + "\n"
+	file := filepath.Join(projectDir, "sess-cache.jsonl")
+	if err := os.WriteFile(file, []byte(line1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := ReadAllSessions(root)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first read: err=%v sessions=%d", err, len(first))
+	}
+	if first[0].InputTokens != 10 {
+		t.Fatalf("expected 10 input tokens, got %d", first[0].InputTokens)
+	}
+
+	// Append a second event; bump mtime explicitly (coarse FS timestamps).
+	line2 := `{"type":"assistant","uuid":"u2","timestamp":"2026-07-04T11:00:00Z","message":{"id":"m2","model":"test-model","usage":{"input_tokens":30,"output_tokens":5}}}` + "\n"
+	if err := os.WriteFile(file, []byte(line1+line2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(file, future, future); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := ReadAllSessions(root)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("second read: err=%v sessions=%d", err, len(second))
+	}
+	if second[0].InputTokens != 40 {
+		t.Fatalf("modified file must be re-parsed: expected 40 input tokens, got %d", second[0].InputTokens)
 	}
 }

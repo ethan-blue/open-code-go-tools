@@ -580,12 +580,13 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 原有逻辑：返回会话列表
-	sessions, err := session.ReadAllSessions(projectsRoot)
+	// 原有逻辑：返回会话列表（带 TTL 缓存 + period 过滤）
+	sessions, err := s.sessionsSnapshot(projectsRoot)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	sessions = session.FilterByPeriod(sessions, r.URL.Query().Get("period"), time.Now())
 	if sessions == nil {
 		sessions = []session.SessionStats{}
 	}
@@ -593,6 +594,29 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		Sessions: sessions,
 		Total:    len(sessions),
 	})
+}
+
+// sessionsSnapshot returns the session list through the server-level TTL
+// cache. The cache fields existed but were never wired up — every navigation
+// rescanned all JSONL files.
+func (s *Server) sessionsSnapshot(projectsRoot string) ([]session.SessionStats, error) {
+	s.sessionsCacheMu.RLock()
+	if s.sessionsCache != nil && time.Since(s.sessionsCacheAt) < s.sessionsCacheTTL {
+		cached := s.sessionsCache
+		s.sessionsCacheMu.RUnlock()
+		return cached, nil
+	}
+	s.sessionsCacheMu.RUnlock()
+
+	sessions, err := session.ReadAllSessions(projectsRoot)
+	if err != nil {
+		return nil, err
+	}
+	s.sessionsCacheMu.Lock()
+	s.sessionsCache = sessions
+	s.sessionsCacheAt = time.Now()
+	s.sessionsCacheMu.Unlock()
+	return sessions, nil
 }
 
 // resolveQuotaCredentials resolves quota display credentials from env vars

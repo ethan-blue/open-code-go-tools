@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 )
 
 // ClaudeProjectsRoot 返回 ~/.claude/projects 路径
@@ -19,7 +22,29 @@ func ClaudeProjectsRoot() (string, error) {
 	return filepath.Join(home, ".claude", "projects"), nil
 }
 
-// ReadAllSessions 扫描目录下所有项目的 JSONL 文件，返回聚合后的会话列表
+// Per-file stats cache. Re-parsing every JSONL on each request is O(total
+// bytes) — with hundreds of sessions the page took seconds to open. A file's
+// aggregate stats only change when the file changes, so cache by mtime+size.
+type fileCacheEntry struct {
+	modTime time.Time
+	size    int64
+	stats   *SessionStats // nil = parsed but not a valid session
+}
+
+var (
+	fileCacheMu sync.Mutex
+	fileCache   = map[string]fileCacheEntry{}
+)
+
+type sessionFileJob struct {
+	path      string
+	sessionID string
+	modTime   time.Time
+	size      int64
+}
+
+// ReadAllSessions 扫描目录下所有项目的 JSONL 文件，返回聚合后的会话列表。
+// 未变更的文件命中缓存；新增/变更的文件用并行 worker 解析。
 func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
@@ -29,25 +54,81 @@ func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 		return nil, fmt.Errorf("read projects dir %s: %w", projectsRoot, err)
 	}
 
-	var all []SessionStats
-	seen := map[string]bool{} // sessionID -> already appended
-
+	// 1. Collect every session file with its current mtime/size.
+	var jobs []sessionFileJob
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 		projectDir := filepath.Join(projectsRoot, entry.Name())
-		sessions, err := readProjectSessions(projectDir)
+		files, err := os.ReadDir(projectDir)
 		if err != nil {
-			// skip unreadable projects
+			continue // skip unreadable projects
+		}
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+			info, err := f.Info()
+			if err != nil {
+				continue
+			}
+			jobs = append(jobs, sessionFileJob{
+				path:      filepath.Join(projectDir, f.Name()),
+				sessionID: strings.TrimSuffix(f.Name(), ".jsonl"),
+				modTime:   info.ModTime(),
+				size:      info.Size(),
+			})
+		}
+	}
+
+	// 2. Resolve from cache; parse misses concurrently.
+	results := make([]*SessionStats, len(jobs))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxParallel())
+	fileCacheMu.Lock()
+	for i, job := range jobs {
+		if entry, ok := fileCache[job.path]; ok && entry.modTime.Equal(job.modTime) && entry.size == job.size {
+			results[i] = entry.stats
 			continue
 		}
-		for _, s := range sessions {
-			if !seen[s.SessionID] {
-				seen[s.SessionID] = true
-				all = append(all, s)
-			}
+		wg.Add(1)
+		go func(i int, job sessionFileJob) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			stats := parseSessionFile(job.path, job.sessionID)
+			fileCacheMu.Lock()
+			fileCache[job.path] = fileCacheEntry{modTime: job.modTime, size: job.size, stats: stats}
+			fileCacheMu.Unlock()
+			results[i] = stats
+		}(i, job)
+	}
+	fileCacheMu.Unlock()
+	wg.Wait()
+
+	// 3. Prune cache entries for deleted files so it cannot grow unbounded.
+	livePaths := make(map[string]bool, len(jobs))
+	for _, job := range jobs {
+		livePaths[job.path] = true
+	}
+	fileCacheMu.Lock()
+	for path := range fileCache {
+		if !livePaths[path] {
+			delete(fileCache, path)
 		}
+	}
+	fileCacheMu.Unlock()
+
+	// 4. Dedupe by session ID (first project wins, matching previous behavior).
+	var all []SessionStats
+	seen := map[string]bool{}
+	for _, stats := range results {
+		if stats == nil || seen[stats.SessionID] {
+			continue
+		}
+		seen[stats.SessionID] = true
+		all = append(all, *stats)
 	}
 
 	// 按最后活动时间倒序排列（最新在前）
@@ -58,26 +139,42 @@ func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 	return all, nil
 }
 
-// readProjectSessions 读取一个项目目录下的所有 JSONL
-func readProjectSessions(projectDir string) ([]SessionStats, error) {
-	entries, err := os.ReadDir(projectDir)
-	if err != nil {
-		return nil, err
+func maxParallel() int {
+	n := runtime.NumCPU()
+	if n > 8 {
+		return 8
 	}
+	if n < 2 {
+		return 2
+	}
+	return n
+}
 
-	var sessions []SessionStats
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+// FilterByPeriod keeps sessions whose last activity falls inside the period:
+// "today" (since local midnight), "month" (since the 1st of the current
+// month). Anything else — including "all" — returns the input unchanged.
+func FilterByPeriod(sessions []SessionStats, period string, now time.Time) []SessionStats {
+	var cutoff time.Time
+	switch period {
+	case "today":
+		cutoff = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	case "month":
+		cutoff = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	default:
+		return sessions
+	}
+	out := make([]SessionStats, 0, len(sessions))
+	for _, s := range sessions {
+		ts, err := time.Parse(time.RFC3339, s.LastTime)
+		if err != nil {
+			out = append(out, s) // unparseable timestamps stay visible
 			continue
 		}
-		sessionID := strings.TrimSuffix(entry.Name(), ".jsonl")
-		filePath := filepath.Join(projectDir, entry.Name())
-		stats := parseSessionFile(filePath, sessionID)
-		if stats != nil {
-			sessions = append(sessions, *stats)
+		if !ts.Before(cutoff) {
+			out = append(out, s)
 		}
 	}
-	return sessions, nil
+	return out
 }
 
 // parseSessionFile 解析单个 JSONL 文件

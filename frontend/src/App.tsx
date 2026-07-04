@@ -180,7 +180,7 @@ function AppShell() {
 
   const navGroups = [
     {
-      label: 'Runtime',
+      label: t('nav_group_runtime'),
       items: [
         { id: 'dashboard' as ViewId, label: t('nav_dashboard'), icon: LayoutDashboard },
         { id: 'history' as ViewId, label: t('nav_history'), icon: BarChart3 },
@@ -189,7 +189,7 @@ function AppShell() {
       ],
     },
     {
-      label: 'Config',
+      label: t('nav_group_config'),
       items: [
         { id: 'providers' as ViewId, label: t('nav_providers'), icon: Server },
         { id: 'security' as ViewId, label: t('sett_section_security'), icon: Shield },
@@ -197,7 +197,7 @@ function AppShell() {
       ],
     },
     {
-      label: 'Getting Started',
+      label: t('nav_group_start'),
       items: [
         { id: 'terminal' as ViewId, label: t('nav_terminal'), icon: Terminal },
       ],
@@ -257,7 +257,7 @@ function AppShell() {
                 <svg viewBox="0 0 8 8"><path d="M1 4H7" stroke="currentColor" strokeWidth="1.2" /></svg>
               </button>
               <button className="tl-maximize" onClick={() => { try { (window as any).runtime?.WindowToggleMaximise() } catch {} }}
-                title="Maximize" aria-label="Maximize">
+                title={t('win_maximize')} aria-label={t('win_maximize')}>
                 <svg viewBox="0 0 8 8"><path d="M1 1H7V7H1Z" stroke="currentColor" strokeWidth="1.2" fill="none" /></svg>
               </button>
             </div>
@@ -274,7 +274,7 @@ function AppShell() {
                 <button className="winbtn" type="button" title={t('close_dialog_minimize')} aria-label={t('close_dialog_minimize')} onClick={() => { try { (window as any).runtime?.WindowMinimise() } catch {} }}>
                   <svg width="11" height="11" viewBox="0 0 12 12"><rect y="5" width="12" height="1.4" fill="currentColor" /></svg>
                 </button>
-                <button className="winbtn" type="button" title="Maximize" aria-label="Maximize" onClick={() => { try { (window as any).runtime?.WindowToggleMaximise() } catch {} }}>
+                <button className="winbtn" type="button" title={t('win_maximize')} aria-label={t('win_maximize')} onClick={() => { try { (window as any).runtime?.WindowToggleMaximise() } catch {} }}>
                   <svg width="11" height="11" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>
                 </button>
                 <button className="winbtn close" type="button" title={t('close_dialog_title')} aria-label={t('close_dialog_title')} onClick={() => setShowCloseDialog(true)}>
@@ -311,8 +311,8 @@ function AppShell() {
               </div>
             ))}
             <div className="footer">
-              <div className="section-label">Advanced</div>
-              <div className="footer-links" role="navigation" aria-label="Advanced">
+              <div className="section-label">{t('nav_group_advanced')}</div>
+              <div className="footer-links" role="navigation" aria-label={t('nav_group_advanced')}>
                 {appNavItems.map((item) => {
                   const Icon = item.icon
                   const active = activeView === item.id

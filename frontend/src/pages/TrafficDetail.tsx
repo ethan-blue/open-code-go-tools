@@ -130,7 +130,7 @@ export default memo(function TrafficDetail({ record, onBack }: Props) {
                   {record.error}
                 </pre>
               ) : (
-                <p className="td-info-p">Response body is not recorded for this request.</p>
+                <p className="td-info-p">{t('td_no_response_body')}</p>
               )}
             </div>
           </div>

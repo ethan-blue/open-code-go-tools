@@ -53,7 +53,7 @@ export default function LogsTelemetryPage() {
             </div>
           </div>
           <div className="set-row">
-            <div className="label"><b>{t('pref_log_retention')}</b><p>Days to keep logs</p></div>
+            <div className="label"><b>{t('pref_log_retention')}</b><p>{t('pref_log_retention_desc')}</p></div>
             <div className="control">
               <input className="input" type="number" value={logRetention} onChange={e => setLogRetention(e.target.value)} min={1} max={365} style={{ width: 100 }} />
             </div>

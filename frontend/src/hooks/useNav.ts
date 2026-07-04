@@ -1,12 +1,5 @@
 import { useCallback } from 'react'
 
-type ViewId =
-  | 'dashboard' | 'history' | 'sessions' | 'copilot'
-  | 'terminal' | 'providers'
-  | 'model-mapping' | 'runtime-rules' | 'security' | 'plugins' | 'hub'
-  | 'preferences' | 'logs' | 'backups' | 'about'
-  | 'detail'
-
 /** Navigate to a view via CustomEvent (consumed by App.tsx). */
 export function useNavTo() {
   return useCallback((view: string) => {

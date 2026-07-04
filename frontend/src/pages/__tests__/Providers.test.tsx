@@ -41,6 +41,9 @@ describe('Providers', () => {
           name: 'OpenCode Go',
           baseUrl: 'https://custom.upstream.com',
           apiKey: 'sk-test',
+          // Post-v4.1 the backend migrates the legacy single key into a
+          // one-account pool; the API always returns accounts alongside apiKey.
+          accounts: [{ id: 'acc-primary', apiKey: 'sk-test' }],
           models: [],
           defaultModel: 'claude-3-5-sonnet',
           priority: 0,
@@ -79,7 +82,10 @@ describe('Providers', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'prov_card_edit' }))
 
     expect(await screen.findByLabelText('prov_base_url')).toHaveValue('https://custom.upstream.com')
-    expect(await screen.findByLabelText('prov_api_key_label')).toHaveValue('sk-test')
+    // The single API Key field was replaced by the account pool (multi-account
+    // rotation): the legacy key must surface as the pool's primary account so
+    // existing configs keep editing the same credential.
+    expect(await screen.findByLabelText('prov_pool_key')).toHaveValue('sk-test')
     // Default Model is a prov_field_default_model labelled field; value flows through.
     expect(await screen.findByDisplayValue('claude-3-5-sonnet')).toBeInTheDocument()
     // The advanced config now lives in an auto-generated JSON section.

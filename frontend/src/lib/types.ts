@@ -5,12 +5,23 @@ export type AgentLine = 'claude' | 'codex'
 // real upstreams use one of the concrete values.
 export type ProviderProtocol = 'anthropic' | 'openai-responses' | 'openai-chat' | 'custom'
 
+/** One credential in a provider's account pool (matches Go `providers.Account`). */
+export interface ProviderAccount {
+  id: string
+  label?: string
+  apiKey: string
+  quotaCookie?: string
+  quotaWorkspaceId?: string
+  disabled?: boolean
+}
+
 /** Upstream API provider (matches Go `internal/providers.Provider` struct). */
 export interface Provider {
   id: string
   name: string
   baseUrl: string
   apiKey: string
+  accounts?: ProviderAccount[]
   models: string[]
   defaultModel?: string
   messageModels?: string[]
@@ -40,6 +51,7 @@ export interface ProviderFormData {
   name: string
   baseUrl: string
   apiKey: string
+  accounts: ProviderAccount[]
   models: string[]
   messageModelsText: string
   fallbackChainText: string
@@ -62,6 +74,7 @@ export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
   name: '',
   baseUrl: '',
   apiKey: '',
+  accounts: [],
   models: [],
   messageModelsText: '',
   fallbackChainText: '',
@@ -173,6 +186,43 @@ export interface HistoryEntry {
 
 export interface QuotaData {
   success: boolean
+  data?: {
+    rolling: { usage_percent: number; reset_display: string }
+    weekly: { usage_percent: number; reset_display: string }
+    monthly?: { usage_percent: number; reset_display: string }
+  }
+}
+
+// ── Account rotation (multi-account failover) ──
+
+export interface RotationAccountStatus {
+  id: string
+  label?: string
+  masked_key: string
+  disabled?: boolean
+  state: 'ready' | 'cooldown' | 'disabled'
+  cooldown_remaining_ms?: number
+  consecutive_failures?: number
+  requests: number
+  failures: number
+  last_error?: string
+  active: boolean
+  has_quota_cookie: boolean
+}
+
+export interface RotationProviderStatus {
+  provider_id: string
+  provider_name: string
+  line: string
+  enabled: boolean
+  accounts: RotationAccountStatus[]
+}
+
+export interface AccountQuotaResult {
+  account_id: string
+  label?: string
+  success: boolean
+  error?: string
   data?: {
     rolling: { usage_percent: number; reset_display: string }
     weekly: { usage_percent: number; reset_display: string }

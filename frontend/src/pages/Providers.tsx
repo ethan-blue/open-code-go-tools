@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetState
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, Trash2, AlertTriangle, Zap, Shield, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { GripVertical, Plus, Trash2, AlertTriangle, Zap, Shield, Clock, ChevronDown, ChevronUp, Users } from 'lucide-react'
 import { apiGet, apiFetch } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { EmptyState, Skeleton } from '@/components/ui'
-import type { Provider, AgentLine, ProviderProtocol, ProviderFormData } from '@/lib/types'
+import { AccountPoolSection } from '@/pages/providers/AccountPoolSection'
+import { QuickSetupModal } from '@/pages/providers/QuickSetupModal'
+import type { Provider, AgentLine, ProviderProtocol, ProviderFormData, RotationProviderStatus } from '@/lib/types'
 import { DEFAULT_PROVIDER_FORM } from '@/lib/types'
 
 const LINE_COLORS: Record<AgentLine, string> = { claude: '#d97706', codex: '#16a34a' }
@@ -81,6 +83,7 @@ function toForm(provider: Provider): FormData {
     name: provider.name,
     baseUrl: provider.baseUrl,
     apiKey: provider.apiKey,
+    accounts: (provider.accounts || []).map(acc => ({ ...acc })),
     models: provider.models || [],
     messageModelsText: csvText(provider.messageModels),
     fallbackChainText: csvText(provider.fallbackChain),
@@ -105,11 +108,15 @@ function ProviderEditor({
   setForm,
   onSave,
   onCancel,
+  providerId,
+  rotation,
 }: {
   form: FormData
   setForm: Dispatch<SetStateAction<FormData>>
   onSave: () => void
   onCancel: () => void
+  providerId: string | null
+  rotation?: RotationProviderStatus
 }) {
   const { t } = useI18n()
   const { toast } = useToast()
@@ -185,10 +192,6 @@ function ProviderEditor({
             <input id="provider-base-url" className="input prov-input" value={form.baseUrl} onChange={e => setForm(f => ({ ...f, baseUrl: e.target.value }))} placeholder={t('prov_url_placeholder')} />
           </div>
           <div className="field">
-            <label className="prov-form-label" htmlFor="provider-api-key">{t('prov_api_key_label')}</label>
-            <input id="provider-api-key" className="input prov-input" type="password" value={form.apiKey} onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))} placeholder="sk-..." />
-          </div>
-          <div className="field">
             <label className="prov-form-label">{t('prov_field_line')}</label>
             <div className="segmented">
               <button className={form.line === 'claude' ? 'on' : ''} type="button" onClick={() => setForm(f => {
@@ -232,6 +235,13 @@ function ProviderEditor({
           </div>
         </div>
       </div>
+
+      <AccountPoolSection
+        accounts={form.accounts}
+        onChange={accounts => setForm(f => ({ ...f, accounts }))}
+        providerId={providerId}
+        rotation={rotation}
+      />
 
       <div className="prov-editor-section">
         <div className="prov-editor-section-head">
@@ -310,6 +320,7 @@ function SortableProviderCard({
   onActivate,
   onSave,
   onCancel,
+  rotation,
 }: {
   provider: Provider
   expanded: boolean
@@ -320,6 +331,7 @@ function SortableProviderCard({
   onActivate: (id: string) => void
   onSave: () => void
   onCancel: () => void
+  rotation?: RotationProviderStatus
 }) {
   const { t } = useI18n()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: provider.id })
@@ -339,6 +351,9 @@ function SortableProviderCard({
   }
   const health = healthConfig[provider.health] || healthConfig.unknown
   const HealthIcon = health.icon
+  const poolSize = provider.accounts?.length || 0
+  const coolingCount = rotation?.accounts.filter(a => a.state === 'cooldown').length || 0
+  const activeAccount = rotation?.accounts.find(a => a.active)
 
   return (
     <div ref={setNodeRef} className="prov-card" style={style}>
@@ -350,12 +365,22 @@ function SortableProviderCard({
             <span className="tag" style={{ background: LINE_COLORS[(provider.line || 'claude') as AgentLine], color: '#fff', fontSize: 10, padding: '1px 6px' }}>{provider.line || 'claude'}</span>
             <span className="prov-health-badge" style={{ background: health.bg, color: health.color }}><HealthIcon width={12} height={12} /> {health.label}</span>
             {provider.enabled && <span className="tag green" style={{ fontSize: 10 }}>{t('prov_card_active_tag')}</span>}
+            {poolSize > 1 && (
+              <span className="tag" style={{ fontSize: 10 }} title={activeAccount ? `${t('prov_pool_active_now')}: ${activeAccount.label || activeAccount.masked_key}` : undefined}>
+                <Users width={11} height={11} style={{ verticalAlign: -1 }} /> {t('prov_pool_badge').replace('{{n}}', String(poolSize))}
+              </span>
+            )}
+            {coolingCount > 0 && (
+              <span className="tag" style={{ fontSize: 10, background: 'rgba(245,158,11,0.15)', color: 'var(--warn)' }}>
+                {t('prov_pool_cooling_badge').replace('{{n}}', String(coolingCount))}
+              </span>
+            )}
           </div>
           <div className="prov-meta">{provider.baseUrl}</div>
           <div className="prov-stats">
             <span className="prov-stat-item"><Clock width={12} height={12} /> {provider.avgLatency}ms</span>
-            <span>{provider.requestCount.toLocaleString()} requests</span>
-            <span className={provider.errorCount > 0 ? 'text-danger' : undefined}>{provider.errorCount} errors</span>
+            <span>{provider.requestCount.toLocaleString()} {t('prov_stat_requests')}</span>
+            <span className={provider.errorCount > 0 ? 'text-danger' : undefined}>{provider.errorCount} {t('prov_stat_errors')}</span>
             {provider.protocol && <span className="tag" style={{ fontSize: 10 }}>{provider.protocol}</span>}
             {provider.defaultModel ? <span className="tag" style={{ fontSize: 10 }}>{provider.defaultModel}</span> : null}
           </div>
@@ -372,7 +397,7 @@ function SortableProviderCard({
           <button className="prov-icon-btn red" onClick={() => onDelete(provider.id)}><Trash2 width={16} height={16} /></button>
         </div>
       </div>
-      {expanded ? <ProviderEditor form={form} setForm={setForm} onSave={onSave} onCancel={onCancel} /> : null}
+      {expanded ? <ProviderEditor form={form} setForm={setForm} onSave={onSave} onCancel={onCancel} providerId={provider.id} rotation={rotation} /> : null}
     </div>
   )
 }
@@ -387,6 +412,8 @@ export default function Providers() {
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState<FormData>(DEFAULT_PROVIDER_FORM)
   const [lineFilter, setLineFilter] = useState<AgentLine>('claude')
+  const [rotation, setRotation] = useState<Record<string, RotationProviderStatus>>({})
+  const [showQuickSetup, setShowQuickSetup] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -410,6 +437,25 @@ export default function Providers() {
   }, [t, toast])
 
   useEffect(() => { loadProviders() }, [loadProviders])
+
+  // Poll account-rotation status while the page is open so cooldown badges
+  // and the "current account" marker stay live.
+  const loadRotation = useCallback(async () => {
+    try {
+      const data = await apiGet<{ providers: RotationProviderStatus[] }>('/ocgt/api/rotation')
+      const next: Record<string, RotationProviderStatus> = {}
+      for (const item of data?.providers || []) next[item.provider_id] = item
+      setRotation(next)
+    } catch {
+      // Non-critical status overlay — keep the last snapshot on failure.
+    }
+  }, [])
+
+  useEffect(() => {
+    loadRotation()
+    const timer = setInterval(loadRotation, 10000)
+    return () => clearInterval(timer)
+  }, [loadRotation])
 
   const closeEditor = useCallback(() => {
     setEditingId(null)
@@ -529,7 +575,10 @@ export default function Providers() {
           <h2 className="prov-header-title">{t('prov_title')}</h2>
           <p className="prov-header-sub">{t('prov_page_subtitle')}</p>
         </div>
-        <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} className="prov-add-icon-gap" />{t('prov_add')}</button>
+        <div className="prov-header-actions">
+          <button className="btn btn-outline" onClick={() => setShowQuickSetup(true)}><Zap width={16} height={16} className="prov-add-icon-gap" />{t('prov_quick_setup')}</button>
+          <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} className="prov-add-icon-gap" />{t('prov_add')}</button>
+        </div>
       </div>
 
       <div className="segmented prov-filter-gap">
@@ -550,7 +599,7 @@ export default function Providers() {
         </div>
       </section>
 
-      {creating ? <div className="prov-card prov-card-new"><ProviderEditor form={form} setForm={setForm} onSave={handleSave} onCancel={closeEditor} /></div> : null}
+      {creating ? <div className="prov-card prov-card-new"><ProviderEditor form={form} setForm={setForm} onSave={handleSave} onCancel={closeEditor} providerId={null} /></div> : null}
 
       {loading ? (
         <div className="prov-flex-col" style={{ gap: 12, padding: '16px 0' }}>
@@ -567,7 +616,7 @@ export default function Providers() {
       ) : loadError ? (
         <EmptyState icon={<Zap width={28} height={28} />} title={t('td_load_failed')} description={t('prov_load_failed')} action={<button className="btn btn-outline" onClick={loadProviders} style={{ marginTop: 8 }}>{t('retry')}</button>} />
       ) : filteredProviders.length === 0 && !creating ? (
-        <EmptyState icon={<Zap width={28} height={28} />} title={t('prov_no_providers')} description="Create the first provider for this line." action={<button className="btn btn-outline" onClick={handleAdd} style={{ marginTop: 8 }}>{t('prov_add_first')}</button>} />
+        <EmptyState icon={<Zap width={28} height={28} />} title={t('prov_no_providers')} description={t('prov_empty_line_desc')} action={<button className="btn btn-outline" onClick={handleAdd} style={{ marginTop: 8 }}>{t('prov_add_first')}</button>} />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={filteredProviders.map(p => p.id)} strategy={verticalListSortingStrategy}>
@@ -584,11 +633,21 @@ export default function Providers() {
                   onActivate={handleActivate}
                   onSave={handleSave}
                   onCancel={closeEditor}
+                  rotation={rotation[provider.id]}
                 />
               ))}
             </div>
           </SortableContext>
         </DndContext>
+      )}
+
+      {showQuickSetup && (
+        <QuickSetupModal
+          line={lineFilter}
+          providers={providers}
+          onClose={() => setShowQuickSetup(false)}
+          onDone={() => { loadProviders(); loadRotation() }}
+        />
       )}
     </div>
   )

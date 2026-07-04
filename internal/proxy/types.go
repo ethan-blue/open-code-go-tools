@@ -70,6 +70,11 @@ type Server struct {
 	consecutiveFailures map[string]int
 	trippedUntil        map[string]time.Time
 
+	// Account failover state (see account_rotation.go), keyed by
+	// providerID+accountID. In-memory only; resets on restart.
+	accountMu     sync.Mutex
+	accountStates map[string]*accountState
+
 	// Auto-generated auth token when config.LocalAuthToken is empty
 	// Protects the dashboard API from in-network access by default
 	autoAuthToken string

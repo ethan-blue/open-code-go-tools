@@ -132,6 +132,10 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 	client := clientSourceFromRequest(r)
 	model := payload.Model
+	// Fallback chain (model-level failover): candidates[0] is the requested
+	// model; the rest come from profile.FallbackChain. With multiple candidates
+	// each model gets 2 attempts before advancing to the next one.
+	candidates := s.buildCandidateModels(payload.Model, target.profile)
 	const maxRetries = 5
 
 	var lastErr error
@@ -145,6 +149,16 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 		return
 	}
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if len(candidates) > 1 {
+			idx := attempt / 2
+			if idx >= len(candidates) {
+				idx = len(candidates) - 1
+			}
+			model = candidates[idx]
+		}
+		// Account failover: pick the healthiest account in the pool for this
+		// attempt (see account_rotation.go). No-op for single-key providers.
+		accountID := s.pickAccount(&target)
 		var raw map[string]any
 		if err := json.Unmarshal(original, &raw); err != nil {
 			writeError(w, http.StatusBadRequest, err)
@@ -203,6 +217,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 		if err != nil {
 			s.recordModelFailure(model)
+			s.noteAccountFailure(target.name, accountID, 0, 0, err.Error())
 			lastErr = err
 			lastStatus = proxyErrorStatus(err)
 			log.Printf("[Retry] Request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
@@ -220,14 +235,25 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 		log.Printf("upstream route=messages model=%s status=%d", model, resp.StatusCode)
 
 		if resp.StatusCode >= 400 {
+			retryAfter := retryAfterDuration(resp)
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
 			resp.Body.Close()
 			errText := upstreamErrorSummary(resp.StatusCode, respBody)
 
 			s.recordModelFailure(model)
+			if isAccountLevelFailure(resp.StatusCode) {
+				s.noteAccountFailure(target.name, accountID, resp.StatusCode, retryAfter, errText)
+			}
 
-			// Client error (except 429) → return immediately, no retry
+			// Client error (except 429) → return immediately, no retry.
+			// Exception: 401/403 with a multi-account pool fail over to the
+			// next account instead of failing the request.
 			if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+				if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) &&
+					len(target.accounts) > 1 && attempt < maxRetries {
+					log.Printf("[Failover] Account %q got %d, rotating to next account (attempt %d/%d)", accountID, resp.StatusCode, attempt+1, maxRetries+1)
+					continue
+				}
 				writeUpstreamError(w, resp.StatusCode, respBody)
 				s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "messages", tokenUsage{Client: client}, errText)
 				return
@@ -237,6 +263,11 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 			log.Printf("[Retry] Model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
 
 			if attempt < maxRetries {
+				// 429 with a multi-account pool: fail over immediately — the
+				// next pick lands on a different account, no need to back off.
+				if resp.StatusCode == http.StatusTooManyRequests && len(target.accounts) > 1 {
+					continue
+				}
 				backoff := s.retryBackoffBase * time.Duration(1<<attempt)
 				log.Printf("[Retry] Backoff %v then retry %d/%d for model %s", backoff, attempt+2, maxRetries+1, model)
 				time.Sleep(backoff)
@@ -253,6 +284,7 @@ func (s *Server) forwardAnthropicMessages(w http.ResponseWriter, r *http.Request
 
 		// Success!
 		s.recordModelSuccess(model)
+		s.noteAccountSuccess(target.name, accountID)
 		copyHeaders(w.Header(), resp.Header)
 		stripHopByHopHeaders(w.Header())
 		w.WriteHeader(resp.StatusCode)

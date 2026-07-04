@@ -62,6 +62,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ocgt/api/config/import", s.apiConfigImport)
 	mux.HandleFunc("/ocgt/api/quota", s.apiQuota)
 	mux.HandleFunc("/ocgt/api/quota/refresh", s.apiRefreshQuota)
+	mux.HandleFunc("/ocgt/api/quota/accounts", s.apiAccountQuotas)
+	mux.HandleFunc("/ocgt/api/rotation", s.apiRotationStatus)
 	mux.HandleFunc("/ocgt/api/sessions", s.apiSessions)
 	mux.HandleFunc("/ocgt/api/hub/sync", s.apiHubSync)
 	s.registerStatsRoutes(mux)

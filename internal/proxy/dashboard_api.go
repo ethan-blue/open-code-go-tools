@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
@@ -79,7 +80,7 @@ func (s *Server) apiStatus(w http.ResponseWriter, r *http.Request) {
 				DefaultModel:     model,
 				Protocol:         provider.Protocol,
 				Enabled:          provider.Enabled,
-				APIKeyConfigured: provider.APIKey != "" || profile.APIKeyValue() != "",
+				APIKeyConfigured: provider.HasCredential() || profile.APIKeyValue() != "",
 			}
 		}
 		return providerStatus{
@@ -415,7 +416,7 @@ func (s *Server) apiConfigExport(w http.ResponseWriter, r *http.Request) {
 	// Mask API keys in export
 	list := s.providerStore.List()
 	for i := range list {
-		list[i].APIKey = providers.MaskAPIKey(list[i].APIKey)
+		list[i] = providers.MaskProviderSecrets(list[i])
 	}
 	bundle["providers"] = list
 
@@ -612,6 +613,58 @@ func (s *Server) resolveQuotaCredentials() (cookie, workspaceID string) {
 		workspaceID = s.config.QuotaWorkspaceID
 	}
 	return
+}
+
+// apiAccountQuotas handles GET /ocgt/api/quota/accounts?provider=ID — fetches
+// OpenCode Go quota for every account in the provider's pool that carries its
+// own quota cookie. Fetches run concurrently (each hits opencode.ai).
+func (s *Server) apiAccountQuotas(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("GET required"))
+		return
+	}
+	providerID := strings.TrimSpace(r.URL.Query().Get("provider"))
+	if providerID == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("provider query parameter is required"))
+		return
+	}
+	store := s.ensureStore()
+	p, err := store.Get(providerID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+
+	type accountQuota struct {
+		AccountID string           `json:"account_id"`
+		Label     string           `json:"label,omitempty"`
+		Success   bool             `json:"success"`
+		Error     string           `json:"error,omitempty"`
+		Data      *quota.QuotaData `json:"data,omitempty"`
+	}
+	accounts := p.Accounts
+	results := make([]accountQuota, len(accounts))
+	var wg sync.WaitGroup
+	for i, acc := range accounts {
+		results[i] = accountQuota{AccountID: acc.ID, Label: acc.Label}
+		if strings.TrimSpace(acc.QuotaCookie) == "" {
+			results[i].Error = "quota cookie not configured"
+			continue
+		}
+		wg.Add(1)
+		go func(i int, cookie, workspaceID string) {
+			defer wg.Done()
+			data, err := quota.FetchOpenCodeGoQuota(cookie, workspaceID)
+			if err != nil {
+				results[i].Error = err.Error()
+				return
+			}
+			results[i].Success = true
+			results[i].Data = data
+		}(i, acc.QuotaCookie, acc.QuotaWorkspaceID)
+	}
+	wg.Wait()
+	writeJSON(w, http.StatusOK, map[string]any{"provider_id": providerID, "accounts": results})
 }
 
 func (s *Server) apiHubSync(w http.ResponseWriter, r *http.Request) {

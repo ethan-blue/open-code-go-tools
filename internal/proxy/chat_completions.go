@@ -20,6 +20,10 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 
 	client := clientSourceFromRequest(r)
 	model := payload.Model
+	// Fallback chain (model-level failover): candidates[0] is the requested
+	// model; with multiple candidates each model gets 2 attempts before
+	// advancing to the next one.
+	candidates := s.buildCandidateModels(payload.Model, target.profile)
 	const maxRetries = 5
 
 	var lastErr error
@@ -33,6 +37,15 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if len(candidates) > 1 {
+			idx := attempt / 2
+			if idx >= len(candidates) {
+				idx = len(candidates) - 1
+			}
+			model = candidates[idx]
+		}
+		// Account failover: pick the healthiest account for this attempt.
+		accountID := s.pickAccount(&target)
 		// Sanitize image content for non-vision models
 		if !supportsVisionInput(model) {
 			sanitizeContentBlocksForNonVision(payload.Messages)
@@ -70,6 +83,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 
 		if err != nil {
 			s.recordModelFailure(model)
+			s.noteAccountFailure(target.name, accountID, 0, 0, err.Error())
 			lastErr = err
 			lastStatus = proxyErrorStatus(err)
 			log.Printf("[Retry] Request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
@@ -87,14 +101,24 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 		log.Printf("upstream route=chat/completions model=%s status=%d", model, resp.StatusCode)
 
 		if resp.StatusCode >= 400 {
+			retryAfter := retryAfterDuration(resp)
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
 			resp.Body.Close()
 			errText := upstreamErrorSummary(resp.StatusCode, respBody)
 
 			s.recordModelFailure(model)
+			if isAccountLevelFailure(resp.StatusCode) {
+				s.noteAccountFailure(target.name, accountID, resp.StatusCode, retryAfter, errText)
+			}
 
-			// Client error (except 429) → return immediately, no retry
+			// Client error (except 429) → return immediately, no retry.
+			// Exception: 401/403 with a multi-account pool fail over instead.
 			if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+				if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) &&
+					len(target.accounts) > 1 && attempt < maxRetries {
+					log.Printf("[Failover] Account %q got %d, rotating to next account (attempt %d/%d)", accountID, resp.StatusCode, attempt+1, maxRetries+1)
+					continue
+				}
 				writeUpstreamError(w, resp.StatusCode, respBody)
 				s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions", tokenUsage{Client: client}, errText)
 				return
@@ -104,6 +128,10 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 			log.Printf("[Retry] Model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
 
 			if attempt < maxRetries {
+				// 429 with a multi-account pool: fail over immediately.
+				if resp.StatusCode == http.StatusTooManyRequests && len(target.accounts) > 1 {
+					continue
+				}
 				backoff := s.retryBackoffBase * time.Duration(1<<attempt)
 				log.Printf("[Retry] Backoff %v then retry %d/%d for model %s", backoff, attempt+2, maxRetries+1, model)
 				time.Sleep(backoff)
@@ -120,6 +148,7 @@ func (s *Server) forwardChatCompletions(w http.ResponseWriter, r *http.Request, 
 
 		// Success!
 		s.recordModelSuccess(model)
+		s.noteAccountSuccess(target.name, accountID)
 		if payload.Stream {
 			outputTokens, inputTokens, cacheReadTokens, cacheCreateTokens := streamOpenAIAsAnthropic(w, resp.Body, model, estimateTokens(payload), s.setReasoningLocked)
 			resp.Body.Close()
@@ -271,18 +300,61 @@ func (s *Server) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
 
-	resp, err := s.doUpstream(req, target.timeoutSeconds)
-	if err != nil {
-		duration := time.Since(start)
-		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
-		writeError(w, http.StatusBadGateway, err)
-		return
+	// Retry with account failover before the first byte reaches the client.
+	// This path previously had NO retry at all, unlike every other route.
+	const maxRetries = 5
+	var resp *http.Response
+	for attempt := 0; ; attempt++ {
+		accountID := s.pickAccount(&target)
+		req, reqErr := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
+		if reqErr != nil {
+			writeError(w, http.StatusInternalServerError, reqErr)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if payload.Stream {
+			prepareStreamingUpstreamRequest(req)
+		}
+
+		resp, err = s.doUpstream(req, target.timeoutSeconds)
+		if err != nil {
+			s.noteAccountFailure(target.name, accountID, 0, 0, err.Error())
+			if attempt < maxRetries {
+				time.Sleep(s.retryBackoffBase * time.Duration(1<<attempt))
+				continue
+			}
+			duration := time.Since(start)
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "chat/completions", tokenUsage{Client: client}, err.Error())
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+		if resp.StatusCode >= 400 {
+			retryAfter := retryAfterDuration(resp)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
+			resp.Body.Close()
+			errText := upstreamErrorSummary(resp.StatusCode, respBody)
+			if isAccountLevelFailure(resp.StatusCode) {
+				s.noteAccountFailure(target.name, accountID, resp.StatusCode, retryAfter, errText)
+			}
+			retryable := resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests ||
+				((resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && len(target.accounts) > 1)
+			if retryable && attempt < maxRetries {
+				// Rotating to another account needs no backoff; same-account
+				// retries (single-key pools, 5xx) back off exponentially.
+				if len(target.accounts) <= 1 || resp.StatusCode >= 500 {
+					time.Sleep(s.retryBackoffBase * time.Duration(1<<attempt))
+				}
+				log.Printf("[Retry] chat/completions model %q returned %d (attempt %d/%d)", model, resp.StatusCode, attempt+1, maxRetries+1)
+				continue
+			}
+			duration := time.Since(start)
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "chat/completions", tokenUsage{Client: client}, errText)
+			writeUpstreamError(w, resp.StatusCode, respBody)
+			return
+		}
+		s.noteAccountSuccess(target.name, accountID)
+		break
 	}
 	defer resp.Body.Close()
 

@@ -96,10 +96,10 @@ func (s *Server) apiProvidersList(w http.ResponseWriter, r *http.Request) {
 
 	store := s.ensureStore()
 
-	// Mask API keys for response
+	// Mask secrets (legacy key, account keys, quota cookies) for response
 	list := store.List()
 	for i := range list {
-		list[i].APIKey = providers.MaskAPIKey(list[i].APIKey)
+		list[i] = providers.MaskProviderSecrets(list[i])
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"providers": list})

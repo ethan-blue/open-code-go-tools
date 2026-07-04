@@ -17,6 +17,9 @@ type requestTarget struct {
 	timeoutSeconds int
 	thinkingBudget int
 	protocol       string
+	// accounts is the provider's credential pool for failover rotation.
+	// Empty for legacy profile-based targets (rotation disabled).
+	accounts []providers.Account
 }
 
 func (s *Server) runtimeTargetForRequest(r *http.Request) (requestTarget, error) {
@@ -73,7 +76,12 @@ func targetFromProvider(p providers.Provider, fallback config.Profile, fallbackU
 	// returns an empty config.Profile{} when no profile map is configured), then
 	// overlay the provider's own fields. Provider fields win wherever set.
 	profile := fallback
-	if strings.TrimSpace(p.APIKey) != "" && !config.IsMaskedAPIKey(p.APIKey) {
+	accounts := p.EnabledAccounts()
+	if len(accounts) > 0 {
+		// Default to the primary account's key; pickAccount() swaps it per
+		// attempt when the pool has more than one entry.
+		profile.APIKey = accounts[0].APIKey
+	} else if strings.TrimSpace(p.APIKey) != "" && !config.IsMaskedAPIKey(p.APIKey) {
 		profile.APIKey = p.APIKey
 	}
 	if strings.TrimSpace(p.DefaultModel) != "" {
@@ -113,6 +121,7 @@ func targetFromProvider(p providers.Provider, fallback config.Profile, fallbackU
 		timeoutSeconds: timeoutSeconds,
 		thinkingBudget: thinkingBudget,
 		protocol:       strings.TrimSpace(p.Protocol),
+		accounts:       accounts,
 	}
 }
 

@@ -145,7 +145,19 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 	var lastStatus int
 	var lastBody []byte
 
+	// Fallback chain (model-level failover) + account failover, mirroring
+	// forwardAnthropicMessages / forwardChatCompletions.
+	candidates := s.buildCandidateModels(model, target.profile)
+
 	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if len(candidates) > 1 {
+			idx := attempt / 2
+			if idx >= len(candidates) {
+				idx = len(candidates) - 1
+			}
+			model = candidates[idx]
+		}
+		accountID := s.pickAccount(&target)
 		// Sanitize image content for non-vision models
 		if !supportsVisionInput(model) {
 			sanitizeContentBlocksForNonVision(anthReq.Messages)
@@ -173,6 +185,7 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 
 		if err != nil {
 			s.recordModelFailure(model)
+			s.noteAccountFailure(target.name, accountID, 0, 0, err.Error())
 			lastErr = err
 			lastStatus = proxyErrorStatus(err)
 			log.Printf("[Retry] Responses request to model %q failed (attempt %d/%d): %v", model, attempt+1, maxRetries+1, err)
@@ -187,12 +200,21 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 		}
 
 		if resp.StatusCode >= 400 {
+			retryAfter := retryAfterDuration(resp)
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
 			resp.Body.Close()
 			errText := upstreamErrorSummary(resp.StatusCode, respBody)
 			s.recordModelFailure(model)
+			if isAccountLevelFailure(resp.StatusCode) {
+				s.noteAccountFailure(target.name, accountID, resp.StatusCode, retryAfter, errText)
+			}
 
 			if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+				if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) &&
+					len(target.accounts) > 1 && attempt < maxRetries {
+					log.Printf("[Failover] Account %q got %d, rotating to next account (attempt %d/%d)", accountID, resp.StatusCode, attempt+1, maxRetries+1)
+					continue
+				}
 				writeUpstreamError(w, resp.StatusCode, respBody)
 				s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, time.Since(start), model, "responses", tokenUsage{Client: client}, errText)
 				return
@@ -200,6 +222,10 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 
 			log.Printf("[Retry] Responses model %q returned %d (attempt %d/%d): %s", model, resp.StatusCode, attempt+1, maxRetries+1, errText)
 			if attempt < maxRetries {
+				// 429 with a multi-account pool: fail over immediately.
+				if resp.StatusCode == http.StatusTooManyRequests && len(target.accounts) > 1 {
+					continue
+				}
 				backoff := time.Duration(500*(1<<attempt)) * time.Millisecond
 				time.Sleep(backoff)
 				continue
@@ -214,6 +240,7 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 
 		// Success — decode upstream OpenAI response and convert to Responses API format
 		s.recordModelSuccess(model)
+		s.noteAccountSuccess(target.name, accountID)
 		var out openAIResponse
 		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 			resp.Body.Close()
@@ -331,32 +358,61 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	req, err := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	prepareStreamingUpstreamRequest(req)
-	applyAnthropicAuth(req, target.profile)
 
-	resp, err := s.doUpstream(req, target.timeoutSeconds)
-	if err != nil {
-		duration := time.Since(start)
-		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "responses (stream)", tokenUsage{Client: client}, err.Error())
-		writeError(w, http.StatusBadGateway, err)
-		return
+	// Retry with account failover — safe here because nothing has been
+	// written to the client until the upstream stream is established.
+	const maxStreamRetries = 5
+	var resp *http.Response
+	for attempt := 0; ; attempt++ {
+		accountID := s.pickAccount(&target)
+		req, reqErr := s.newUpstreamRequest(r.Context(), http.MethodPost, "/v1/chat/completions", bytes.NewReader(body), target)
+		if reqErr != nil {
+			writeError(w, http.StatusInternalServerError, reqErr)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		prepareStreamingUpstreamRequest(req)
+		applyAnthropicAuth(req, target.profile)
+
+		resp, err = s.doUpstream(req, target.timeoutSeconds)
+		if err != nil {
+			s.noteAccountFailure(target.name, accountID, 0, 0, err.Error())
+			if attempt < maxStreamRetries {
+				time.Sleep(time.Duration(500*(1<<attempt)) * time.Millisecond)
+				continue
+			}
+			duration := time.Since(start)
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, http.StatusBadGateway, duration, model, "responses (stream)", tokenUsage{Client: client}, err.Error())
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+
+		if resp.StatusCode >= 400 {
+			retryAfter := retryAfterDuration(resp)
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
+			resp.Body.Close()
+			errText := upstreamErrorSummary(resp.StatusCode, respBody)
+			if isAccountLevelFailure(resp.StatusCode) {
+				s.noteAccountFailure(target.name, accountID, resp.StatusCode, retryAfter, errText)
+			}
+			retryable := resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests ||
+				((resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && len(target.accounts) > 1)
+			if retryable && attempt < maxStreamRetries {
+				if len(target.accounts) <= 1 || resp.StatusCode >= 500 {
+					time.Sleep(time.Duration(500*(1<<attempt)) * time.Millisecond)
+				}
+				log.Printf("[Retry] responses (stream) model %q returned %d (attempt %d/%d)", model, resp.StatusCode, attempt+1, maxStreamRetries+1)
+				continue
+			}
+			duration := time.Since(start)
+			writeUpstreamError(w, resp.StatusCode, respBody)
+			s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "responses (stream)", tokenUsage{Client: client}, errText)
+			return
+		}
+		s.noteAccountSuccess(target.name, accountID)
+		break
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		duration := time.Since(start)
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
-		errText := upstreamErrorSummary(resp.StatusCode, respBody)
-		writeUpstreamError(w, resp.StatusCode, respBody)
-		s.addHistoryEntryWithUsageAndError(r.Method, r.URL.Path, resp.StatusCode, duration, model, "responses (stream)", tokenUsage{Client: client}, errText)
-		return
-	}
 
 	s.recordModelSuccess(model)
 

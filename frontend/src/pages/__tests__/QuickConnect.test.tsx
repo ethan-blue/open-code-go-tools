@@ -86,10 +86,10 @@ describe('QuickConnect', () => {
     })
 
     expect(screen.queryByText('VS Code')).not.toBeInTheDocument()
-    expect(screen.queryByText('Codex CLI')).not.toBeInTheDocument()
+    expect(screen.queryByText('Codex CLI / App')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Codex' }))
 
-    expect(screen.getByText('Codex CLI')).toBeInTheDocument()
+    expect(screen.getByText('Codex CLI / App')).toBeInTheDocument()
   })
 })

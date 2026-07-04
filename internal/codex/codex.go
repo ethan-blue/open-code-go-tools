@@ -10,13 +10,22 @@ import (
 )
 
 // ProviderConfig holds the data needed to generate a Codex provider entry.
+//
+// The Codex CLI and the official Codex desktop app share the same user-level
+// ~/.codex/config.toml, so one managed block covers both clients. auth.json is
+// deliberately never touched — the official ChatGPT/Codex OAuth login stays
+// intact (same strategy as cc-switch's "official auth preservation").
 type ProviderConfig struct {
 	ProviderName string // e.g., "ocgt" — used as model_provider key
 	BaseURL      string // e.g., "https://opencode.ai/zen/go/v1"
 	APIKey       string // the API key (written to env var, NOT into config.toml)
-	EnvKey       string // env var name, e.g., "OCGT_CODEX_API_KEY"
-	Model        string // default model, e.g., "claude-sonnet-4-6"
-	WireAPI      string // "chat" or "responses" — default "chat"
+	EnvKey       string // env var name, e.g., "OCGT_CODEX_API_KEY" (CLI-oriented auth)
+	Token        string // provider-scoped experimental_bearer_token — GUI-app friendly
+	// auth: desktop apps don't inherit shell env vars, so Token is preferred.
+	// Codex forbids combining env_key with experimental_bearer_token; when
+	// Token is set it takes precedence and EnvKey is omitted from the block.
+	Model   string // default model, e.g., "claude-sonnet-4-6"
+	WireAPI string // Responses API protocol; "responses" is the only value modern Codex accepts
 }
 
 const (
@@ -72,9 +81,18 @@ func normalizeBaseURL(raw string) string {
 
 // generateBlock produces the TOML text for the ocgt-managed section.
 func generateBlock(cfg ProviderConfig) string {
+	// Since Codex 0.x (Feb 2026) "responses" is the ONLY supported wire_api —
+	// "chat" makes Codex error on startup. Default and coerce accordingly.
 	wire := cfg.WireAPI
-	if wire == "" {
-		wire = "chat"
+	if wire == "" || wire == "chat" {
+		wire = "responses"
+	}
+	// Auth line: provider-scoped bearer token (works for the desktop app,
+	// which never sees shell env vars) or the legacy env_key indirection.
+	// Codex rejects configs that combine both.
+	auth := fmt.Sprintf("env_key = %q", cfg.EnvKey)
+	if cfg.Token != "" {
+		auth = fmt.Sprintf("experimental_bearer_token = %q", cfg.Token)
 	}
 	return fmt.Sprintf(`%s
 model_provider = %q
@@ -83,11 +101,11 @@ model = %q
 [model_providers.%s]
 name = %q
 base_url = %q
-env_key = %q
+%s
 wire_api = %q
 %s`, beginMarker, cfg.ProviderName, cfg.Model,
 		cfg.ProviderName, cfg.ProviderName,
-		normalizeBaseURL(cfg.BaseURL), cfg.EnvKey, wire,
+		normalizeBaseURL(cfg.BaseURL), auth, wire,
 		endMarker)
 }
 
@@ -118,8 +136,8 @@ func WriteConfig(cfg ProviderConfig) (string, error) {
 	if cfg.BaseURL == "" {
 		return "", fmt.Errorf("codex: BaseURL is required")
 	}
-	if cfg.EnvKey == "" {
-		return "", fmt.Errorf("codex: EnvKey is required")
+	if cfg.EnvKey == "" && cfg.Token == "" {
+		return "", fmt.Errorf("codex: either EnvKey or Token is required")
 	}
 
 	configPath, err := ConfigPath()

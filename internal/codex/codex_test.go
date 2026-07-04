@@ -115,7 +115,8 @@ func TestWriteAndUndoConfig(t *testing.T) {
 	if !strings.Contains(content, `env_key = "OCGT_CODEX_API_KEY"`) {
 		t.Error("missing env_key")
 	}
-	if !strings.Contains(content, `wire_api = "chat"`) {
+	// Legacy "chat" input must land as "responses" — Codex removed chat support.
+	if !strings.Contains(content, `wire_api = "responses"`) {
 		t.Error("missing wire_api")
 	}
 
@@ -398,6 +399,9 @@ another_key = "another_value"
 	}
 }
 
+// Modern Codex (CLI and desktop app) rejects wire_api="chat" on startup —
+// "responses" is the only supported protocol, so it must be the default AND
+// legacy "chat" values from old configs must be coerced.
 func TestGenerateBlock_DefaultWireAPI(t *testing.T) {
 	cfg := ProviderConfig{
 		ProviderName: "test",
@@ -406,21 +410,63 @@ func TestGenerateBlock_DefaultWireAPI(t *testing.T) {
 		Model:        "claude-sonnet",
 	}
 	block := generateBlock(cfg)
-	if !strings.Contains(block, `wire_api = "chat"`) {
-		t.Error("default wire_api should be 'chat'")
+	if !strings.Contains(block, `wire_api = "responses"`) {
+		t.Error("default wire_api should be 'responses' (only value modern Codex accepts)")
 	}
 }
 
-func TestGenerateBlock_CustomWireAPI(t *testing.T) {
+func TestGenerateBlock_CoercesLegacyChat(t *testing.T) {
 	cfg := ProviderConfig{
 		ProviderName: "test",
 		BaseURL:      "http://example.com",
 		EnvKey:       "KEY",
 		Model:        "claude-sonnet",
-		WireAPI:      "responses",
+		WireAPI:      "chat",
 	}
 	block := generateBlock(cfg)
+	if strings.Contains(block, `wire_api = "chat"`) {
+		t.Error("legacy wire_api 'chat' must be coerced — Codex removed chat support and errors on startup")
+	}
 	if !strings.Contains(block, `wire_api = "responses"`) {
-		t.Error("wire_api should be 'responses'")
+		t.Error("coerced wire_api should be 'responses'")
+	}
+}
+
+// The desktop app never inherits shell env vars, so provider-scoped
+// experimental_bearer_token is the GUI-compatible auth path. Codex forbids
+// combining it with env_key, so Token must suppress the env_key line.
+func TestGenerateBlock_TokenReplacesEnvKey(t *testing.T) {
+	cfg := ProviderConfig{
+		ProviderName: "test",
+		BaseURL:      "http://example.com",
+		EnvKey:       "KEY_SHOULD_NOT_APPEAR",
+		Token:        "local-proxy-token",
+		Model:        "claude-sonnet",
+	}
+	block := generateBlock(cfg)
+	if !strings.Contains(block, `experimental_bearer_token = "local-proxy-token"`) {
+		t.Error("missing experimental_bearer_token")
+	}
+	if strings.Contains(block, "env_key") {
+		t.Error("env_key must be omitted when Token is set — Codex rejects configs combining both")
+	}
+}
+
+func TestWriteConfig_TokenOnlyIsValid(t *testing.T) {
+	dir := t.TempDir()
+	setHomeDir(t, dir)
+
+	written, err := WriteConfig(ProviderConfig{
+		ProviderName: "ocgt",
+		BaseURL:      "http://127.0.0.1:8787",
+		Token:        "tok-123",
+		Model:        "m",
+	})
+	if err != nil {
+		t.Fatalf("WriteConfig with Token only should succeed: %v", err)
+	}
+	data, _ := os.ReadFile(written)
+	if !strings.Contains(string(data), `experimental_bearer_token = "tok-123"`) {
+		t.Error("token missing from written config")
 	}
 }

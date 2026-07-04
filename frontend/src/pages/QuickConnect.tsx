@@ -157,7 +157,7 @@ export default function QuickConnect() {
       action: 'open',
     },
     { id: 'desktop', icon: Monitor, iconBg: 'light', name: 'Claude Desktop', version: '3P profile', desc: t('qc_desktop_desc'), installed: intStatus.claudeDesktopApp, line: 'claude', action: 'docs' },
-    { id: 'codex', icon: Bot, iconBg: 'dark', iconText: 'CX', name: 'Codex CLI', version: 'cli', desc: t('qc_codex_desc'), installed: intStatus.codex, line: 'codex', action: 'edit' },
+    { id: 'codex', icon: Bot, iconBg: 'dark', iconText: 'CX', name: 'Codex CLI / App', version: 'shared ~/.codex/config.toml', desc: t('qc_codex_desc'), installed: intStatus.codex, line: 'codex', action: 'edit' },
   ]
   const visibleClients = allClients.filter(client => client.line === lineFilter)
 

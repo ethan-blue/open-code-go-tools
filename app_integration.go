@@ -723,13 +723,15 @@ func (a *App) GetHubStatus() string {
 	return string(data)
 }
 
+// SetupCodex writes the ocgt provider into ~/.codex/config.toml. The Codex CLI
+// and the official Codex desktop app share this file, so one setup covers both.
+// auth.json is never touched — the official ChatGPT/Codex login stays intact.
 func (a *App) SetupCodex() string {
 	cfg, err := config.Load("")
 	if err != nil {
 		return "load config error: " + err.Error()
 	}
 	model := "claude-sonnet-4-6"
-	wireAPI := "chat"
 	if p, ok := cfg.Profiles[cfg.ActiveProfile]; ok && p.DefaultModel != "" {
 		model = p.DefaultModel
 	}
@@ -737,24 +739,31 @@ func (a *App) SetupCodex() string {
 		if strings.TrimSpace(provider.DefaultModel) != "" {
 			model = strings.TrimSpace(provider.DefaultModel)
 		}
-		if strings.EqualFold(provider.Protocol, "openai-responses") {
-			wireAPI = "responses"
-		}
 	}
 
+	// Auth strategy: provider-scoped experimental_bearer_token (cc-switch's
+	// battle-tested approach). The desktop app never inherits shell env vars,
+	// so the old env_key indirection only worked for the CLI; a token inside
+	// the managed block works for both. Fallback to env_key when no local
+	// auth token exists (auth disabled).
 	token := a.localProxyAuthToken()
-	if token != "" {
-		_ = setUserEnvironment("OCGT_CODEX_API_KEY", token)
-	}
-
-	_, err = codex.WriteConfig(codex.ProviderConfig{
+	providerCfg := codex.ProviderConfig{
 		ProviderName: "ocgt",
 		BaseURL:      "http://" + a.GetListenAddress(),
-		APIKey:       token,
-		EnvKey:       "OCGT_CODEX_API_KEY",
 		Model:        model,
-		WireAPI:      wireAPI,
-	})
+		// The wire between Codex and ocgt is always the Responses API —
+		// modern Codex rejects wire_api="chat". ocgt converts to the active
+		// codex provider's upstream protocol internally.
+		WireAPI: "responses",
+	}
+	if token != "" {
+		providerCfg.Token = token
+	} else {
+		_ = setUserEnvironment("OCGT_CODEX_API_KEY", "ocgt-local-proxy")
+		providerCfg.EnvKey = "OCGT_CODEX_API_KEY"
+	}
+
+	_, err = codex.WriteConfig(providerCfg)
 	if err != nil {
 		return "error: " + err.Error()
 	}

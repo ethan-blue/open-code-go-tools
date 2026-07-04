@@ -14,12 +14,25 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/fileutil"
 )
 
+// Account is a single credential inside a provider's account pool. The proxy
+// rotates across accounts on failure (429 / auth errors / persistent 5xx),
+// which lets several OpenCode Go subscriptions back one provider entry.
+type Account struct {
+	ID               string `json:"id"`
+	Label            string `json:"label,omitempty"`
+	APIKey           string `json:"apiKey"`
+	QuotaCookie      string `json:"quotaCookie,omitempty"`      // per-account opencode.ai session cookie for quota display
+	QuotaWorkspaceID string `json:"quotaWorkspaceId,omitempty"` // per-account workspace id (wrk_xxx), optional
+	Disabled         bool   `json:"disabled,omitempty"`         // excluded from rotation when true
+}
+
 // Provider represents an upstream API provider configuration.
 type Provider struct {
 	ID                    string            `json:"id"`
 	Name                  string            `json:"name"`
 	BaseURL               string            `json:"baseUrl"`
-	APIKey                string            `json:"apiKey,omitempty"`
+	APIKey                string            `json:"apiKey,omitempty"` // legacy single key; superseded by Accounts when non-empty
+	Accounts              []Account         `json:"accounts,omitempty"`
 	Models                []string          `json:"models,omitempty"`
 	DefaultModel          string            `json:"defaultModel,omitempty"`
 	MessageModels         []string          `json:"messageModels,omitempty"`
@@ -83,7 +96,47 @@ func (s *Store) Load() error {
 	if s.Providers == nil {
 		s.Providers = []Provider{}
 	}
+	// Legacy migration: fold a single-key provider into a one-account pool so
+	// the rotation engine has a uniform view. Persisting is deferred until the
+	// next save — Load stays read-only.
+	for i := range s.Providers {
+		migrateLegacyAccounts(&s.Providers[i])
+	}
 	return nil
+}
+
+// migrateLegacyAccounts synthesizes Accounts from the legacy single APIKey and
+// guarantees every account has an ID.
+func migrateLegacyAccounts(p *Provider) {
+	if len(p.Accounts) == 0 && strings.TrimSpace(p.APIKey) != "" {
+		p.Accounts = []Account{{ID: "acc-primary", APIKey: p.APIKey}}
+	}
+	for i := range p.Accounts {
+		if strings.TrimSpace(p.Accounts[i].ID) == "" {
+			p.Accounts[i].ID = generateID()
+		}
+	}
+}
+
+// EnabledAccounts returns the accounts eligible for rotation, in priority
+// order. Falls back to a pseudo-account wrapping the legacy APIKey so callers
+// never need to special-case old configs.
+func (p Provider) EnabledAccounts() []Account {
+	out := make([]Account, 0, len(p.Accounts))
+	for _, acc := range p.Accounts {
+		if !acc.Disabled && strings.TrimSpace(acc.APIKey) != "" {
+			out = append(out, acc)
+		}
+	}
+	if len(out) == 0 && strings.TrimSpace(p.APIKey) != "" {
+		out = append(out, Account{ID: "acc-primary", APIKey: p.APIKey})
+	}
+	return out
+}
+
+// HasCredential reports whether the provider carries at least one usable API key.
+func (p Provider) HasCredential() bool {
+	return len(p.EnabledAccounts()) > 0
 }
 
 // save writes providers to disk atomically (caller must hold s.mu).
@@ -174,6 +227,7 @@ func (s *Store) Create(p Provider) error {
 	if p.Health == "" {
 		p.Health = "unknown"
 	}
+	migrateLegacyAccounts(&p)
 
 	// Check for duplicate ID
 	for _, existing := range s.Providers {
@@ -236,6 +290,16 @@ func (s *Store) Update(id string, p Provider) error {
 			if isMaskedKey(p.APIKey) {
 				p.APIKey = s.Providers[i].APIKey
 			}
+			p.Accounts = mergeAccountSecrets(p.Accounts, s.Providers[i].Accounts)
+			// The account pool is the source of truth: keep the legacy single
+			// key mirroring the primary account so old readers stay correct,
+			// and treat an explicitly emptied pool as "remove all credentials".
+			if len(p.Accounts) > 0 {
+				p.APIKey = p.Accounts[0].APIKey
+			} else if p.Accounts != nil {
+				p.APIKey = ""
+			}
+			migrateLegacyAccounts(&p)
 			if p.Enabled {
 				s.disableLineLocked(providerLine(p), id)
 			}
@@ -370,6 +434,32 @@ func generateID() string {
 	return fmt.Sprintf("%x", b)
 }
 
+// mergeAccountSecrets restores real secrets for incoming accounts whose values
+// are masked round-trips from the UI. Keys: masked or empty → keep existing.
+// Quota cookies: masked → keep existing; empty → explicit clear.
+func mergeAccountSecrets(incoming, existing []Account) []Account {
+	if len(incoming) == 0 {
+		return incoming
+	}
+	byID := make(map[string]Account, len(existing))
+	for _, acc := range existing {
+		byID[acc.ID] = acc
+	}
+	for i := range incoming {
+		prev, ok := byID[incoming[i].ID]
+		if !ok {
+			continue
+		}
+		if isMaskedKey(incoming[i].APIKey) {
+			incoming[i].APIKey = prev.APIKey
+		}
+		if incoming[i].QuotaCookie != "" && isMaskedKey(incoming[i].QuotaCookie) {
+			incoming[i].QuotaCookie = prev.QuotaCookie
+		}
+	}
+	return incoming
+}
+
 // MaskAPIKey returns a masked version of the API key for display.
 func MaskAPIKey(key string) string {
 	if key == "" {
@@ -379,4 +469,20 @@ func MaskAPIKey(key string) string {
 		return strings.Repeat("*", len(key))
 	}
 	return key[:4] + strings.Repeat("*", len(key)-8) + key[len(key)-4:]
+}
+
+// MaskProviderSecrets returns a copy of the provider with every secret
+// (legacy key, account keys, quota cookies) masked for API responses.
+func MaskProviderSecrets(p Provider) Provider {
+	p.APIKey = MaskAPIKey(p.APIKey)
+	if len(p.Accounts) > 0 {
+		accounts := make([]Account, len(p.Accounts))
+		copy(accounts, p.Accounts)
+		for i := range accounts {
+			accounts[i].APIKey = MaskAPIKey(accounts[i].APIKey)
+			accounts[i].QuotaCookie = MaskAPIKey(accounts[i].QuotaCookie)
+		}
+		p.Accounts = accounts
+	}
+	return p
 }

@@ -38,6 +38,7 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/hub"
+	"github.com/ethan-blue/open-code-go-tools/internal/procutil"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
 	"github.com/wailsapp/wails/v2"
@@ -463,6 +464,7 @@ func setWindowsUserEnv(name, value string) error {
 func runPowerShellNoProfile(script string, args ...string) error {
 	cmdArgs := append([]string{"-NoProfile", "-NonInteractive", "-Command", "& { " + script + " }", "--"}, args...)
 	cmd := exec.Command("powershell", cmdArgs...)
+	procutil.HideConsole(cmd) // avoid console flash when invoked from the GUI binary
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("powershell failed: %w: %s", err, strings.TrimSpace(string(out)))

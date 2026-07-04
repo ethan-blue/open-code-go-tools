@@ -22,6 +22,7 @@ import (
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/hub"
 	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
+	"github.com/ethan-blue/open-code-go-tools/internal/procutil"
 	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 	"github.com/ethan-blue/open-code-go-tools/internal/proxy"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
@@ -264,8 +265,12 @@ func killProcessOnPort(listenAddr string) (killed bool, pid int) {
 
 	switch runtime.GOOS {
 	case "windows":
-		out, _ := exec.Command("cmd", "/c",
-			fmt.Sprintf("netstat -ano | findstr :%s | findstr LISTENING", port)).Output()
+		// HideConsole: without it every netstat/taskkill flashes a black
+		// console window at app startup (GUI binary has no console of its own).
+		probe := exec.Command("cmd", "/c",
+			fmt.Sprintf("netstat -ano | findstr :%s | findstr LISTENING", port))
+		procutil.HideConsole(probe)
+		out, _ := probe.Output()
 		if len(out) == 0 {
 			return false, 0
 		}
@@ -277,7 +282,9 @@ func killProcessOnPort(listenAddr string) (killed bool, pid int) {
 		if pid <= 0 || pid == os.Getpid() {
 			return false, 0
 		}
-		if exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid)).Run() != nil {
+		kill := exec.Command("taskkill", "/F", "/PID", strconv.Itoa(pid))
+		procutil.HideConsole(kill)
+		if kill.Run() != nil {
 			return false, pid
 		}
 	default:

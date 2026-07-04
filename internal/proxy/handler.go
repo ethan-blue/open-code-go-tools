@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
+	"github.com/ethan-blue/open-code-go-tools/internal/procutil"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 )
 
@@ -163,6 +164,7 @@ func (s *Server) findPIDByPort(port string) int {
 		// Use findstr to filter by port first, avoiding locale-dependent state parsing.
 		// The trailing space after :PORT prevents partial matches (e.g., :8787 vs :87870).
 		cmd = exec.CommandContext(ctx, "cmd", "/C", "netstat -ano | findstr \":"+port+" \"")
+		procutil.HideConsole(cmd) // GUI binary: avoid console flash
 	default:
 		// Unix: lsof -ti :PORT returns just the PID
 		out, err := exec.CommandContext(ctx, "lsof", "-ti", ":"+port).Output()
@@ -202,6 +204,8 @@ func (s *Server) killPID(pid int) error {
 	// On Unix, use kill -9 as fallback if taskkill doesn't exist
 	if runtime.GOOS != "windows" {
 		cmd = exec.Command("kill", "-9", strconv.Itoa(pid))
+	} else {
+		procutil.HideConsole(cmd) // GUI binary: avoid console flash
 	}
 	return cmd.Run()
 }

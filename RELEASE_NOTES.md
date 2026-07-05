@@ -1,6 +1,19 @@
 # Release Notes
 
-## 🌐 语言选择 / Language
+## ocgt v2.2.5 (2026-06-26)
+
+- Current stable line on `main`.
+- Rewrote the OpenCode Go quota module after `/workspace/{id}/go` page parsing changed.
+- Added automatic Workspace ID resolution so users do not need to manually set `quota_workspace_id` in the common case.
+- Improved quota page request headers and cookie cleanup for more reliable Rolling / Weekly / Monthly quota reads.
+
+## v4 preview: ocgt v4.0.1 (2026-07-05)
+
+- v4 is available from the `v4.0.1` tag and the `refactor/v4-ui-design` branch.
+- It contains the new v4 desktop UI, Codex one-click setup, separate Claude/Codex provider lines, account-level config, and updated Codex model catalog writing.
+- `main` remains the stable `v2.2.5` line; use the v4 tag or branch when testing v4.
+
+## 🌐 语言选择 / Language
 * [简体中文 (Simplified Chinese)](#-ocgt-v221---v221-)
 * [English](#-ocgt-v221---release-notes)
 

@@ -1,116 +1,63 @@
-# ocgt — Claude Code 桌面客户端 & 本地代理
+# ocgt - Claude Code 桌面客户端 & 本地代理
 
+`ocgt` 是给 Claude Code 用的桌面客户端和本地代理。它负责 Anthropic ↔ OpenAI 协议转换，并提供 GUI 面板管理 API Key、模型、流量、额度和终端启动。当前 `main` 稳定版是 `v2.2.5`。
 
+> English version: [docs/README.en-US.md](docs/README.en-US.md)
 
-`ocgt` 是给 Claude Code 用的桌面客户端。核心就两件事：一个本地代理负责 Anthropic ↔ OpenAI 协议转换，一个 GUI 面板让你管 API Key、看流量、起终端。中英双语。当前版本 v2.2.1。
+## v4 预览
 
-> 🌐 **[English Version](docs/README.en-US.md)**
+v4 已经可用，最新标签是 `v4.0.1`，代码在 `refactor/v4-ui-design` 分支。它主要包含新的 v4 桌面界面、Codex 一键配置、Claude/Codex 双供应商线、账号级配置和新的模型目录写入逻辑。
 
----
+如果你只是想稳定使用，继续下载 `main` 对应的 `v2.2.5` 版本。如果你想试 v4，请看 `v4.0.1` 标签或 `refactor/v4-ui-design` 分支。
 
-## ✨ 核心功能
+## 核心功能
 
-### 📊 系统状态看板
-![System Status](assets/2026-05-30_213807.png)
-- 实时监控代理监听端口、上游 API 状态、API Key 配置
-- 可视化配置文件路径，一键打开所在文件夹
-- 客户端集成状态一目了然（CLI / VS Code / Claude Desktop）
+### 系统状态
 
-### ⚙️ 配置管理
+- 实时查看本地代理监听地址、上游 API 状态和 API Key 配置状态。
+- 显示配置文件路径，并支持快速打开所在目录。
+- 检查 Claude CLI、VS Code、Claude Code settings、Claude Desktop 等集成状态。
 
-![Configuration Settings](assets/2026-05-30_213821.png)
+### 配置管理
 
-- 填入 API Key 保存即热重载生效，不用重启
+- API Key 保存后热重载生效，常规配置不需要重启。
+- 支持 Sonnet / Haiku / Opus 到上游模型的映射。
+- 支持思考强度、同模型重试、fallback chain 和多账号轮换。
+- 套餐额度模块会自动解析 Workspace ID，并改进 opencode.ai 页面抓取请求头。
 
-- **模型映射**：Sonnet / Haiku / Opus 随便映射到上游模型
+### 快速连接
 
-- **思考强度**：低 / 中 / 高 / 极高 / 关
+- 一键拉起 PowerShell、Bash 或 CMD，并注入代理环境变量。
+- 支持修复常见客户端集成配置。
+- 命令行仍可通过 `ocgt claude-env` 输出当前环境变量。
 
-- **同模型重试**：5 次指数退避 + 30s 断路器
+### 流量与额度
 
-### 💻 快速连接
+- 记录 Token、请求数、成功率、平均延迟和费用估算。
+- 流量明细支持按时间、模型和状态筛选，并可导出 CSV。
+- 额度看板支持 Rolling / Weekly / Monthly 进度查看和手动刷新。
 
-![Terminal Activation](assets/2026-05-30_213831.png)
+### 配套工具
 
-- 一键拉起带全套代理环境变量的终端（PowerShell / Bash / CMD）
+- [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor)：独立终端监控工具，用于实时查看 ocgt 代理请求日志。
 
-- 四种客户端集成：CLI（全局 settings.json）、VS Code、Claude Code settings、Claude Desktop App（3P Profile）
+## 快速开始
 
-- 一键修复所有已配置的集成
+1. 从 [Releases](../../releases) 下载适合你系统的版本。
+2. 打开配置页，填入 API Key，选择模型并保存。
+3. 打开快速连接页，选择终端并启动，然后运行 `claude`。
 
-### 📡 流量统计面板
-
-- Token / 请求数 / 成功率 / 平均延迟，按小时/天/周自适应粒度展示
-
-- **流量明细**（Ctrl+5）：全字段表格、三维筛选（时间+模型+状态）、分页导航、CSV 导出
-
-### 📊 套餐额度看板
-
-- Rolling / Weekly / Monthly 额度进度条
-
-- 5 秒自动刷新，也可手动刷新
-
-### 🧩 配套工具 — [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor)
-- 独立终端监控工具，实时展示 ocgt 代理请求日志
-- 彩色高亮输出，支持过滤和统计
-- 与 ocgt GUI 互补使用，适合全屏终端工作流
-
-### 🎨 偏好设置
-
-- 主题：浅色 / 深色 / 跟随系统 · 5 种预设色 + 自定义色相
-
-- 语言：中文 / English
-
-- 关窗口时：每次问我 / 最小化到托盘 / 直接退出
-
----
-
-## 🚀 快速开始
-
-
-
-1. **下载**：[Releases](../../releases) → 选你系统的版本
-
-2. **配置**：配置管理页（Ctrl+2）→ 填 API Key → 选模型 → 保存
-
-3. **启动**：快速连接（Ctrl+3）→ 选终端 → 点一下 → 输 `claude`
-
----
-
-## 🔒 安全特性
-
-| 特性 | 说明 |
-|------|------|
-| **API Key 遮蔽** | 接口返回 `sk-...xxxx`，前端不暴露完整密钥 |
-| **命令注入防护** | 终端启动用环境变量引用代替字符串拼接 |
-| **自动认证** | Dashboard API 自动生成随机 Token，防止局域网未授权访问 |
-| **IP 识别** | 限流器以 `RemoteAddr` 为准，XFF 仅信任 localhost |
-| **优雅关机** | 追踪在途流式请求，最长等待 30s 再关闭 |
-| **CORS 收紧** | 仅允许 localhost 来源跨域 |
-
----
-
-## 📁 配置与热重载
-
-
+## 配置文件
 
 ```text
-
 %USERPROFILE%\.ocgt\config.json
-
 ```
 
+- `version` 字段用于 schema 迁移。
+- 文件修改会被轮询检测，外部编辑后自动热重载。
+- `X-Ocgt-Profile` header 可指定 profile；不指定时使用 `active_profile`。
 
-
-- **Schema 版本化**：`version` 字段 + `Migrate()` 迁移方法（当前 schema v1）
-
-- **热重载**：检测文件修改时间，3 秒轮询，外部编辑自动生效
-
-- **多 Profile**：`X-Ocgt-Profile` header 或默认走 `active_profile`
-
----
-
-## 💻 命令行参考
+## 命令行参考
 
 ```powershell
 ocgt init       # 初始化默认配置
@@ -120,39 +67,24 @@ ocgt ccswitch   # 输出 CC Switch provider JSON
 ocgt version    # 查看版本
 ```
 
----
+## 构建
 
-## 🛠️ 构建
-
-需要 Go 1.22+，Wails v2.12：
+需要 Go 1.22+ 和 Wails v2.12：
 
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-wails dev          # 开发模式
-wails build        # 生产构建
+wails dev
+wails build
 ```
 
----
-
-## ⚠️ 已知限制
-
-
+## 已知限制
 
 代理转发时，用量统计可能存在偏差：
 
+1. 缓存统计依赖上游返回 `prompt_tokens_details.cached_tokens`。
+2. 费用按内置价格表估算，可能与实际账单有差异。
 
-
-1. **缓存统计依赖上游**：DeepSeek/Qwen 等靠 `prompt_tokens_details.cached_tokens` 返回缓存数据，部分上游不返回就没法统计
-
-2. **费用是估算值**：按官方定价表计算，跟实际账单可能有出入，仅供参考
-
-
-
-这是架构限制，不是 Bug。
-
----
-
-## 📄 许可证
+## 许可证
 
 MIT License
 

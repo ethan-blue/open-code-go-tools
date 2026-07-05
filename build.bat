@@ -6,6 +6,8 @@ REM   If version is not provided, it will be read from wails.json
 setlocal enabledelayedexpansion
 
 cd /d "%~dp0"
+set SHOULD_PAUSE=
+echo %cmdcmdline% | findstr /i /c:" /c " >nul && set SHOULD_PAUSE=1
 
 REM Get version from argument or wails.json
 if not "%~1"=="" (
@@ -22,8 +24,15 @@ if not "%~1"=="" (
 
 if "!VERSION!"=="" (
     echo Error: Could not determine version
-    exit /b 1
+    goto :fail
 )
+
+for /f "tokens=2 delims=:," %%a in ('findstr "outputfilename" wails.json') do (
+    set OUT_RAW=%%a
+)
+set OUTPUT_NAME=!OUT_RAW:"=!
+set OUTPUT_NAME=!OUTPUT_NAME: =!
+if "!OUTPUT_NAME!"=="" set OUTPUT_NAME=ocgt
 
 echo Building ocgt version: !VERSION!
 
@@ -46,7 +55,7 @@ if exist "D:\Project\Go_Project\bin\wails.exe" (
 if "!WAILS_BIN!"=="" (
     echo Wails CLI not found. Please install wails or add it to PATH.
     echo   Install: go install github.com/wailsapp/wails/v2/cmd/wails@latest
-    exit /b 1
+    goto :fail
 )
 
 echo Using Wails: !WAILS_BIN!
@@ -54,11 +63,17 @@ echo Using Wails: !WAILS_BIN!
 
 if errorlevel 1 (
     echo Build failed
-    exit /b 1
+    goto :fail
 )
 
 echo.
 echo Build complete!
-echo Output: build\bin\ocgt.exe
+echo Output: build\bin\!OUTPUT_NAME!.exe
 
 endlocal
+exit /b 0
+
+:fail
+if defined SHOULD_PAUSE pause
+endlocal
+exit /b 1

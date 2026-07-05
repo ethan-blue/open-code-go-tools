@@ -259,3 +259,27 @@ func TestProvidersDefaultToOpenCodeGo(t *testing.T) {
 		t.Fatalf("unexpected providers: %+v", got.Providers)
 	}
 }
+
+// TestClientSourceDetectsCodexByPath verifies that requests to /v1/responses
+// (the Codex-only endpoint) are attributed to "Codex (CLI / App)" so the
+// QuickConnect card's 24h request counter reflects real Codex traffic instead
+// of bucketing it as "Unknown".
+func TestClientSourceDetectsCodexByPath(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	if got := clientSourceFromRequest(req); got != "Codex (CLI / App)" {
+		t.Fatalf("clientSourceFromRequest(/v1/responses) = %q, want %q", got, "Codex (CLI / App)")
+	}
+
+	// Claude Code path must NOT be mis-attributed as Codex.
+	reqClaude := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	if got := clientSourceFromRequest(reqClaude); got == "Codex (CLI / App)" {
+		t.Fatalf("clientSourceFromRequest(/v1/messages) wrongly returned Codex label")
+	}
+
+	// Explicit X-Ocgt-Client header still wins over the path heuristic.
+	reqHeader := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	reqHeader.Header.Set("X-Ocgt-Client", "claude-code-cli")
+	if got := clientSourceFromRequest(reqHeader); got == "Codex (CLI / App)" {
+		t.Fatalf("X-Ocgt-Client header should override the /v1/responses path heuristic")
+	}
+}

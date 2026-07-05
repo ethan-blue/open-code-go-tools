@@ -1622,7 +1622,34 @@ func (a *App) resolveQuotaCredentials() (cookie, workspaceID string) {
 			}
 		}
 	}
+	if cookie == "" {
+		if c, w, ok := activeProviderQuotaCredentials(); ok {
+			cookie = c
+			if workspaceID == "" {
+				workspaceID = w
+			}
+		}
+	}
 	return
+}
+
+func activeProviderQuotaCredentials() (cookie, workspaceID string, ok bool) {
+	for _, line := range []string{"claude", "codex"} {
+		provider, found := activeProviderForLine(line)
+		if !found {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(provider.BaseURL), "opencode.ai/zen/go") && !strings.EqualFold(provider.Name, "OpenCode Go") {
+			continue
+		}
+		for _, acc := range provider.Accounts {
+			if strings.TrimSpace(acc.QuotaCookie) == "" {
+				continue
+			}
+			return strings.TrimSpace(acc.QuotaCookie), strings.TrimSpace(acc.QuotaWorkspaceID), true
+		}
+	}
+	return "", "", false
 }
 
 func isMaskedAPIKey(key string) bool {

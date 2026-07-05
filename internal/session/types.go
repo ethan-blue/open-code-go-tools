@@ -4,18 +4,19 @@ import "encoding/json"
 
 // ClaudeCodeEvent 映射 Claude Code JSONL 单行事件
 type ClaudeCodeEvent struct {
-	Type      string          `json:"type"`
-	UUID      string          `json:"uuid"`
-	SessionID string          `json:"sessionId"`
-	Timestamp string          `json:"timestamp"`
-	Message   *claudeMessage  `json:"message,omitempty"`
+	Type      string         `json:"type"`
+	UUID      string         `json:"uuid"`
+	SessionID string         `json:"sessionId"`
+	Timestamp string         `json:"timestamp"`
+	IsMeta    bool           `json:"isMeta,omitempty"`
+	Message   *claudeMessage `json:"message,omitempty"`
 }
 
 type claudeMessage struct {
-	ID      string           `json:"id"`
-	Model   string           `json:"model"`
-	Usage   *claudeUsage     `json:"usage,omitempty"`
-	Content json.RawMessage  `json:"content,omitempty"`
+	ID      string          `json:"id"`
+	Model   string          `json:"model"`
+	Usage   *claudeUsage    `json:"usage,omitempty"`
+	Content json.RawMessage `json:"content,omitempty"`
 }
 
 type claudeUsage struct {
@@ -28,6 +29,7 @@ type claudeUsage struct {
 // SessionStats 单次会话的聚合统计
 type SessionStats struct {
 	SessionID         string `json:"sessionId"`
+	Source            string `json:"source,omitempty"`
 	Model             string `json:"model"`
 	MessageCount      int    `json:"messageCount"`
 	InputTokens       int64  `json:"inputTokens"`

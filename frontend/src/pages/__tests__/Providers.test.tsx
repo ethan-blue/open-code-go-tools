@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Providers from '../Providers'
 import { apiGet, apiFetch, isWails, wails } from '@/lib/wails'
@@ -46,18 +46,12 @@ describe('Providers', () => {
           accounts: [{ id: 'acc-primary', apiKey: 'sk-test' }],
           models: [],
           defaultModel: 'claude-3-5-sonnet',
-          priority: 0,
           enabled: true,
-          health: 'unknown',
-          requestCount: 0,
-          errorCount: 0,
-          avgLatency: 0,
           createdAt: 1,
           sortIndex: 0,
           line: 'claude',
           protocol: 'openai-chat',
-          rateLimitPerSecond: 0,
-          rateLimitBurst: 0,
+          modelProtocols: { 'claude-3-5-sonnet': 'anthropic' },
           requestTimeoutSeconds: 300,
           thinkingBudgetTokens: 2048,
           modelAliases: { sonnet: 'claude-3-5-sonnet' },
@@ -89,9 +83,14 @@ describe('Providers', () => {
     expect(await screen.findByLabelText('prov_pool_key')).toHaveValue('sk-test')
     // Default Model field and the new sonnet-alias quick field both surface
     // the mapping — model aliases are first-class inputs again, not buried
-    // in the JSON blob.
-    expect((await screen.findAllByDisplayValue('claude-3-5-sonnet')).length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByLabelText('prov_alias_sonnet')).toHaveValue('claude-3-5-sonnet')
+    // in the JSON blob. Both are now dropdown triggers: the selected value is
+    // rendered inside the trigger button text.
+    // Both the Default Model and sonnet-alias dropdown triggers render the
+    // mapped value as their trigger text.
+    const sonnetValues = await screen.findAllByText('claude-3-5-sonnet')
+    expect(sonnetValues.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByLabelText('prov_alias_sonnet')).toHaveTextContent('claude-3-5-sonnet')
+    expect(screen.getByLabelText('prov_field_default_model')).toHaveTextContent('claude-3-5-sonnet')
     // The advanced config now lives in an auto-generated JSON section.
     expect(screen.getByText(/prov_json_section/)).toBeInTheDocument()
   })
@@ -123,5 +122,74 @@ describe('Providers', () => {
 
     fireEvent.click(codexButtons()[1])
     expect(screen.getByLabelText('prov_field_protocol')).toHaveValue('openai-responses')
+  })
+
+  it('syncs real upstream models and saves selected message models', async () => {
+    vi.mocked(apiGet).mockImplementation(async (path: string) => {
+      if (path === '/ocgt/api/providers/models?line=claude') {
+        return { data: [{ id: 'deepseek-v4-pro', protocol: 'openai-chat' }] }
+      }
+      if (path !== '/ocgt/api/providers') return {}
+      return {
+        providers: [{
+          id: 'p1',
+          name: 'OpenCode Go',
+          baseUrl: 'https://custom.upstream.com',
+          apiKey: 'sk-test',
+          accounts: [{ id: 'acc-primary', apiKey: 'sk-test' }],
+          models: [],
+          defaultModel: '',
+          priority: 0,
+          enabled: true,
+          health: 'unknown',
+          requestCount: 0,
+          errorCount: 0,
+          avgLatency: 0,
+          createdAt: 1,
+          sortIndex: 0,
+          line: 'claude',
+          protocol: 'openai-chat',
+          rateLimitPerSecond: 0,
+          rateLimitBurst: 0,
+          requestTimeoutSeconds: 300,
+          thinkingBudgetTokens: 0,
+          modelAliases: {},
+          headers: {},
+          env: {},
+        }],
+      }
+    })
+
+    render(<Providers />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'prov_card_edit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'btn_sync_models' }))
+    // Synced options live inside the fallback-chain dropdown panel; open it
+    // first, then pick the model from the listbox.
+    fireEvent.click(screen.getByLabelText('prov_field_fallback'))
+    fireEvent.click((await screen.findAllByRole('option', { name: /deepseek-v4-pro/ }))[0])
+    fireEvent.click(screen.getByRole('button', { name: 'prov_form_save' }))
+
+    const [, options] = vi.mocked(apiFetch).mock.calls.find(([path]) => path === '/ocgt/api/providers/p1')!
+    const body = JSON.parse(String(options?.body))
+    expect(body.fallbackChain).toEqual(['deepseek-v4-pro'])
+    expect(body.modelProtocols).toEqual({ 'deepseek-v4-pro': 'openai-chat' })
+  })
+
+  it('sends saved provider id and model protocol metadata when testing a model', async () => {
+    vi.mocked(apiFetch).mockResolvedValueOnce({ success: true, latencyMs: 1 })
+
+    render(<Providers />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'prov_card_edit' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'btn_test_model' }))
+
+    await waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/ocgt/api/providers/test', expect.anything(), 35000))
+    const [, options] = vi.mocked(apiFetch).mock.calls.find(([path]) => path === '/ocgt/api/providers/test')!
+    const body = JSON.parse(String(options?.body))
+    expect(body.providerId).toBe('p1')
+    expect(body.model).toBe('claude-3-5-sonnet')
+    expect(body.protocol).toBe('openai-chat')
+    expect(body.modelProtocols).toEqual({ 'claude-3-5-sonnet': 'anthropic' })
   })
 })

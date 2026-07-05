@@ -61,9 +61,11 @@ type ModelStat struct {
 }
 
 type ClientStat struct {
-	Name     string  `json:"name"`
-	Requests int     `json:"requests"`
-	Pct      float64 `json:"pct"`
+	Name        string  `json:"name"`
+	Requests    int     `json:"requests"`
+	Pct         float64 `json:"pct"`
+	P50LatencyMs float64 `json:"p50_latency_ms"`
+	P95LatencyMs float64 `json:"p95_latency_ms"`
 }
 
 type DailyStat struct {
@@ -256,6 +258,7 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 
 	modelMap := make(map[string]*ModelStat)
 	clientMap := make(map[string]*ClientStat)
+	clientLatencies := make(map[string][]float64)
 	dayMap := make(map[string]*DailyStat)
 	latencies := make([]float64, 0, len(entries))
 
@@ -299,6 +302,7 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 			clientMap[client] = &ClientStat{Name: client}
 		}
 		clientMap[client].Requests++
+		clientLatencies[client] = append(clientLatencies[client], latency)
 
 		// Daily trend
 		dateKey := e.Time.Format("2006-01-02")
@@ -354,6 +358,10 @@ func aggregateStats(entries []requestLogEntry, days int) StatsSummary {
 		if totalReq > 0 {
 			cs.Pct = float64(cs.Requests) / totalReq * 100
 		}
+		if lats := clientLatencies[cs.Name]; len(lats) > 0 {
+			cs.P50LatencyMs = percentileLatency(lats, 50)
+			cs.P95LatencyMs = percentileLatency(lats, 95)
+		}
 		result.ByClient = append(result.ByClient, *cs)
 	}
 	sort.Slice(result.ByClient, func(i, j int) bool {
@@ -383,6 +391,29 @@ func determineGranularity(days int) string {
 	default:
 		return "week"
 	}
+}
+
+// percentileLatency returns the p-th percentile (0-100) of a latency sample,
+// in milliseconds. The slice is sorted in place; an empty sample returns 0.
+// Uses nearest-rank interpolation consistent with the summary p50 calculation.
+func percentileLatency(lats []float64, p int) float64 {
+	if len(lats) == 0 {
+		return 0
+	}
+	sorted := make([]float64, len(lats))
+	copy(sorted, lats)
+	sort.Float64s(sorted)
+	if len(sorted) == 1 {
+		return sorted[0]
+	}
+	// rank index, clamped to [0, n-1]
+	idx := int(float64(p)/100*float64(len(sorted)-1) + 0.5)
+	if idx < 0 {
+		idx = 0
+	} else if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
 }
 
 func timeKey(t time.Time, granularity string) string {

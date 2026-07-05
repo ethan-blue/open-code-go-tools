@@ -734,6 +734,28 @@ func TestClientSourceFromRequest(t *testing.T) {
 	}
 }
 
+func TestRequestLineFromRequest_ModelsRoute(t *testing.T) {
+	// Codex: /v1/models with no ocgt headers → "codex"
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	if got := requestLineFromRequest(req); got != "codex" {
+		t.Fatalf("/v1/models (no headers) line = %q, want codex", got)
+	}
+
+	// Claude Code: /v1/models with X-Ocgt-Profile → "claude"
+	req = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("X-Ocgt-Profile", "opencode-go")
+	if got := requestLineFromRequest(req); got != "claude" {
+		t.Fatalf("/v1/models (with profile) line = %q, want claude", got)
+	}
+
+	// Claude Code: /v1/models with X-Ocgt-Client → "claude"
+	req = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("X-Ocgt-Client", "claude-code-cli")
+	if got := requestLineFromRequest(req); got != "claude" {
+		t.Fatalf("/v1/models (with client) line = %q, want claude", got)
+	}
+}
+
 func TestRawClaudeSettingsConfigCreatesMissingFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -1118,10 +1140,29 @@ func TestAnthropicThinkingIsBoundedForOpenAIChatCompletions(t *testing.T) {
 	}
 }
 
-func TestAnthropicThinkingCanBeDisabledForOpenAIChatCompletions(t *testing.T) {
-	thinking := boundedThinkingPayload(map[string]any{"type": "enabled", "budget_tokens": float64(1024)}, -1)
-	if thinking != nil {
-		t.Fatalf("thinking should be disabled: %#v", thinking)
+func TestAnthropicThinkingIsPassthroughWhenBudgetUnlimited(t *testing.T) {
+	// maxBudgetTokens <= 0 (e.g. -1) means "no limit": the request's thinking
+	// payload must be forwarded untouched, not disabled or clamped.
+	src := map[string]any{"type": "enabled", "budget_tokens": float64(1024)}
+	thinking := boundedThinkingPayload(src, -1)
+	got, ok := thinking.(map[string]any)
+	if !ok {
+		t.Fatalf("thinking should be passed through unchanged: %#v", thinking)
+	}
+	if got["type"] != "enabled" || got["budget_tokens"] != float64(1024) {
+		t.Fatalf("thinking payload mutated under unlimited budget: %#v", got)
+	}
+}
+
+func TestAnthropicThinkingIsDisabledByExplicitPayload(t *testing.T) {
+	// An explicit disabled thinking payload stays disabled regardless of budget.
+	thinking := boundedThinkingPayload(map[string]any{"type": "disabled", "budget_tokens": float64(1024)}, 256)
+	got, ok := thinking.(map[string]any)
+	if !ok {
+		t.Fatalf("disabled thinking should be preserved: %#v", thinking)
+	}
+	if typ, _ := got["type"].(string); !strings.EqualFold(typ, "disabled") {
+		t.Fatalf("expected disabled thinking, got %#v", got)
 	}
 }
 
@@ -1854,24 +1895,24 @@ func TestRetryMechanism(t *testing.T) {
 			},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv.retryBackoffBase = 0 // disable backoff for fast test
-
-	body := []byte(`{"model":"flakey-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected 200 after retries, got %d: %s", rr.Code, rr.Body.String())
-	}
-
-	if attemptCount != 3 {
-		t.Fatalf("expected 3 attempts (2 fails + 1 success), got %d", attemptCount)
-	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.retryBackoffBase = 0 // disable backoff for fast test
+
+	body := []byte(`{"model":"flakey-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 after retries, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if attemptCount != 3 {
+		t.Fatalf("expected 3 attempts (2 fails + 1 success), got %d", attemptCount)
+	}
 }
 
 func TestCircuitBreaker(t *testing.T) {

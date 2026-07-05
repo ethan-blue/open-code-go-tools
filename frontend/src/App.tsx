@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import {
   LayoutDashboard, Settings, Terminal, BarChart3,
   MessagesSquare, Activity, Server,
-  Bot, Shield, Cloud, Menu, FileText, HardDrive, Info,
+  Shield, Cloud, Menu,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { I18nProvider, useI18n } from '@/i18n'
@@ -15,7 +15,6 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const TrafficMonitor = lazy(() => import('@/pages/TrafficMonitor'))
 const Sessions = lazy(() => import('@/pages/Sessions'))
-const Copilot = lazy(() => import('@/pages/Copilot'))
 const TrafficDetail = lazy(() => import('@/pages/TrafficDetail'))
 import type { DetailRecord } from '@/pages/TrafficDetail'
 const QuickConnect = lazy(() => import('@/pages/QuickConnect'))
@@ -23,27 +22,25 @@ const Providers = lazy(() => import('@/pages/Providers'))
 const SecurityLimitsPage = lazy(() => import('@/pages/config/SecurityLimitsPage'))
 const HubSyncPage = lazy(() => import('@/pages/config/HubSyncPage'))
 const PreferencesPage = lazy(() => import('@/pages/app/PreferencesPage'))
-const LogsTelemetryPage = lazy(() => import('@/pages/app/LogsTelemetryPage'))
-const BackupsPage = lazy(() => import('@/pages/app/BackupsPage'))
-const AboutPage = lazy(() => import('@/pages/app/AboutPage'))
 
 type ViewId =
-  | 'dashboard' | 'history' | 'sessions' | 'copilot'
+  | 'dashboard' | 'history' | 'sessions'
   | 'terminal' | 'providers'
   | 'security' | 'hub'
-  | 'preferences' | 'logs' | 'backups' | 'about'
+  | 'preferences'
   | 'detail'
 
 const SAVED_VIEWS: ViewId[] = [
-  'dashboard', 'history', 'sessions', 'copilot', 'terminal', 'providers',
+  'dashboard', 'history', 'sessions', 'terminal', 'providers',
   'security', 'hub',
-  'preferences', 'logs', 'backups', 'about',
+  'preferences',
 ]
 
 function AppShell() {
   const { t } = useI18n()
   const [activeView, _setActiveView] = useState<ViewId>(() => {
     const saved = localStorage.getItem('last-view')
+    if (saved === 'logs' || saved === 'about') return 'preferences'
     return (saved && SAVED_VIEWS.includes(saved as ViewId)) ? saved as ViewId : 'dashboard'
   })
   const setActiveView = useCallback((view: ViewId) => {
@@ -60,6 +57,8 @@ function AppShell() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [listenAddr, setListenAddr] = useState('127.0.0.1:8787')
   const [trafficCount, setTrafficCount] = useState(0)
+  const [trafficErrorCount, setTrafficErrorCount] = useState(0)
+  const [hideTrafficErrors, setHideTrafficErrors] = useState(() => localStorage.getItem('hide-traffic-errors') === '1')
 
   const initProxy = useCallback(async () => {
     setLoading(true)
@@ -96,6 +95,7 @@ function AppShell() {
       try {
         const stats = await apiGet('/ocgt/api/stats/summary?days=1')
         if (stats?.summary?.total_requests) setTrafficCount(stats.summary.total_requests)
+        setTrafficErrorCount(Math.max(0, (stats?.summary?.total_requests || 0) - (stats?.summary?.success_count || 0)))
       } catch {}
       setLoading(false)
       return
@@ -111,7 +111,7 @@ function AppShell() {
     if (isWails() && (window as any).runtime?.EventsOn) {
       const rt = (window as any).runtime
       rt.EventsOn('show-close-dialog', () => setShowCloseDialog(true))
-      rt.EventsOn('show-about-dialog', () => setActiveView('about'))
+      rt.EventsOn('show-about-dialog', () => setActiveView('preferences'))
       rt.EventsOn('proxy-error', (msg: string) => { setProxyStatus('offline'); setLoadingMsg(msg) })
       rt.EventsOn('port-conflict', (msg: string) => { setLoadingMsg(msg) })
       rt.EventsOn('nav-to-settings', () => setActiveView('preferences'))
@@ -133,6 +133,12 @@ function AppShell() {
     window.addEventListener('nav-to', navHandler)
     return () => window.removeEventListener('nav-to', navHandler)
   }, [setActiveView])
+
+  useEffect(() => {
+    const handler = () => setHideTrafficErrors(localStorage.getItem('hide-traffic-errors') === '1')
+    window.addEventListener('ocgt-prefs-changed', handler)
+    return () => window.removeEventListener('ocgt-prefs-changed', handler)
+  }, [])
 
   useEffect(() => {
     const detailHandler = (e: Event) => {
@@ -164,10 +170,10 @@ function AppShell() {
         setActiveView('preferences')
         return
       }
-      // Ctrl/Cmd + 1-6: quick nav
+      // Ctrl/Cmd + 1-5: quick nav
       if (e.ctrlKey || e.metaKey) {
         const idx = parseInt(e.key) - 1
-        const views: ViewId[] = ['dashboard', 'terminal', 'history', 'sessions', 'copilot', 'providers']
+        const views: ViewId[] = ['dashboard', 'providers', 'terminal', 'sessions', 'history']
         if (idx >= 0 && idx < views.length) {
           e.preventDefault()
           setActiveView(views[idx])
@@ -183,31 +189,27 @@ function AppShell() {
       label: t('nav_group_runtime'),
       items: [
         { id: 'dashboard' as ViewId, label: t('nav_dashboard'), icon: LayoutDashboard },
-        { id: 'history' as ViewId, label: t('nav_history'), icon: BarChart3 },
-        { id: 'sessions' as ViewId, label: t('nav_sessions'), icon: MessagesSquare },
-        { id: 'copilot' as ViewId, label: t('nav_copilot'), icon: Bot },
+        { id: 'providers' as ViewId, label: t('nav_providers'), icon: Server },
+        { id: 'terminal' as ViewId, label: t('nav_terminal'), icon: Terminal },
       ],
     },
     {
-      label: t('nav_group_config'),
+      label: t('nav_group_local'),
       items: [
-        { id: 'providers' as ViewId, label: t('nav_providers'), icon: Server },
+        { id: 'sessions' as ViewId, label: t('nav_sessions'), icon: MessagesSquare },
+        { id: 'history' as ViewId, label: t('nav_history'), icon: BarChart3 },
+      ],
+    },
+    {
+      label: t('nav_group_advanced'),
+      items: [
         { id: 'security' as ViewId, label: t('sett_section_security'), icon: Shield },
         { id: 'hub' as ViewId, label: t('nav_hub'), icon: Cloud },
-      ],
-    },
-    {
-      label: t('nav_group_start'),
-      items: [
-        { id: 'terminal' as ViewId, label: t('nav_terminal'), icon: Terminal },
       ],
     },
   ]
   const appNavItems = [
     { id: 'preferences' as ViewId, label: t('sett_s05_title'), icon: Settings },
-    { id: 'logs' as ViewId, label: t('sett_log_title'), icon: FileText },
-    { id: 'backups' as ViewId, label: t('sett_section_backups'), icon: HardDrive },
-    { id: 'about' as ViewId, label: t('sett_section_about'), icon: Info },
   ]
 
   const handleTitlebarMouseDown = useCallback((e: React.MouseEvent) => {
@@ -269,6 +271,7 @@ function AppShell() {
           </div>
           <div className="right">
             <span className="pill"><span className={cn('dot', proxyStatus === 'offline' ? 'off' : proxyStatus === 'connecting' ? 'warn' : 'online')} /><span className="mono">{listenAddr}</span></span>
+            {!hideTrafficErrors && trafficErrorCount > 0 && <span className="pill titlebar-error"><span className="dot off" /><span className="mono">{trafficErrorCount} {t('dash_errors')}</span></span>}
             {!isMac && (
               <>
                 <button className="winbtn" type="button" title={t('close_dialog_minimize')} aria-label={t('close_dialog_minimize')} onClick={() => { try { (window as any).runtime?.WindowMinimise() } catch {} }}>
@@ -288,7 +291,7 @@ function AppShell() {
         <div id="layout">
           <aside id="sidebar" className={showSidebar ? 'mobile-open' : ''}>
             <div className="brand">
-              <div className="logo">O</div>
+              <div className="logo"><img src="/appicon.png" alt="" /></div>
               <div className="name">OCGT</div>
               <span className="v">v4.0</span>
             </div>
@@ -303,7 +306,7 @@ function AppShell() {
                       <a key={item.id} href="#" className={active ? 'active' : ''} aria-current={active ? 'page' : undefined} onClick={(e) => { e.preventDefault(); setActiveView(item.id); setShowSidebar(false) }}>
                         <Icon className="icn" />
                         {item.label}
-                        {item.id === 'history' && trafficCount > 0 && <span className="badge">{trafficCount >= 1000 ? `${(trafficCount / 1000).toFixed(1)}k` : trafficCount}</span>}
+                        {item.id === 'history' && trafficCount > 0 && !hideTrafficErrors && <span className="badge">{trafficCount >= 1000 ? `${(trafficCount / 1000).toFixed(1)}k` : trafficCount}</span>}
                       </a>
                     )
                   })}
@@ -311,8 +314,7 @@ function AppShell() {
               </div>
             ))}
             <div className="footer">
-              <div className="section-label">{t('nav_group_advanced')}</div>
-              <div className="footer-links" role="navigation" aria-label={t('nav_group_advanced')}>
+              <div className="footer-links" role="navigation" aria-label={t('sett_s05_title')}>
                 {appNavItems.map((item) => {
                   const Icon = item.icon
                   const active = activeView === item.id
@@ -336,14 +338,10 @@ function AppShell() {
                   {activeView === 'history' && <ErrorBoundary><TrafficMonitor /></ErrorBoundary>}
                   {activeView === 'detail' && <ErrorBoundary><TrafficDetail record={selectedRequest} onBack={() => setActiveView('history')} /></ErrorBoundary>}
                   {activeView === 'sessions' && <ErrorBoundary><Sessions /></ErrorBoundary>}
-                  {activeView === 'copilot' && <ErrorBoundary><Copilot /></ErrorBoundary>}
                   {activeView === 'providers' && <ErrorBoundary><Providers /></ErrorBoundary>}
                   {activeView === 'security' && <ErrorBoundary><SecurityLimitsPage /></ErrorBoundary>}
                   {activeView === 'hub' && <ErrorBoundary><HubSyncPage /></ErrorBoundary>}
                   {activeView === 'preferences' && <ErrorBoundary><PreferencesPage /></ErrorBoundary>}
-                  {activeView === 'logs' && <ErrorBoundary><LogsTelemetryPage /></ErrorBoundary>}
-                  {activeView === 'backups' && <ErrorBoundary><BackupsPage /></ErrorBoundary>}
-                  {activeView === 'about' && <ErrorBoundary><AboutPage /></ErrorBoundary>}
                 </div>
               </Suspense>
             </div>

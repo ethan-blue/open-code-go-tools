@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 
 	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/fileutil"
-	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 	"github.com/ethan-blue/open-code-go-tools/internal/quota"
 	"github.com/ethan-blue/open-code-go-tools/internal/session"
 	"github.com/ethan-blue/open-code-go-tools/internal/version"
@@ -383,102 +381,6 @@ func (s *Server) apiRawConfig(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("Method not allowed"))
 }
 
-// apiConfigExport handles GET /ocgt/api/config/export — returns config + providers as a single backup bundle.
-func (s *Server) apiConfigExport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
-		return
-	}
-
-	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".claude", "settings.json")
-
-	bundle := map[string]any{
-		"version":    version.Version,
-		"exportedAt": time.Now().Format(time.RFC3339),
-	}
-
-	// Read settings.json
-	if data, err := os.ReadFile(configPath); err == nil {
-		var settings map[string]any
-		if json.Unmarshal(data, &settings) == nil {
-			bundle["config"] = settings
-		}
-	}
-
-	// Read providers
-	if s.providerStore == nil {
-		s.providerStore = providers.NewStore(s.configDir)
-		if err := s.providerStore.Load(); err != nil {
-			log.Printf("providers: load error during export: %v", err)
-		}
-	}
-	// Mask API keys in export
-	list := s.providerStore.List()
-	for i := range list {
-		list[i] = providers.MaskProviderSecrets(list[i])
-	}
-	bundle["providers"] = list
-
-	writeJSON(w, http.StatusOK, bundle)
-}
-
-// apiConfigImport handles POST /ocgt/api/config/import — restores config from a backup bundle.
-func (s *Server) apiConfigImport(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
-		return
-	}
-
-	data, err := io.ReadAll(io.LimitReader(r.Body, MaxBodySize+1))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if int64(len(data)) > MaxBodySize {
-		writeError(w, http.StatusRequestEntityTooLarge, fmt.Errorf("request body too large (max %d bytes)", MaxBodySize))
-		return
-	}
-
-	var bundle map[string]json.RawMessage
-	if err := json.Unmarshal(data, &bundle); err != nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid JSON: %w", err))
-		return
-	}
-
-	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".claude", "settings.json")
-
-	// Restore config section. Before overwriting, snapshot the current file so
-	// the user can always roll back without a separate "create backup" step.
-	backupPath := ""
-	if raw, ok := bundle["config"]; ok {
-		formatted, _ := json.MarshalIndent(json.RawMessage(raw), "", "  ")
-		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		// Auto-backup the existing config (best-effort, never blocks the import).
-		if existing, rerr := os.ReadFile(configPath); rerr == nil && len(existing) > 0 {
-			backupPath = configPath + ".ocgt-bak-" + time.Now().Format("20060102-150405")
-			if werr := fileutil.AtomicWriteFile(backupPath, existing, 0600); werr != nil {
-				log.Printf("import: auto-backup write failed: %v", werr)
-				backupPath = ""
-			}
-		}
-		if err := fileutil.AtomicWriteFile(configPath, formatted, 0600); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	}
-
-	resp := map[string]string{"status": "success"}
-	if backupPath != "" {
-		resp["backupPath"] = backupPath
-	}
-	writeJSON(w, http.StatusOK, resp)
-}
-
 func (s *Server) apiVersion(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method %s not supported", r.Method))
@@ -521,6 +423,17 @@ func (s *Server) apiQuota(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) apiQuotaStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("GET required"))
+		return
+	}
+	cookie, _ := s.resolveQuotaCredentials()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"configured": quota.CredentialConfigured(cookie),
+	})
+}
+
 // apiRefreshQuota fetches fresh quota data from OpenCode Go (POST only).
 // Credentials are resolved in this order: profile config → env vars.
 func (s *Server) apiRefreshQuota(w http.ResponseWriter, r *http.Request) {
@@ -555,19 +468,12 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectsRoot, err := session.ClaudeProjectsRoot()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	// 如果指定了 id 参数，返回会话详情
 	if sessionID := r.URL.Query().Get("id"); sessionID != "" {
 		if strings.ContainsAny(sessionID, "/\\") {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("invalid session id"))
 			return
 		}
-		detail, err := session.ReadSessionEvents(projectsRoot, sessionID)
+		detail, err := session.ReadLocalSessionEvents(sessionID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -580,8 +486,7 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 原有逻辑：返回会话列表（带 TTL 缓存 + period 过滤）
-	sessions, err := s.sessionsSnapshot(projectsRoot)
+	sessions, err := s.sessionsSnapshot()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -599,7 +504,7 @@ func (s *Server) apiSessions(w http.ResponseWriter, r *http.Request) {
 // sessionsSnapshot returns the session list through the server-level TTL
 // cache. The cache fields existed but were never wired up — every navigation
 // rescanned all JSONL files.
-func (s *Server) sessionsSnapshot(projectsRoot string) ([]session.SessionStats, error) {
+func (s *Server) sessionsSnapshot() ([]session.SessionStats, error) {
 	s.sessionsCacheMu.RLock()
 	if s.sessionsCache != nil && time.Since(s.sessionsCacheAt) < s.sessionsCacheTTL {
 		cached := s.sessionsCache
@@ -608,7 +513,7 @@ func (s *Server) sessionsSnapshot(projectsRoot string) ([]session.SessionStats, 
 	}
 	s.sessionsCacheMu.RUnlock()
 
-	sessions, err := session.ReadAllSessions(projectsRoot)
+	sessions, err := session.ReadLocalSessions()
 	if err != nil {
 		return nil, err
 	}
@@ -629,14 +534,42 @@ func (s *Server) resolveQuotaCredentials() (cookie, workspaceID string) {
 	}
 
 	s.configMu.RLock()
-	defer s.configMu.RUnlock()
 	if cookie == "" && s.config.QuotaCookie != "" {
 		cookie = s.config.QuotaCookie
 	}
 	if workspaceID == "" && s.config.QuotaWorkspaceID != "" {
 		workspaceID = s.config.QuotaWorkspaceID
 	}
+	s.configMu.RUnlock()
+	if cookie == "" {
+		if c, w, ok := s.providerQuotaCredentials(); ok {
+			cookie = c
+			if workspaceID == "" {
+				workspaceID = w
+			}
+		}
+	}
 	return
+}
+
+func (s *Server) providerQuotaCredentials() (cookie, workspaceID string, ok bool) {
+	store := s.ensureStore()
+	for _, line := range []string{"claude", "codex"} {
+		provider, found := store.Active(line)
+		if !found {
+			continue
+		}
+		if !strings.Contains(strings.ToLower(provider.BaseURL), "opencode.ai/zen/go") && !strings.EqualFold(provider.Name, "OpenCode Go") {
+			continue
+		}
+		for _, acc := range provider.Accounts {
+			if strings.TrimSpace(acc.QuotaCookie) == "" {
+				continue
+			}
+			return strings.TrimSpace(acc.QuotaCookie), strings.TrimSpace(acc.QuotaWorkspaceID), true
+		}
+	}
+	return "", "", false
 }
 
 // apiAccountQuotas handles GET /ocgt/api/quota/accounts?provider=ID — fetches

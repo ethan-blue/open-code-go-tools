@@ -4,11 +4,10 @@ import { EmptyState, Skeleton } from '@/components/ui'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { apiGet } from '@/lib/wails'
-import { fmtTokens, fmtCost, fmtNum, parseDurationMs, pctDelta } from '@/lib/utils'
+import { fmtTokens, fmtCost, fmtNum, fmtMs, parseDurationMs, pctDelta } from '@/lib/utils'
+import { modelColor } from '@/lib/modelColors'
 import type { StatsSummary, TrendData, ModelsData, HistoryEntry } from '@/lib/types'
 import { DonutChart } from '@/components/DonutChart'
-
-const COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
 
 const RANGES = [
   { v: '1d', days: 1 },
@@ -17,11 +16,28 @@ const RANGES = [
   { v: '90d', days: 90 },
 ] as const
 
+function TokenMix({ input, output, cache, label }: { input: number; output: number; cache: number; label: string }) {
+  const safeInput = Math.max(0, input || 0)
+  const safeOutput = Math.max(0, output || 0)
+  const safeCache = Math.max(0, cache || 0)
+  const total = safeInput + safeOutput + safeCache
+  const width = (n: number) => total > 0 ? `${(n / total) * 100}%` : '0%'
+  const title = `${label}: IN ${fmtTokens(safeInput)} / OUT ${fmtTokens(safeOutput)} / CACHE ${fmtTokens(safeCache)}`
+
+  return (
+    <div className="tm-token-mix" title={title} aria-label={title}>
+      <span className="tm-token-seg tm-token-in" style={{ width: width(safeInput) }} />
+      <span className="tm-token-seg tm-token-out" style={{ width: width(safeOutput) }} />
+      <span className="tm-token-seg tm-token-cache" style={{ width: width(safeCache) }} />
+    </div>
+  )
+}
+
 
 function AreaChart({ data }: { data: TrendData['daily'] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
 
-  const W = 720, H = 220, PL = 52, PR = 16, PT = 16, PB = 32
+  const W = 720, H = 170, PL = 46, PR = 12, PT = 8, PB = 24
   const cw = W - PL - PR, ch = H - PT - PB
 
   const maxVal = useMemo(() => {
@@ -180,24 +196,40 @@ export default function TrafficMonitor() {
     return t('tm_all')
   }
 
-  const mappedRequests = recentRequests.map(r => ({
-    time: typeof r.time === 'string' ? new Date(r.time).toLocaleTimeString() : '-',
-    rawTime: r.time,
-    id: r.id,
-    client: r.client || r.route || '-',
-    model: r.model || '-',
-    inp: r.input_tokens || 0,
-    out: r.output_tokens || 0,
-    cacheRead: r.cache_read_tokens || 0,
-    cacheCreate: r.cache_creation_tokens || 0,
-    latency: r.duration ? parseDurationMs(r.duration) : 0,
-    status: r.status,
-    route: r.route || '',
-    error: r.error || '',
-    ok: r.status >= 200 && r.status < 300,
-  }))
+  const mappedRequests = recentRequests.map((r, i) => {
+    const inp = r.input_tokens || 0
+    const out = r.output_tokens || 0
+    const cacheRead = r.cache_read_tokens || 0
+    const cacheCreate = r.cache_creation_tokens || 0
+    const latency = r.duration ? parseDurationMs(r.duration) : 0
+    const client = r.client || r.route || '-'
+    const model = r.model || '-'
+    const route = r.route || ''
+    const error = r.error || ''
+    const key = r.id || `${r.time || 'request'}-${i}`
+    const total = r.total_tokens || inp + out + cacheRead + cacheCreate
+    return {
+      key,
+      time: typeof r.time === 'string' ? new Date(r.time).toLocaleTimeString() : '-',
+      rawTime: r.time,
+      id: r.id,
+      client,
+      model,
+      inp,
+      out,
+      cacheRead,
+      cacheCreate,
+      latency,
+      status: r.status,
+      route,
+      error,
+      ok: r.status >= 200 && r.status < 300,
+      detail: { ...r, client, model, route, error, duration: latency, input_tokens: inp, output_tokens: out, cache_read_tokens: cacheRead, cache_creation_tokens: cacheCreate, total_tokens: total },
+    }
+  })
 
   const reqTotal = mappedRequests.length
+  const errorCount = mappedRequests.filter(r => r.error).length
   const reqPages = Math.ceil(reqTotal / PAGE_SIZE)
   const pageRows = mappedRequests.slice(reqPage * PAGE_SIZE, (reqPage + 1) * PAGE_SIZE)
 
@@ -293,44 +325,26 @@ export default function TrafficMonitor() {
 
             <div className="card">
               <div className="card-h">{t('tm_client_source')}</div>
-              <div className="table-wrap tm-client-wrap">
-              <table className="table table-fixed tm-client-table">
-                <colgroup>
-                  <col className="tm-client-col-name" />
-                  <col className="tm-client-col-req" />
-                  <col className="tm-client-col-lat" />
-                  <col className="tm-client-col-lat" />
-                  <col className="tm-client-col-cost" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>{t('tm_client_name')}</th>
-                    <th className="num">Req</th>
-                    <th className="num">{t('tm_p50')}</th>
-                    <th className="num">{t('tm_p95')}</th>
-                    <th className="num">{t('tm_cost')}</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <div className="tm-client-grid">
+                <div className="tm-client-head">{t('tm_client_name')}</div>
+                <div className="tm-client-head num">Req</div>
+                <div className="tm-client-head num">{t('tm_p50')}</div>
+                <div className="tm-client-head num">{t('tm_p95')}</div>
+                <div className="tm-client-head num">{t('tm_cost')}</div>
+                <div className="tm-client-rows">
                   {summary?.by_client?.map((c) => {
                     const cost = s ? (s.estimated_cost * (c.pct / 100)) : 0
                     return (
-                      <tr key={c.name}>
-                        <td title={c.name}>
-                          <span className="row gap-2 tm-client-name">
-                            <span className="dot online" />
-                            <span>{c.name}</span>
-                          </span>
-                        </td>
-                        <td className="num mono tiny">{fmtNum(c.requests)}</td>
-                        <td className="num mono tiny tm-client-empty">--</td>
-                        <td className="num mono tiny tm-client-empty">--</td>
-                        <td className="num mono tiny">{fmtCost(cost)}</td>
-                      </tr>
+                      <div className="tm-client-row" key={c.name}>
+                        <div className="tm-client-name" title={c.name}><span className="dot online" /><span>{c.name}</span></div>
+                        <div className="num mono tiny">{fmtNum(c.requests)}</div>
+                        <div className="num mono tiny">{c.p50_latency_ms ? fmtMs(c.p50_latency_ms) : '--'}</div>
+                        <div className="num mono tiny">{c.p95_latency_ms ? fmtMs(c.p95_latency_ms) : '--'}</div>
+                        <div className="num mono tiny">{fmtCost(cost)}</div>
+                      </div>
                     )
                   })}
-                </tbody>
-              </table>
+                </div>
               </div>
             </div>
           </div>
@@ -339,11 +353,12 @@ export default function TrafficMonitor() {
             <div className="card-h">{t('tm_model_breakdown')}</div>
             <div className="card-body tm-table-wrap">
               <table className="table">
-                <thead><tr><th>{t('tm_model')}</th><th className="num">{t('tm_requests')}</th><th className="num">{t('tm_input')}</th><th className="num">{t('tm_output')}</th><th className="num">{t('tm_total')}</th><th className="num">{t('tm_pct')}</th><th className="num">{t('tm_cost')}</th></tr></thead>
+                <thead><tr><th>{t('tm_model')}</th><th>{t('tm_token_mix')}</th><th className="num">{t('tm_requests')}</th><th className="num">{t('tm_input')}</th><th className="num">{t('tm_output')}</th><th className="num">{t('tm_total')}</th><th className="num">{t('tm_pct')}</th><th className="num">{t('tm_cost')}</th></tr></thead>
                 <tbody>
                   {models?.models?.map((m, i) => (
                     <tr key={m.name}>
-                      <td><span className="tm-row"><span className="tm-model-dot" style={{ backgroundColor: COLORS[i % COLORS.length] }} /><span className="mono tiny">{m.name}</span></span></td>
+                      <td><span className="tm-row"><span className="tm-model-dot" style={{ backgroundColor: modelColor(m.name, i) }} /><span className="mono tiny">{m.name}</span></span></td>
+                      <td><TokenMix input={m.input_tokens} output={m.output_tokens} cache={m.cache_tokens} label={m.name} /></td>
                       <td className="num mono tiny">{fmtNum(m.requests)}</td>
                       <td className="num mono tiny">{fmtTokens(m.input_tokens)}</td>
                       <td className="num mono tiny">{fmtTokens(m.output_tokens)}</td>
@@ -362,6 +377,7 @@ export default function TrafficMonitor() {
               {t('tm_recent_requests')}
               <div className="actions">
                 <span className="tag">{reqTotal} {t('td_records')}</span>
+                {errorCount > 0 && <span className="tag red">{errorCount} {t('dash_errors')}</span>}
                 <button className="btn btn-sm btn-ghost" onClick={() => {
                   const jsonl = pageRows.map(r => JSON.stringify(r)).join("\n")
                   const blob = new Blob([jsonl], { type: "application/jsonl" })
@@ -409,7 +425,7 @@ export default function TrafficMonitor() {
                             {r.error && <span className="tm-status-badge" title={r.error}>ERR</span>}
                           </td>
                           <td>
-                            <button className="btn btn-sm btn-ghost tm-btn-nav" onClick={() => window.dispatchEvent(new CustomEvent('nav-to', { detail: `traffic-detail:${r.id}` }))}>
+                            <button className="btn btn-sm btn-ghost tm-btn-nav" onClick={() => window.dispatchEvent(new CustomEvent('nav-to-detail', { detail: r.detail }))}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
                             </button>
                           </td>

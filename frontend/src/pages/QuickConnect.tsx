@@ -5,10 +5,22 @@ import { errMessage } from '@/lib/utils'
 import { isMacOS } from '@/lib/platform'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
+import { ConfirmModal } from '@/components/ConfirmModal'
 
 interface IntegrationStatus { cli: boolean; vscode: boolean; claudeDesktopApp: boolean; codex: boolean }
 interface ClientStats { [key: string]: number }
 type ClientLine = 'claude' | 'codex'
+interface InstallResult { ok: boolean; modelCount?: number; model?: string }
+
+function parseInstallResult(result: string): InstallResult {
+  if (result === 'success') return { ok: true }
+  try {
+    const parsed = JSON.parse(result) as { status?: string; modelCount?: number; model?: string }
+    return { ok: parsed.status === 'success', modelCount: parsed.modelCount, model: parsed.model }
+  } catch {
+    return { ok: false }
+  }
+}
 
 function clientBucket(name: string): string {
   const lower = name.toLowerCase()
@@ -43,6 +55,9 @@ export default function QuickConnect() {
   const [copyFeedback, setCopyFeedback] = useState(false)
   const [configReady, setConfigReady] = useState(true)
   const [lineFilter, setLineFilter] = useState<ClientLine>('claude')
+  // Pending client-removal confirmation. Null when the modal is closed — same
+  // ConfirmModal component is reused for both Claude and Codex removals.
+  const [removeTarget, setRemoveTarget] = useState<Client | null>(null)
 
   const checkIntegrations = useCallback(async () => {
     try {
@@ -102,13 +117,29 @@ export default function QuickConnect() {
     try {
       let result: string
       switch (type) { case 'claude': case 'cli': result = await wails.InstallClaudeUserEnv(); break; case 'codex': result = await wails.SetupCodex(); break; case 'desktop': result = await wails.SetupClaudeDesktopApp(); break; default: return }
-      if (result === 'success') { toast(t('qc_install_ok'), 'success'); setTimeout(checkIntegrations, 350) }
+      const parsed = parseInstallResult(result)
+      if (parsed.ok) {
+        const message = type === 'codex' && parsed.modelCount != null
+          ? t('qc_codex_install_ok')
+            .replace('{{n}}', String(parsed.modelCount))
+            .replace('{{model}}', parsed.model || 'default')
+          : t('qc_install_ok')
+        toast(message, 'success')
+        setTimeout(checkIntegrations, 350)
+      }
       else { toast(t('qc_install_fail') + ': ' + result, 'error') }
     } catch (err: unknown) { toast(t('qc_install_fail') + ': ' + errMessage(err), 'error') }
   }
 
-  const handleRemove = async (type: string) => {
-    if (!confirm(t('qc_remove_confirm'))) return
+  // Open the shared confirm modal instead of the OS-native confirm(). The
+  // actual backend call lives in confirmRemove, which fires on user confirm.
+  const handleRemove = (client: Client) => setRemoveTarget(client)
+
+  const confirmRemove = async () => {
+    const target = removeTarget
+    setRemoveTarget(null)
+    if (!target) return
+    const type = target.id
     try {
       let result: string
       switch (type) {
@@ -183,7 +214,7 @@ export default function QuickConnect() {
         <div className="meta">
           <span className="spacer" />
           {client.installed
-            ? <button className="btn btn-sm" onClick={() => handleRemove(client.id)}>{t('qc_remove')}</button>
+            ? <button className="btn btn-sm" onClick={() => handleRemove(client)}>{t('qc_remove')}</button>
             : <button className="btn btn-sm btn-primary" onClick={() => handleInstall(client.id)}>{t('qc_install')}</button>}
         </div>
       </div>
@@ -275,6 +306,18 @@ export default function QuickConnect() {
           </div>
         </section>
       </div>
+
+      {/* Shared confirm modal for Claude / Codex / Desktop removal. Replaces
+          the OS-native confirm() so the prompt matches the rest of the UI. */}
+      <ConfirmModal
+        open={removeTarget !== null}
+        danger
+        title={removeTarget ? t('qc_remove_title').replace('{{name}}', removeTarget.name) : ''}
+        message={t('qc_remove_confirm')}
+        confirmText={t('qc_remove')}
+        onConfirm={confirmRemove}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </div>
   )
 }

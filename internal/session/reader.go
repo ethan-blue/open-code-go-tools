@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+const (
+	sourceClaude = "claude"
+	sourceCodex  = "codex"
+)
+
 // ClaudeProjectsRoot 返回 ~/.claude/projects 路径
 func ClaudeProjectsRoot() (string, error) {
 	home, err := os.UserHomeDir()
@@ -20,6 +25,22 @@ func ClaudeProjectsRoot() (string, error) {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
 	return filepath.Join(home, ".claude", "projects"), nil
+}
+
+func CodexSessionsRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".codex", "sessions"), nil
+}
+
+func CodexArchivedSessionsRoot() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".codex", "archived_sessions"), nil
 }
 
 // Per-file stats cache. Re-parsing every JSONL on each request is O(total
@@ -39,6 +60,7 @@ var (
 type sessionFileJob struct {
 	path      string
 	sessionID string
+	source    string
 	modTime   time.Time
 	size      int64
 }
@@ -46,6 +68,51 @@ type sessionFileJob struct {
 // ReadAllSessions 扫描目录下所有项目的 JSONL 文件，返回聚合后的会话列表。
 // 未变更的文件命中缓存；新增/变更的文件用并行 worker 解析。
 func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
+	jobs, err := collectClaudeSessionJobs(projectsRoot)
+	if err != nil {
+		return nil, err
+	}
+	return readSessionJobs(jobs), nil
+}
+
+func ReadCodexSessions(sessionsRoot string) ([]SessionStats, error) {
+	jobs, err := collectCodexSessionJobs(sessionsRoot)
+	if err != nil {
+		return nil, err
+	}
+	return readSessionJobs(jobs), nil
+}
+
+func ReadLocalSessions() ([]SessionStats, error) {
+	claudeRoot, err := ClaudeProjectsRoot()
+	if err != nil {
+		return nil, err
+	}
+	codexRoot, err := CodexSessionsRoot()
+	if err != nil {
+		return nil, err
+	}
+	codexArchivedRoot, err := CodexArchivedSessionsRoot()
+	if err != nil {
+		return nil, err
+	}
+	var jobs []sessionFileJob
+	claudeJobs, err := collectClaudeSessionJobs(claudeRoot)
+	if err != nil {
+		return nil, err
+	}
+	jobs = append(jobs, claudeJobs...)
+	for _, root := range []string{codexRoot, codexArchivedRoot} {
+		codexJobs, err := collectCodexSessionJobs(root)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, codexJobs...)
+	}
+	return readSessionJobs(jobs), nil
+}
+
+func collectClaudeSessionJobs(projectsRoot string) ([]sessionFileJob, error) {
 	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -76,12 +143,47 @@ func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 			jobs = append(jobs, sessionFileJob{
 				path:      filepath.Join(projectDir, f.Name()),
 				sessionID: strings.TrimSuffix(f.Name(), ".jsonl"),
+				source:    sourceClaude,
 				modTime:   info.ModTime(),
 				size:      info.Size(),
 			})
 		}
 	}
+	return jobs, nil
+}
 
+func collectCodexSessionJobs(sessionsRoot string) ([]sessionFileJob, error) {
+	var jobs []sessionFileJob
+	err := filepath.WalkDir(sessionsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		jobs = append(jobs, sessionFileJob{
+			path:      path,
+			sessionID: codexSessionIDFromFilename(path),
+			source:    sourceCodex,
+			modTime:   info.ModTime(),
+			size:      info.Size(),
+		})
+		return nil
+	})
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read codex sessions dir %s: %w", sessionsRoot, err)
+	}
+	return jobs, nil
+}
+
+func readSessionJobs(jobs []sessionFileJob) []SessionStats {
 	// 2. Resolve from cache; parse misses concurrently.
 	results := make([]*SessionStats, len(jobs))
 	var wg sync.WaitGroup
@@ -97,7 +199,7 @@ func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			stats := parseSessionFile(job.path, job.sessionID)
+			stats := parseSessionJob(job)
 			fileCacheMu.Lock()
 			fileCache[job.path] = fileCacheEntry{modTime: job.modTime, size: job.size, stats: stats}
 			fileCacheMu.Unlock()
@@ -136,7 +238,7 @@ func ReadAllSessions(projectsRoot string) ([]SessionStats, error) {
 		return all[i].LastTime > all[j].LastTime
 	})
 
-	return all, nil
+	return all
 }
 
 func maxParallel() int {
@@ -178,6 +280,13 @@ func FilterByPeriod(sessions []SessionStats, period string, now time.Time) []Ses
 }
 
 // parseSessionFile 解析单个 JSONL 文件
+func parseSessionJob(job sessionFileJob) *SessionStats {
+	if job.source == sourceCodex {
+		return parseCodexSessionFile(job.path, job.sessionID)
+	}
+	return parseSessionFile(job.path, job.sessionID)
+}
+
 func parseSessionFile(filePath, sessionID string) *SessionStats {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -271,6 +380,7 @@ func parseSessionFile(filePath, sessionID string) *SessionStats {
 
 	return &SessionStats{
 		SessionID:         sessionID,
+		Source:            sourceClaude,
 		Model:             model,
 		MessageCount:      msgCount,
 		InputTokens:       inputTok,
@@ -284,6 +394,149 @@ func parseSessionFile(filePath, sessionID string) *SessionStats {
 }
 
 // ReadSessionEvents 读取指定会话 ID 的 JSONL 文件，返回所有事件
+type codexRawEvent struct {
+	Timestamp string       `json:"timestamp"`
+	Type      string       `json:"type"`
+	Payload   codexPayload `json:"payload"`
+}
+
+type codexPayload struct {
+	Type      string          `json:"type"`
+	SessionID string          `json:"session_id"`
+	ID        string          `json:"id"`
+	Role      string          `json:"role"`
+	Model     string          `json:"model"`
+	Name      string          `json:"name"`
+	Content   json.RawMessage `json:"content"`
+	Output    json.RawMessage `json:"output"`
+	Info      *codexTokenInfo `json:"info"`
+}
+
+type codexTokenInfo struct {
+	TotalTokenUsage codexTokenUsage `json:"total_token_usage"`
+	LastTokenUsage  codexTokenUsage `json:"last_token_usage"`
+}
+
+type codexTokenUsage struct {
+	InputTokens           int `json:"input_tokens"`
+	CachedInputTokens     int `json:"cached_input_tokens"`
+	OutputTokens          int `json:"output_tokens"`
+	ReasoningOutputTokens int `json:"reasoning_output_tokens"`
+	TotalTokens           int `json:"total_tokens"`
+}
+
+func (u codexTokenUsage) empty() bool {
+	return u.InputTokens == 0 && u.CachedInputTokens == 0 && u.OutputTokens == 0 &&
+		u.ReasoningOutputTokens == 0 && u.TotalTokens == 0
+}
+
+func parseCodexSessionFile(filePath, fallbackID string) *SessionStats {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	sessionID := fallbackID
+	var (
+		model      string
+		msgCount   int
+		inputTok   int64
+		outputTok  int64
+		cacheRead  int64
+		startTime  string
+		lastTime   string
+		finalUsage codexTokenUsage
+		hasUsage   bool
+	)
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var evt codexRawEvent
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+		ts := evt.Timestamp
+		if ts != "" {
+			if startTime == "" || ts < startTime {
+				startTime = ts
+			}
+			if ts > lastTime {
+				lastTime = ts
+			}
+		}
+		if evt.Payload.SessionID != "" {
+			sessionID = evt.Payload.SessionID
+		}
+		if evt.Payload.Model != "" {
+			model = evt.Payload.Model
+		}
+		if evt.Type == "response_item" && evt.Payload.Type == "message" && evt.Payload.Role == "assistant" {
+			if text, _ := codexContentText(evt.Payload.Content); strings.TrimSpace(text) != "" {
+				msgCount++
+			}
+		}
+		if evt.Type == "event_msg" && evt.Payload.Type == "token_count" && evt.Payload.Info != nil {
+			if !evt.Payload.Info.LastTokenUsage.empty() {
+				in, out, cached := codexUsageParts(evt.Payload.Info.LastTokenUsage)
+				inputTok += in
+				outputTok += out
+				cacheRead += cached
+				hasUsage = true
+			} else if !evt.Payload.Info.TotalTokenUsage.empty() {
+				finalUsage = evt.Payload.Info.TotalTokenUsage
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil
+	}
+	if !hasUsage && !finalUsage.empty() {
+		inputTok, outputTok, cacheRead = codexUsageParts(finalUsage)
+		hasUsage = true
+	}
+	if msgCount == 0 && !hasUsage {
+		return nil
+	}
+	return &SessionStats{
+		SessionID:         sessionID,
+		Source:            sourceCodex,
+		Model:             model,
+		MessageCount:      msgCount,
+		InputTokens:       inputTok,
+		OutputTokens:      outputTok,
+		CacheReadTokens:   cacheRead,
+		CacheCreateTokens: 0,
+		TotalTokens:       inputTok + outputTok + cacheRead,
+		StartTime:         startTime,
+		LastTime:          lastTime,
+	}
+}
+
+func codexUsageParts(u codexTokenUsage) (input, output, cached int64) {
+	cached = int64(u.CachedInputTokens)
+	input = int64(u.InputTokens) - cached
+	if input < 0 {
+		input = int64(u.InputTokens)
+	}
+	output = int64(u.OutputTokens)
+	return input, output, cached
+}
+
+func codexSessionIDFromFilename(path string) string {
+	name := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	const prefixShape = "rollout-2006-01-02T15-04-05-"
+	if strings.HasPrefix(name, "rollout-") && len(name) > len(prefixShape) {
+		return name[len(prefixShape):]
+	}
+	return name
+}
+
 func ReadSessionEvents(projectsRoot, sessionID string) (*SessionDetailResponse, error) {
 	entries, err := os.ReadDir(projectsRoot)
 	if err != nil {
@@ -308,6 +561,71 @@ func ReadSessionEvents(projectsRoot, sessionID string) (*SessionDetailResponse, 
 }
 
 // parseSessionEvents 解析 JSONL 文件中的所有事件
+func ReadLocalSessionEvents(sessionID string) (*SessionDetailResponse, error) {
+	claudeRoot, err := ClaudeProjectsRoot()
+	if err != nil {
+		return nil, err
+	}
+	if detail, err := ReadSessionEvents(claudeRoot, sessionID); err != nil || detail != nil {
+		return detail, err
+	}
+	codexRoot, err := CodexSessionsRoot()
+	if err != nil {
+		return nil, err
+	}
+	if detail, err := ReadCodexSessionEvents(codexRoot, sessionID); err != nil || detail != nil {
+		return detail, err
+	}
+	codexArchivedRoot, err := CodexArchivedSessionsRoot()
+	if err != nil {
+		return nil, err
+	}
+	return ReadCodexSessionEvents(codexArchivedRoot, sessionID)
+}
+
+func ReadCodexSessionEvents(sessionsRoot, sessionID string) (*SessionDetailResponse, error) {
+	var foundPath string
+	stopWalk := fmt.Errorf("found")
+	err := filepath.WalkDir(sessionsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(d.Name(), ".jsonl") {
+			return nil
+		}
+		fallbackID := codexSessionIDFromFilename(path)
+		if fallbackID == sessionID || codexSessionIDInFile(path, fallbackID) == sessionID {
+			foundPath = path
+			return stopWalk
+		}
+		return nil
+	})
+	if err != nil && err != stopWalk {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read codex sessions dir: %w", err)
+	}
+	if foundPath == "" {
+		return nil, nil
+	}
+	return parseCodexSessionEvents(foundPath, sessionID)
+}
+
+func codexSessionIDInFile(filePath, fallbackID string) string {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fallbackID
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		var evt codexRawEvent
+		if json.Unmarshal([]byte(scanner.Text()), &evt) == nil && evt.Payload.SessionID != "" {
+			return evt.Payload.SessionID
+		}
+	}
+	return fallbackID
+}
+
 func parseSessionEvents(filePath, sessionID string) (*SessionDetailResponse, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -330,31 +648,46 @@ func parseSessionEvents(filePath, sessionID string) (*SessionDetailResponse, err
 			continue
 		}
 
+		// 跳过 isMeta 行（Claude Code 内部元数据，非真实对话）。
+		if raw.IsMeta {
+			continue
+		}
+
+		// 没有 message 字段的行（summary / file-history-snapshot 等）跳过。
+		if raw.Message == nil {
+			continue
+		}
+
 		evt := SessionEvent{
 			Type:      raw.Type,
 			UUID:      raw.UUID,
 			Timestamp: raw.Timestamp,
 		}
-		if raw.Message != nil {
-			evt.Message = &EventMessage{
-				ID:    raw.Message.ID,
-				Model: raw.Message.Model,
-			}
-			if raw.Message.Usage != nil {
-				evt.Message.Usage = &EventUsage{
-					InputTokens:       raw.Message.Usage.InputTokens,
-					OutputTokens:      raw.Message.Usage.OutputTokens,
-					CacheReadTokens:   raw.Message.Usage.CacheReadTokens,
-					CacheCreateTokens: raw.Message.Usage.CacheCreateTokens,
-				}
-			}
-			// 提取文本和工具名
-			if len(raw.Message.Content) > 0 {
-				text, tools := extractContent(raw.Message.Content, raw.Type)
-				evt.Message.Text = text
-				evt.Message.Tools = tools
+		evt.Message = &EventMessage{
+			ID:    raw.Message.ID,
+			Model: raw.Message.Model,
+		}
+		if raw.Message.Usage != nil {
+			evt.Message.Usage = &EventUsage{
+				InputTokens:       raw.Message.Usage.InputTokens,
+				OutputTokens:      raw.Message.Usage.OutputTokens,
+				CacheReadTokens:   raw.Message.Usage.CacheReadTokens,
+				CacheCreateTokens: raw.Message.Usage.CacheCreateTokens,
 			}
 		}
+		// 提取文本和工具名
+		if len(raw.Message.Content) > 0 {
+			text, tools := extractContent(raw.Message.Content, raw.Type)
+			evt.Message.Text = text
+			evt.Message.Tools = tools
+		}
+
+		// 对齐 cc-switch：内容完全为空的事件不展示（避免满屏 "--"）。
+		// 有 usage 但没内容的 assistant 事件（纯 usage 计费行）也跳过。
+		if strings.TrimSpace(evt.Message.Text) == "" && len(evt.Message.Tools) == 0 {
+			continue
+		}
+
 		events = append(events, evt)
 	}
 
@@ -369,18 +702,151 @@ func parseSessionEvents(filePath, sessionID string) (*SessionDetailResponse, err
 }
 
 // contentPart JSONL message.content 中的单个元素
-type contentPart struct {
+// parseCodexSessionEvents extracts displayable turns from Codex session JSONL.
+func parseCodexSessionEvents(filePath, sessionID string) (*SessionDetailResponse, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []SessionEvent
+	model := ""
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var raw codexRawEvent
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			continue
+		}
+		if raw.Payload.Model != "" {
+			model = raw.Payload.Model
+		}
+		if raw.Type != "response_item" {
+			continue
+		}
+		switch raw.Payload.Type {
+		case "message":
+			role := raw.Payload.Role
+			if role != "user" && role != "assistant" {
+				continue
+			}
+			text, tools := codexContentText(raw.Payload.Content)
+			if strings.TrimSpace(text) == "" && len(tools) == 0 {
+				continue
+			}
+			events = append(events, SessionEvent{
+				Type:      role,
+				UUID:      raw.Payload.ID,
+				Timestamp: raw.Timestamp,
+				Message: &EventMessage{
+					ID:    raw.Payload.ID,
+					Model: model,
+					Text:  text,
+					Tools: tools,
+				},
+			})
+		case "function_call":
+			if raw.Payload.Name == "" {
+				continue
+			}
+			events = append(events, SessionEvent{
+				Type:      "assistant",
+				UUID:      raw.Payload.ID,
+				Timestamp: raw.Timestamp,
+				Message: &EventMessage{
+					ID:    raw.Payload.ID,
+					Model: model,
+					Text:  fmt.Sprintf("[Tool: %s]", raw.Payload.Name),
+					Tools: []string{raw.Payload.Name},
+				},
+			})
+		case "function_call_output":
+			text, _ := codexContentText(raw.Payload.Output)
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			events = append(events, SessionEvent{
+				Type:      "user",
+				UUID:      raw.Payload.ID,
+				Timestamp: raw.Timestamp,
+				Message: &EventMessage{
+					ID:    raw.Payload.ID,
+					Model: model,
+					Text:  text,
+				},
+			})
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return &SessionDetailResponse{
+		SessionID: sessionID,
+		Events:    events,
+	}, nil
+}
+
+type codexContentPart struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
-// extractContent 从 raw JSON 中提取文本内容和工具名
-func extractContent(raw json.RawMessage, eventType string) (text string, tools []string) {
-	// 尝试解析为字符串
+func codexContentText(raw json.RawMessage) (string, []string) {
+	if len(raw) == 0 {
+		return "", nil
+	}
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		// 用户消息合成提示词过滤
+		return s, nil
+	}
+	var parts []codexContentPart
+	if err := json.Unmarshal(raw, &parts); err != nil {
+		return "", nil
+	}
+	var texts []string
+	var tools []string
+	for _, part := range parts {
+		switch part.Type {
+		case "input_text", "output_text", "text":
+			if part.Text != "" {
+				texts = append(texts, part.Text)
+			}
+		case "tool_use", "function_call":
+			if part.Name != "" {
+				tools = append(tools, part.Name)
+				texts = append(texts, fmt.Sprintf("[Tool: %s]", part.Name))
+			}
+		}
+	}
+	return strings.Join(texts, "\n"), tools
+}
+
+type contentPart struct {
+	Type     string `json:"type"`
+	Text     string `json:"text,omitempty"`
+	Thinking string `json:"thinking,omitempty"`
+	Name     string `json:"name,omitempty"`
+	// tool_result 的 content 可能是字符串，也可能是 content 块数组。
+	Content json.RawMessage `json:"content,omitempty"`
+}
+
+// extractContent 从 raw JSON 中提取文本内容和工具名。
+// 对齐 cc-switch 的 extract_text 逻辑：
+//   - 纯字符串 → 直接返回
+//   - text 块 → 提取 text 字段
+//   - thinking 块 → 提取 thinking 字段（cc-switch 不提取，我们保留作 fallback）
+//   - tool_use 块 → 记录工具名，并输出 [Tool: {name}] 占位（cc-switch 风格）
+//   - tool_result 块 → 递归提取其 content（字符串或数组都支持）
+func extractContent(raw json.RawMessage, eventType string) (text string, tools []string) {
+	// 尝试解析为字符串（user 消息的 content 常是纯字符串）
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
 		if eventType == "user" && isSyntheticPrompt(s) {
 			return "", nil
 		}
@@ -400,20 +866,33 @@ func extractContent(raw json.RawMessage, eventType string) (text string, tools [
 			if p.Text != "" {
 				texts = append(texts, p.Text)
 			}
+		case "thinking":
+			// cc-switch 跳过 thinking；我们保留作 fallback，避免纯思考消息变空白。
+			if p.Thinking != "" {
+				texts = append(texts, p.Thinking)
+			}
 		case "tool_use":
 			if p.Name != "" {
 				tools = append(tools, p.Name)
+				// cc-switch 风格：用占位标记让用户看到「这里调用了工具」。
+				texts = append(texts, fmt.Sprintf("[Tool: %s]", p.Name))
 			}
-		// thinking / tool_result 等跳过
+		case "tool_result":
+			// 递归提取 tool_result 的 content（可能是字符串或块数组）。
+			if len(p.Content) > 0 {
+				if sub, _ := extractContent(p.Content, ""); sub != "" {
+					texts = append(texts, sub)
+				}
+			}
 		}
 	}
 	text = strings.Join(texts, "\n")
 	// 用户消息合成提示词过滤
 	if eventType == "user" && isSyntheticPrompt(text) {
-	return "", nil
+		return "", nil
 	}
 	return
-	}
+}
 
 // isSyntheticPrompt 判断是否为 Claude Code 注入的合成提示词
 func isSyntheticPrompt(text string) bool {

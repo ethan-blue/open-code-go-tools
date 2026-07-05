@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -9,10 +10,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/ethan-blue/open-code-go-tools/internal/codex"
-	"github.com/ethan-blue/open-code-go-tools/internal/config"
 	"github.com/ethan-blue/open-code-go-tools/internal/preferences"
+	"github.com/ethan-blue/open-code-go-tools/internal/providers"
 )
 
 const claudeDesktopProfileID = "00000000-0000-4000-8000-000000878700"
@@ -727,18 +729,26 @@ func (a *App) GetHubStatus() string {
 // and the official Codex desktop app share this file, so one setup covers both.
 // auth.json is never touched — the official ChatGPT/Codex login stays intact.
 func (a *App) SetupCodex() string {
-	cfg, err := config.Load("")
+	model := ""
+	provider, ok := activeProviderForLine("codex")
+	if !ok {
+		return "error: no active Codex provider; configure and enable one first"
+	}
+	if strings.TrimSpace(provider.DefaultModel) != "" {
+		model = strings.TrimSpace(provider.DefaultModel)
+	} else if len(provider.MessageModels) > 0 && strings.TrimSpace(provider.MessageModels[0]) != "" {
+		model = strings.TrimSpace(provider.MessageModels[0])
+	} else if len(provider.Models) > 0 && strings.TrimSpace(provider.Models[0]) != "" {
+		model = strings.TrimSpace(provider.Models[0])
+	}
+	if model == "" {
+		return "error: Codex provider default model is required"
+	}
+
+	modelIDs := codexCatalogModelIDs(a, provider, model)
+	catalogPath, err := codex.WriteModelCatalog(modelIDs)
 	if err != nil {
-		return "load config error: " + err.Error()
-	}
-	model := "claude-sonnet-4-6"
-	if p, ok := cfg.Profiles[cfg.ActiveProfile]; ok && p.DefaultModel != "" {
-		model = p.DefaultModel
-	}
-	if provider, ok := activeProviderForLine("codex"); ok {
-		if strings.TrimSpace(provider.DefaultModel) != "" {
-			model = strings.TrimSpace(provider.DefaultModel)
-		}
+		return "error: " + err.Error()
 	}
 
 	// Auth strategy: provider-scoped experimental_bearer_token (cc-switch's
@@ -748,9 +758,11 @@ func (a *App) SetupCodex() string {
 	// auth token exists (auth disabled).
 	token := a.localProxyAuthToken()
 	providerCfg := codex.ProviderConfig{
-		ProviderName: "ocgt",
+		ProviderName: "custom",
+		DisplayName:  "ocgt",
 		BaseURL:      "http://" + a.GetListenAddress(),
 		Model:        model,
+		CatalogPath:  catalogPath,
 		// The wire between Codex and ocgt is always the Responses API —
 		// modern Codex rejects wire_api="chat". ocgt converts to the active
 		// codex provider's upstream protocol internally.
@@ -763,11 +775,91 @@ func (a *App) SetupCodex() string {
 		providerCfg.EnvKey = "OCGT_CODEX_API_KEY"
 	}
 
-	_, err = codex.WriteConfig(providerCfg)
+	configPath, err := codex.WriteConfig(providerCfg)
 	if err != nil {
 		return "error: " + err.Error()
 	}
-	return "success"
+	result := map[string]any{
+		"status":      "success",
+		"configPath":  configPath,
+		"catalogPath": catalogPath,
+		"model":       model,
+		"modelCount":  len(modelIDs),
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		return "success"
+	}
+	return string(data)
+}
+
+func codexCatalogModelIDs(a *App, provider *providers.Provider, defaultModel string) []string {
+	seen := map[string]bool{}
+	models := make([]string, 0)
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		models = append(models, id)
+	}
+	add(defaultModel)
+	add(provider.DefaultModel)
+	for _, id := range provider.Models {
+		add(id)
+	}
+	for _, id := range provider.MessageModels {
+		add(id)
+	}
+	for _, id := range provider.FallbackChain {
+		add(id)
+	}
+	for _, id := range provider.ModelAliases {
+		add(id)
+	}
+	if a != nil && a.srv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if result, err := a.srv.FetchRealUpstreamModels(ctx, "codex"); err == nil {
+			for _, id := range modelIDsFromModelsResponse(result) {
+				add(id)
+			}
+		}
+	}
+	return models
+}
+
+func modelIDsFromModelsResponse(result map[string]any) []string {
+	var ids []string
+	for _, key := range []string{"data", "models"} {
+		switch list := result[key].(type) {
+		case []map[string]any:
+			for _, item := range list {
+				if id := modelIDFromMap(item); id != "" {
+					ids = append(ids, id)
+				}
+			}
+		case []any:
+			for _, item := range list {
+				if obj, ok := item.(map[string]any); ok {
+					if id := modelIDFromMap(obj); id != "" {
+						ids = append(ids, id)
+					}
+				}
+			}
+		}
+	}
+	return ids
+}
+
+func modelIDFromMap(item map[string]any) string {
+	for _, key := range []string{"id", "slug", "name"} {
+		if id, _ := item[key].(string); strings.TrimSpace(id) != "" {
+			return strings.TrimSpace(id)
+		}
+	}
+	return ""
 }
 
 func (a *App) ClearCodex() string {
@@ -775,6 +867,7 @@ func (a *App) ClearCodex() string {
 	if err := codex.UndoConfig(); err != nil {
 		return "error: " + err.Error()
 	}
+	_ = codex.RemoveModelCatalog()
 	return "success"
 }
 

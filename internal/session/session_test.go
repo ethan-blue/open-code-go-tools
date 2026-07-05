@@ -15,6 +15,16 @@ func testdataRoot(t *testing.T) string {
 	return filepath.Join("testdata", "claude-projects")
 }
 
+func setUserHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if volume := filepath.VolumeName(home); volume != "" {
+		t.Setenv("HOMEDRIVE", volume)
+		t.Setenv("HOMEPATH", strings.TrimPrefix(home, volume))
+	}
+}
+
 func TestReadAllSessions(t *testing.T) {
 	root := testdataRoot(t)
 	sessions, err := ReadAllSessions(root)
@@ -207,5 +217,198 @@ func TestReadAllSessionsCacheInvalidation(t *testing.T) {
 	}
 	if second[0].InputTokens != 40 {
 		t.Fatalf("modified file must be re-parsed: expected 40 input tokens, got %d", second[0].InputTokens)
+	}
+}
+
+func TestReadCodexSessions(t *testing.T) {
+	root := t.TempDir()
+	dayDir := filepath.Join(root, "2026", "07", "05")
+	if err := os.MkdirAll(dayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dayDir, "rollout-2026-07-05T10-00-00-codex-session.jsonl")
+	lines := strings.Join([]string{
+		`{"timestamp":"2026-07-05T10:00:00Z","type":"session_meta","payload":{"session_id":"codex-session","model_provider":"custom"}}`,
+		`{"timestamp":"2026-07-05T10:00:01Z","type":"turn_context","payload":{"turn_id":"t1","model":"deepseek-v4-pro"}}`,
+		`{"timestamp":"2026-07-05T10:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}}`,
+		`{"timestamp":"2026-07-05T10:00:03Z","type":"response_item","payload":{"type":"message","id":"msg1","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}`,
+		`{"timestamp":"2026-07-05T10:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":7,"reasoning_output_tokens":3,"total_tokens":107},"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"output_tokens":7,"reasoning_output_tokens":3,"total_tokens":107}}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(file, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := ReadCodexSessions(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 codex session, got %d", len(sessions))
+	}
+	got := sessions[0]
+	if got.SessionID != "codex-session" || got.Source != sourceCodex || got.Model != "deepseek-v4-pro" {
+		t.Fatalf("unexpected codex session identity: %+v", got)
+	}
+	if got.MessageCount != 1 || got.InputTokens != 80 || got.CacheReadTokens != 20 || got.OutputTokens != 7 || got.TotalTokens != 107 {
+		t.Fatalf("unexpected codex token stats: %+v", got)
+	}
+
+	detail, err := ReadCodexSessionEvents(root, "codex-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail == nil || len(detail.Events) != 2 {
+		t.Fatalf("expected 2 codex detail events, got %#v", detail)
+	}
+	if detail.Events[0].Type != "user" || detail.Events[0].Message.Text != "hello" {
+		t.Fatalf("unexpected first detail event: %+v", detail.Events[0])
+	}
+	if detail.Events[1].Type != "assistant" || detail.Events[1].Message.Text != "hi" {
+		t.Fatalf("unexpected second detail event: %+v", detail.Events[1])
+	}
+}
+
+func TestReadLocalSessionsIncludesArchivedCodex(t *testing.T) {
+	home := t.TempDir()
+	setUserHome(t, home)
+	root := filepath.Join(home, ".codex", "archived_sessions")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(root, "rollout-2026-07-05T11-00-00-archived-codex-session.jsonl")
+	lines := strings.Join([]string{
+		`{"timestamp":"2026-07-05T11:00:00Z","type":"session_meta","payload":{"session_id":"archived-codex-session","model_provider":"custom"}}`,
+		`{"timestamp":"2026-07-05T11:00:01Z","type":"turn_context","payload":{"model":"deepseek-v4-flash"}}`,
+		`{"timestamp":"2026-07-05T11:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"hello archived"}]}}`,
+		`{"timestamp":"2026-07-05T11:00:03Z","type":"response_item","payload":{"type":"message","id":"msg1","role":"assistant","content":[{"type":"output_text","text":"archived hi"}]}}`,
+		`{"timestamp":"2026-07-05T11:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":40,"cached_input_tokens":10,"output_tokens":5,"total_tokens":45}}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(file, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sessions, err := ReadLocalSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 archived codex session, got %d", len(sessions))
+	}
+	got := sessions[0]
+	if got.SessionID != "archived-codex-session" || got.Source != sourceCodex || got.Model != "deepseek-v4-flash" {
+		t.Fatalf("unexpected archived codex session: %+v", got)
+	}
+	if got.InputTokens != 30 || got.CacheReadTokens != 10 || got.OutputTokens != 5 || got.TotalTokens != 45 {
+		t.Fatalf("unexpected archived codex token stats: %+v", got)
+	}
+
+	detail, err := ReadLocalSessionEvents("archived-codex-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail == nil || len(detail.Events) != 2 {
+		t.Fatalf("expected archived codex detail events, got %#v", detail)
+	}
+	if detail.Events[0].Message.Text != "hello archived" || detail.Events[1].Message.Text != "archived hi" {
+		t.Fatalf("unexpected archived codex detail: %+v", detail.Events)
+	}
+}
+
+// TestExtractContentTextBlock verifies plain text blocks are extracted.
+func TestExtractContentTextBlock(t *testing.T) {
+	raw := []byte(`[{"type":"text","text":"hello world"}]`)
+	text, tools := extractContent(raw, "assistant")
+	if text != "hello world" {
+		t.Fatalf("expected text %q, got %q", "hello world", text)
+	}
+	if len(tools) != 0 {
+		t.Fatalf("expected no tools, got %v", tools)
+	}
+}
+
+// TestExtractContentToolUse verifies tool_use blocks record the tool name and
+// emit a [Tool: name] placeholder (cc-switch style).
+func TestExtractContentToolUse(t *testing.T) {
+	raw := []byte(`[{"type":"tool_use","id":"t1","name":"Read","input":{"path":"/x"}}]`)
+	text, tools := extractContent(raw, "assistant")
+	if len(tools) != 1 || tools[0] != "Read" {
+		t.Fatalf("expected tools [Read], got %v", tools)
+	}
+	if !strings.Contains(text, "[Tool: Read]") {
+		t.Fatalf("expected text to contain [Tool: Read] placeholder, got %q", text)
+	}
+}
+
+// TestExtractContentToolResult verifies tool_result content is recursively
+// extracted — this was the main source of empty "--" messages before.
+func TestExtractContentToolResult(t *testing.T) {
+	// tool_result with string content
+	raw := []byte(`[{"type":"tool_result","tool_use_id":"t1","content":"file contents here"}]`)
+	text, _ := extractContent(raw, "user")
+	if !strings.Contains(text, "file contents here") {
+		t.Fatalf("expected tool_result content extracted, got %q", text)
+	}
+
+	// tool_result with array content (text blocks inside)
+	rawArr := []byte(`[{"type":"tool_result","tool_use_id":"t2","content":[{"type":"text","text":"nested result"}]}]`)
+	textArr, _ := extractContent(rawArr, "user")
+	if !strings.Contains(textArr, "nested result") {
+		t.Fatalf("expected nested tool_result content extracted, got %q", textArr)
+	}
+}
+
+// TestExtractContentMixed verifies a realistic mix of block types.
+func TestExtractContentMixed(t *testing.T) {
+	raw := []byte(`[
+		{"type":"thinking","thinking":"let me think"},
+		{"type":"text","text":"here is my answer"},
+		{"type":"tool_use","id":"t1","name":"Bash","input":{}}
+	]`)
+	text, tools := extractContent(raw, "assistant")
+	if !strings.Contains(text, "here is my answer") {
+		t.Fatalf("expected text block content, got %q", text)
+	}
+	if !strings.Contains(text, "let me think") {
+		t.Fatalf("expected thinking content as fallback, got %q", text)
+	}
+	if !strings.Contains(text, "[Tool: Bash]") {
+		t.Fatalf("expected tool placeholder, got %q", text)
+	}
+	if len(tools) != 1 || tools[0] != "Bash" {
+		t.Fatalf("expected tools [Bash], got %v", tools)
+	}
+}
+
+// TestParseSessionEventsSkipsEmptyContent verifies that events with no
+// extractable content (no text, no tools) are skipped — aligning with
+// cc-switch which filters these out so the UI never shows "--".
+func TestParseSessionEventsSkipsEmptyContent(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "sess-empty.jsonl")
+	// assistant event with usage but empty content → should be skipped
+	// assistant event with real text → should be kept
+	// isMeta event → should be skipped
+	lines := strings.Join([]string{
+		`{"type":"assistant","uuid":"u1","timestamp":"2026-07-04T10:00:00Z","message":{"id":"m1","model":"x","content":[],"usage":{"input_tokens":10,"output_tokens":5}}}`,
+		`{"type":"assistant","uuid":"u2","timestamp":"2026-07-04T10:01:00Z","message":{"id":"m2","model":"x","content":[{"type":"text","text":"real reply"}]}}`,
+		`{"type":"user","uuid":"u3","isMeta":true,"timestamp":"2026-07-04T10:02:00Z","message":{"role":"user","content":"meta junk"}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(file, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := parseSessionEvents(file, "sess-empty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	// Only the event with "real reply" should survive.
+	if len(resp.Events) != 1 {
+		t.Fatalf("expected 1 event (empty + isMeta filtered), got %d: %+v", len(resp.Events), resp.Events)
+	}
+	if resp.Events[0].Message.Text != "real reply" {
+		t.Fatalf("expected the real-reply event to remain, got %q", resp.Events[0].Message.Text)
 	}
 }

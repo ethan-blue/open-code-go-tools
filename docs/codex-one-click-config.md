@@ -13,15 +13,15 @@ Codex does not use `ANTHROPIC_*` settings. It reads `AGENTS.md` plus
 `~/.codex/config.toml`; Codex ignores those keys in project-local
 `.codex/config.toml`.
 
-This repo's local proxy currently serves Anthropic-compatible `/v1/messages`.
-Do not point Codex at `http://127.0.0.1:8787` unless ocgt also exposes an
-OpenAI-compatible Responses or Chat Completions client endpoint.
+ocgt exposes an OpenAI-compatible `/v1/responses` client endpoint for Codex.
+Codex always talks Responses API to ocgt; ocgt then routes to the active Codex
+provider's configured upstream protocol.
 
 ## Files
 
 - `AGENTS.md`: durable AI-readable repo rules, commands, and acceptance.
 - `.codex/config.toml`: project-scoped Codex defaults only.
-- Future global user config writer: updates `~/.codex/config.toml`, not this repo.
+- Global user config writer: updates `~/.codex/config.toml`, not this repo.
 
 ## CLI
 
@@ -39,7 +39,7 @@ Acceptance:
 
 - Opening this folder in the Codex app applies the same `AGENTS.md` rules.
 - App agent settings inherit project `.codex/config.toml`.
-- Any future one-click button writes only user-level Codex provider config after
+- The one-click button writes only user-level Codex provider config after
   explicit user action.
 
 ## VS Code / IDE Extension
@@ -51,32 +51,44 @@ Acceptance:
 - The extension shares the same Codex config layers as CLI.
 - No VS Code `settings.json` mutation is required for normal Codex behavior.
 
-## Future One-Click Writer
+## One-Click Writer
 
-If ocgt adds a "Configure Codex" app/CLI action, it must:
+The "Codex CLI / App" action must:
 
 1. Read `~/.codex/config.toml`; create it if missing.
 2. Create `~/.codex/config.toml.ocgt-bak` before the first mutation.
-3. Merge only the ocgt-owned block; preserve all unknown keys and comments if a
-   TOML-preserving parser exists, otherwise document that comments may be lost.
+3. Merge only the ocgt-owned block and strip stale root `model`,
+   `model_provider`, and `model_catalog_json` keys so Codex does not see TOML
+   duplicate-key errors.
 4. Write atomically with `0600` permissions.
 5. Provide undo that restores the backup or removes only the ocgt-owned block.
-6. Verify Codex can start without config warnings.
+6. Write `~/.codex/ocgt-model-catalog.json` from the active Codex provider's
+   default model, configured model list, fallback chain, message models, aliases,
+   and any upstream `/v1/models` response.
+7. Verify Codex can start without config warnings.
+8. Tell the user to restart Codex after setup; `model_catalog_json` is read at
+   startup.
 
-Example user-level block, only after ocgt has an OpenAI-compatible client API:
+Example user-level block:
 
 ```toml
-model_provider = "ocgt"
+# ocgt-managed-begin
+model_provider = "custom"
 model = "kimi-k2.6"
+model_catalog_json = "C:\\Users\\you\\.codex\\ocgt-model-catalog.json"
 
-[model_providers.ocgt]
+[model_providers.custom]
 name = "ocgt"
 base_url = "http://127.0.0.1:8787/v1"
 env_key = "OCGT_CODEX_API_KEY"
 wire_api = "responses"
+# ocgt-managed-end
 ```
 
-ponytail: this spec stops before implementing a writer because the current proxy
-does not expose a Codex-compatible client API; add the writer after that endpoint
-exists.
+Codex Desktop currently treats third-party providers as `Custom` in the model
+picker. ocgt therefore writes the provider id as `custom` for desktop
+compatibility, while the provider display `name` remains `ocgt`. The important
+runtime values are the root-level `model_provider = "custom"` and
+`model = "..."`; the desktop UI may still show only `Custom`, but requests are
+sent to the configured ocgt local proxy and default model after restart.
 

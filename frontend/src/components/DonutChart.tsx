@@ -1,7 +1,6 @@
 import { useI18n } from '@/i18n'
+import { modelColor } from '@/lib/modelColors'
 import type { ModelStats } from '@/lib/types'
-
-const DONUT_COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
 
 export function DonutChart({ models, className }: { models: ModelStats[]; className?: string }) {
   const { t } = useI18n()
@@ -17,9 +16,10 @@ export function DonutChart({ models, className }: { models: ModelStats[]; classN
           {models.map((m, i) => {
             const pct = total > 0 ? m.total_tokens / total : 0
             const dash = pct * circ
+            const color = modelColor(m.name, i)
             const el = (
               <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-                stroke={DONUT_COLORS[i % DONUT_COLORS.length]} strokeWidth={sw}
+                stroke={color} strokeWidth={sw}
                 strokeDasharray={`${dash} ${circ - dash}`}
                 strokeDashoffset={-offset} />
             )
@@ -36,7 +36,7 @@ export function DonutChart({ models, className }: { models: ModelStats[]; classN
       <div className="legend2">
         {models.map((m, i) => (
           <div className="row" key={i}>
-            <span className="sw" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+            <span className="sw" style={{ background: modelColor(m.name, i) }} />
             <span className="nm">{m.name}</span>
             <span className="vv">{m.pct.toFixed(1)}%</span>
           </div>

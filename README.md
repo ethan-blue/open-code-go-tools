@@ -112,6 +112,11 @@
 
 - **双供应商线**：Claude / Codex 各自维护当前生效上游供应商（providers.json），切换即热重载
 
+- **Codex 一键配置**：客户端集成页会把桌面端兼容的 `custom` provider 写入用户级
+  `~/.codex/config.toml`，provider 显示名仍是 `ocgt`，并生成
+  `~/.codex/ocgt-model-catalog.json`。Codex App 可能仍只显示“自定义”，实际请求
+  使用 ocgt 写入的根级 `model = "..."`；配置后重启 Codex CLI / App 生效。
+
 ---
 
 ## 💻 命令行参考

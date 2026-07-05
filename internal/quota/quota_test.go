@@ -60,6 +60,18 @@ func TestSanitizeCookie(t *testing.T) {
 	}
 }
 
+func TestCredentialConfiguredExpandsEnvPlaceholder(t *testing.T) {
+	t.Setenv("OPENCODE_GO_AUTH_COOKIE", "")
+	if CredentialConfigured("${OPENCODE_GO_AUTH_COOKIE}") {
+		t.Fatal("unset env placeholder must not count as configured")
+	}
+
+	t.Setenv("OPENCODE_GO_AUTH_COOKIE", "auth=abc123")
+	if !CredentialConfigured("${OPENCODE_GO_AUTH_COOKIE}") {
+		t.Fatal("set env placeholder should count as configured")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // parseWorkspaceIDs
 // ---------------------------------------------------------------------------
@@ -364,6 +376,33 @@ func TestFetchOpenCodeGoQuota_SuccessViaFallbackID(t *testing.T) {
 	}
 }
 
+func TestFetchOpenCodeGoQuota_ExpandsEnvPlaceholders(t *testing.T) {
+	t.Setenv("OPENCODE_GO_AUTH_COOKIE", "auth=test-cookie")
+	t.Setenv("OPENCODE_GO_WORKSPACE_ID", "wrk_env")
+
+	// RPC fails (no IDs), so the workspace placeholder must expand and drive
+	// the fallback page request.
+	rpcSrv := httptest.NewServer(newRPCHandler(`{ "no": "ids" }`, 200))
+	defer rpcSrv.Close()
+	pageSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/workspace/wrk_env/go" {
+			t.Errorf("page path = %q, want /workspace/wrk_env/go", r.URL.Path)
+		}
+		w.WriteHeader(200)
+		_, _ = fmt.Fprint(w, validPageJSON)
+	}))
+	defer pageSrv.Close()
+	withMockServers(t, pageSrv.URL, rpcSrv.URL)
+
+	data, err := FetchOpenCodeGoQuota("${OPENCODE_GO_AUTH_COOKIE}", "${OPENCODE_GO_WORKSPACE_ID}")
+	if err != nil {
+		t.Fatalf("FetchOpenCodeGoQuota failed: %v", err)
+	}
+	if data.Rolling.UsagePercent != 60 {
+		t.Errorf("rolling usagePercent = %d, want 60", data.Rolling.UsagePercent)
+	}
+}
+
 func TestFetchOpenCodeGoQuota_AllPathsFail(t *testing.T) {
 	rpcSrv := httptest.NewServer(newRPCHandler(`{ "no": "ids" }`, 200))
 	defer rpcSrv.Close()
@@ -440,4 +479,3 @@ func TestQuotaResultJSONRoundTrip(t *testing.T) {
 		t.Errorf("rolling pct = %d, want 50", dst.Data.Rolling.UsagePercent)
 	}
 }
-

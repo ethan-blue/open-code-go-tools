@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"embed"
+	"encoding/json"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -314,6 +315,15 @@ type responsesContent struct {
 type responsesUsage struct {
 	InputTokens  int `json:"input_tokens"`
 	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+func (u responsesUsage) MarshalJSON() ([]byte, error) {
+	type usage responsesUsage
+	if u.TotalTokens == 0 {
+		u.TotalTokens = u.InputTokens + u.OutputTokens
+	}
+	return json.Marshal(usage(u))
 }
 
 func New(cfg config.Config, webAssets ...*embed.FS) (*Server, error) {

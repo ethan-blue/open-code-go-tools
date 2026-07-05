@@ -460,6 +460,10 @@ func (p Profile) ResolveModel(model string) string {
 		return p.resolveAliasOrDefault("sonnet")
 	case strings.Contains(lower, "haiku"):
 		return p.resolveAliasOrDefault("haiku")
+	case strings.HasPrefix(lower, "gpt-") || strings.HasPrefix(lower, "o1-") || strings.HasPrefix(lower, "o3-") || strings.HasPrefix(lower, "o4-"):
+		if p.DefaultModel != "" {
+			return p.DefaultModel
+		}
 	}
 	return model
 }

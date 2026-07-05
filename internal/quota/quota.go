@@ -33,9 +33,9 @@ const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 // QuotaUsage represents quota usage for a single time dimension.
 type QuotaUsage struct {
 	Status       string `json:"status"`        // "active" or "unlimited"
-	UsagePercent int    `json:"usage_percent"`  // 0–100
+	UsagePercent int    `json:"usage_percent"` // 0–100
 	ResetInSec   int    `json:"reset_in_sec"`
-	ResetDisplay string `json:"reset_display"`  // compact duration: "2h", "30m", "5d"
+	ResetDisplay string `json:"reset_display"` // compact duration: "2h", "30m", "5d"
 }
 
 // QuotaData holds rolling / weekly / monthly quota info.
@@ -90,7 +90,8 @@ type serverRequest struct {
 //
 // cookie is the opencode.ai session cookie. workspaceID is optional (wrk_xxx).
 func FetchOpenCodeGoQuota(cookie, workspaceID string) (*QuotaData, error) {
-	cookie = sanitizeCookie(cookie)
+	cookie = sanitizeCookie(os.ExpandEnv(cookie))
+	workspaceID = strings.TrimSpace(os.ExpandEnv(workspaceID))
 	if cookie == "" {
 		return nil, fmt.Errorf("OpenCode Go auth cookie not configured (see quota_cookie in config.json or OPENCODE_GO_AUTH_COOKIE env var)")
 	}
@@ -117,6 +118,12 @@ func CredentialsFromEnv() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
 	return
+}
+
+// CredentialConfigured reports whether a cookie-like value resolves to a
+// usable credential. This keeps UI status checks consistent with FetchOpenCodeGoQuota.
+func CredentialConfigured(cookie string) bool {
+	return sanitizeCookie(os.ExpandEnv(cookie)) != ""
 }
 
 // ---------------------------------------------------------------------------

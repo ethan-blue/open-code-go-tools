@@ -1,7 +1,7 @@
 {
   "name": "ocgt-frontend",
   "private": true,
-  "version": "2.2.1",
+  "version": "4.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

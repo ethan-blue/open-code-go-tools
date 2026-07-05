@@ -1,10 +1,12 @@
 ﻿import { useEffect, useRef, useState } from 'react'
+import { ExternalLink, Settings } from 'lucide-react'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { apiGet, isWails, wails } from '@/lib/wails'
 import { fmtNum, fmtTokens, fmtCost, fmtMs, fmtUptime, pctDelta, deltaStr } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import type { StatusData, QuotaData, StatsSummary } from '@/lib/types'
+import * as rt from '@/wailsjs/runtime/runtime'
 
 export default function Dashboard() {
   const { t, lang } = useI18n()
@@ -14,7 +16,9 @@ export default function Dashboard() {
   const [stats, setStats] = useState<StatsSummary | null>(null)
   const [trend, setTrend] = useState<{ daily: { date: string; total_tokens: number; requests: number }[] } | null>(null)
   const [loading, setLoading] = useState(true)
-  const [quotaLoading, setQuotaLoading] = useState(!isWails())
+  const [quotaLoading, setQuotaLoading] = useState(false)
+  const [quotaConfigured, setQuotaConfigured] = useState<boolean | null>(null)
+  const [quotaError, setQuotaError] = useState('')
   const [error, setError] = useState(false)
   const mounted = useMountedRef()
 
@@ -55,16 +59,43 @@ export default function Dashboard() {
   async function refreshQuota() {
     if (!isWails()) {
       setQuota(null)
+      setQuotaConfigured(false)
+      setQuotaError('')
       return
     }
     setQuotaLoading(true)
     try {
-      setQuota(await wails.FetchQuota() as QuotaData)
-    } catch {
+      const status = await apiGet<{ configured?: boolean }>('/ocgt/api/quota/status')
+      if (!status?.configured) {
+        setQuota(null)
+        setQuotaConfigured(false)
+        setQuotaError('')
+        return
+      }
+      setQuotaConfigured(true)
+      const result = await wails.FetchQuota() as QuotaData & { error?: string }
+      if (!result?.success) {
+        setQuota(null)
+        setQuotaError(result?.error || t('dash_no_quota'))
+        return
+      }
+      setQuota(result)
+      setQuotaError('')
+    } catch (err) {
       setQuota(null)
+      setQuotaError(err instanceof Error ? err.message : t('dash_no_quota'))
     } finally {
       setQuotaLoading(false)
     }
+  }
+
+  function openQuotaLogin() {
+    if (isWails()) rt.BrowserOpenURL('https://opencode.ai/go')
+    else window.open('https://opencode.ai/go', '_blank', 'noopener,noreferrer')
+  }
+
+  function openQuotaConfig() {
+    window.dispatchEvent(new CustomEvent('nav-to', { detail: 'providers' }))
   }
 
   // Keep latest loader functions in refs so the polling intervals below always
@@ -192,7 +223,7 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="card">
-          <div className="card-h">{t('dash_quota')} - {new Date().toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', year: 'numeric' })}<div className="actions"><button className="btn btn-sm btn-ghost" onClick={refreshQuota} disabled={quotaLoading}>{quotaLoading ? '...' : t('dash_upgrade')}</button></div></div>
+          <div className="card-h">{t('dash_quota')} - {new Date().toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: 'long', year: 'numeric' })}<div className="actions"><button className="btn btn-sm btn-ghost" onClick={refreshQuota} disabled={quotaLoading || quotaConfigured === false}>{quotaLoading ? '...' : t('dash_refresh')}</button></div></div>
           <div className="card-body dash-hero-item dash-card-gap">
             {quotaBars.length > 0 ? (
               <>
@@ -207,7 +238,19 @@ export default function Dashboard() {
                 )}
               </>
             ) : (
-              <p className="muted tiny dash-quota-msg">{quotaLoading ? t('dash_loading') + '...' : t('dash_no_quota')}</p>
+              <div className="dash-quota-empty">
+                <p className="muted tiny dash-quota-msg">{quotaLoading ? t('dash_loading') + '...' : quotaConfigured === false ? t('dash_quota_not_configured') : quotaError || t('dash_no_quota')}</p>
+                {quotaConfigured === false ? (
+                  <div className="dash-quota-actions">
+                    <button className="btn btn-sm btn-primary" onClick={openQuotaLogin}>
+                      <ExternalLink width={13} height={13} />{t('dash_quota_login')}
+                    </button>
+                    <button className="btn btn-sm btn-ghost" onClick={openQuotaConfig}>
+                      <Settings width={13} height={13} />{t('dash_quota_configure')}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             )}
           </div>
         </div>

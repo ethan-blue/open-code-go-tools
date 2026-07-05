@@ -1,5 +1,18 @@
 # Release Notes
 
+## ocgt v4.0.0 (2026-07-05)
+
+- V4 desktop build output is `ocgt_v4.0.0.exe`.
+- Codex one-click setup now uses the Codex Desktop-compatible provider id
+  `custom` with provider display name `ocgt`.
+- Codex default requests are controlled by the root-level
+  `model_provider = "custom"` and `model = "..."` values written to
+  `~/.codex/config.toml`; the App may still show only `Custom` in its picker.
+- The generated `~/.codex/ocgt-model-catalog.json` is still written from the
+  active ocgt Codex provider, including default model, configured models,
+  fallback/message models, aliases, and upstream `/v1/models` where available.
+- Re-run one-click Codex setup after upgrading, then restart Codex CLI / App.
+
 ## 🌐 语言选择 / Language
 
 * [简体中文 (Simplified Chinese)](#-ocgt-v221---v221-)

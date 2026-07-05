@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Plus, Trash2, Gauge } from 'lucide-react'
-import { apiFetch } from '@/lib/wails'
+import { Plus, Trash2, Gauge, Zap, ExternalLink } from 'lucide-react'
+import { apiFetch, isWails } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import type { ProviderAccount, RotationProviderStatus, AccountQuotaResult } from '@/lib/types'
+import { QuickSetupModal } from '@/pages/providers/QuickSetupModal'
+import * as rt from '@/wailsjs/runtime/runtime'
 
 /** Renders a compact usage line ("滚动 42% · 周 12%") for one account. */
 function QuotaLine({ result }: { result: AccountQuotaResult }) {
@@ -41,6 +43,7 @@ export function AccountPoolSection({
   const { toast } = useToast()
   const [quotas, setQuotas] = useState<Record<string, AccountQuotaResult>>({})
   const [quotaLoading, setQuotaLoading] = useState(false)
+  const [showQuickSetup, setShowQuickSetup] = useState(false)
 
   const update = (idx: number, patch: Partial<ProviderAccount>) => {
     onChange(accounts.map((acc, i) => (i === idx ? { ...acc, ...patch } : acc)))
@@ -50,6 +53,10 @@ export function AccountPoolSection({
   }
   const add = () => {
     onChange([...accounts, { id: '', label: `${t('prov_pool_default_label')} ${accounts.length + 1}`, apiKey: '' }])
+  }
+  // 一键配置 = 批量导入 key：把粘贴的多个 key 一次性追加到账号池。
+  const importAccounts = (imported: ProviderAccount[]) => {
+    onChange([...accounts, ...imported])
   }
 
   const fetchQuotas = async () => {
@@ -67,6 +74,11 @@ export function AccountPoolSection({
     }
   }
 
+  const openQuotaLogin = () => {
+    if (isWails()) rt.BrowserOpenURL('https://opencode.ai/go')
+    else window.open('https://opencode.ai/go', '_blank', 'noopener,noreferrer')
+  }
+
   const stateOf = (acc: ProviderAccount) => rotation?.accounts.find(a => a.id === acc.id)
 
   return (
@@ -76,11 +88,16 @@ export function AccountPoolSection({
           <h4>{t('prov_pool_title')}</h4>
           <p>{t('prov_pool_desc')}</p>
         </div>
-        {providerId && accounts.some(a => a.quotaCookie) ? (
-          <button className="btn btn-sm btn-ghost" onClick={fetchQuotas} disabled={quotaLoading}>
-            <Gauge width={14} height={14} /> {quotaLoading ? t('prov_pool_quota_loading') : t('prov_pool_quota_btn')}
+        <div className="row gap-2">
+          <button className="btn btn-sm btn-ghost" onClick={openQuotaLogin}>
+            <ExternalLink width={14} height={14} /> {t('prov_pool_quota_login')}
           </button>
-        ) : null}
+          {providerId && accounts.some(a => a.quotaCookie) ? (
+            <button className="btn btn-sm btn-ghost" onClick={fetchQuotas} disabled={quotaLoading}>
+              <Gauge width={14} height={14} /> {quotaLoading ? t('prov_pool_quota_loading') : t('prov_pool_quota_btn')}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {accounts.length === 0 ? (
@@ -144,9 +161,22 @@ export function AccountPoolSection({
         </div>
       )}
 
-      <button className="btn btn-sm btn-outline prov-pool-add" onClick={add}>
-        <Plus width={14} height={14} /> {t('prov_pool_add')}
-      </button>
+      <div className="row gap-2">
+        <button className="btn btn-sm btn-outline prov-pool-add" onClick={add}>
+          <Plus width={14} height={14} /> {t('prov_pool_add')}
+        </button>
+        <button className="btn btn-sm btn-outline" onClick={() => setShowQuickSetup(true)}>
+          <Zap width={14} height={14} /> {t('prov_quick_setup')}
+        </button>
+      </div>
+
+      {showQuickSetup && (
+        <QuickSetupModal
+          startIndex={accounts.length}
+          onClose={() => setShowQuickSetup(false)}
+          onImport={importAccounts}
+        />
+      )}
     </div>
   )
 }

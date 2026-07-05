@@ -428,10 +428,12 @@ func reasoningTextValueRaw(value any) string {
 }
 
 func boundedThinkingPayload(thinking any, maxBudgetTokens int) any {
-	if thinking == nil || maxBudgetTokens < 0 {
+	if thinking == nil {
 		return nil
 	}
-	if maxBudgetTokens == 0 {
+	// maxBudgetTokens <= 0 means "no limit / passthrough": honour whatever
+	// thinking payload the client sent without clamping or rewriting it.
+	if maxBudgetTokens <= 0 {
 		return thinking
 	}
 	switch v := thinking.(type) {
@@ -464,7 +466,7 @@ func chatCompletionThinkingControls(model string, thinking any, maxBudgetTokens 
 	if !supportsDeepSeekV4ThinkingRequest(model) {
 		return nil, ""
 	}
-	if isThinkingDisabled(thinking) || maxBudgetTokens < 0 {
+	if isThinkingDisabled(thinking) {
 		return map[string]any{"type": "disabled"}, ""
 	}
 	if thinking == nil {

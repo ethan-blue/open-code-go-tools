@@ -13,7 +13,7 @@ export default function AboutPage() {
   return (
     <div>
       <div className="set-top">
-        <div><h1 className="set-title">{t('sett_section_about')}</h1><p className="set-subtitle">{t('sett_section_about_desc')}</p></div>
+        <div><h2 className="set-section-title">{t('sett_section_about')}</h2><p className="set-subtitle">{t('sett_section_about_desc')}</p></div>
       </div>
       <section className="set-section">
         <div className="set-card">

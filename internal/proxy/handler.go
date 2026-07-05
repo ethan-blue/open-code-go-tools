@@ -59,9 +59,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ocgt/api/syslog", s.apiSyslog)
 	mux.HandleFunc("/ocgt/api/version", s.apiVersion)
 	mux.HandleFunc("/ocgt/api/config/raw", s.apiRawConfig)
-	mux.HandleFunc("/ocgt/api/config/export", s.apiConfigExport)
-	mux.HandleFunc("/ocgt/api/config/import", s.apiConfigImport)
 	mux.HandleFunc("/ocgt/api/quota", s.apiQuota)
+	mux.HandleFunc("/ocgt/api/quota/status", s.apiQuotaStatus)
 	mux.HandleFunc("/ocgt/api/quota/refresh", s.apiRefreshQuota)
 	mux.HandleFunc("/ocgt/api/quota/accounts", s.apiAccountQuotas)
 	mux.HandleFunc("/ocgt/api/rotation", s.apiRotationStatus)
@@ -71,11 +70,6 @@ func (s *Server) Handler() http.Handler {
 
 	// Providers API
 	s.registerProvidersRoutes(mux)
-
-	// Copilot API
-	mux.HandleFunc("/ocgt/api/copilot/ask", s.apiCopilotAsk)
-	mux.HandleFunc("/ocgt/api/copilot/insights", s.apiCopilotInsights)
-	mux.HandleFunc("/ocgt/api/copilot/action/{id}", s.apiCopilotAction)
 
 	// System info API (hardware detection for onboarding)
 	mux.HandleFunc("/ocgt/api/system-info", s.apiSystemInfo)
@@ -102,6 +96,35 @@ func (s *Server) Handler() http.Handler {
 	handler = securityHeadersMiddleware(handler)
 
 	return handler
+}
+
+func (s *Server) fetchUpstreamModels(ctx context.Context, line string) ([]byte, config.Profile, error) {
+	values := url.Values{}
+	if strings.TrimSpace(line) != "" {
+		values.Set("ocgt_line", strings.TrimSpace(line))
+	}
+	target, err := s.runtimeTargetForRequest(&http.Request{URL: &url.URL{Path: "/v1/models", RawQuery: values.Encode()}})
+	if err != nil {
+		return nil, config.Profile{}, err
+	}
+	req, err := s.newUpstreamRequest(ctx, http.MethodGet, "/v1/models", nil, target)
+	if err != nil {
+		return nil, config.Profile{}, err
+	}
+	applyAnthropicAuth(req, target.profile)
+	resp, err := s.doUpstream(req, target.timeoutSeconds)
+	if err != nil {
+		return nil, config.Profile{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, config.Profile{}, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, config.Profile{}, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
+	}
+	return body, target.profile, nil
 }
 
 // ensurePortAvailable probes the configured listen address and auto-kills any
@@ -294,12 +317,18 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 	}
 	req, err := s.newUpstreamRequest(r.Context(), http.MethodGet, "/v1/models", nil, target)
 	if err != nil {
+		if writeCodexConfiguredModelsFallback(w, target) {
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 	applyAnthropicAuth(req, target.profile)
 	resp, err := s.doUpstream(req, target.timeoutSeconds)
 	if err != nil {
+		if writeCodexConfiguredModelsFallback(w, target) {
+			return
+		}
 		writeProxyError(w, err)
 		return
 	}
@@ -310,10 +339,62 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if resp.StatusCode >= 400 {
+		if writeCodexConfiguredModelsFallback(w, target) {
+			return
+		}
 		writeUpstreamError(w, resp.StatusCode, body)
 		return
 	}
-	writeJSON(w, http.StatusOK, normalizeModels(body, target.profile))
+	// Codex needs the upstream's real model IDs (e.g. "deepseek-v4-pro"), not
+	// Claude compatibility aliases that its UI won't recognise. Also merge in
+	// any provider-configured models (default, advertised list, fallback chain,
+	// message models, and alias targets) so custom models show up in the Codex
+	// app/CLI model picker even when the upstream list is empty or filtered.
+	if target.line == "codex" {
+		writeJSON(w, http.StatusOK, normalizeRemoteModels(body, codexConfiguredModelIDs(target)...))
+	} else {
+		writeJSON(w, http.StatusOK, normalizeModels(body, target.profile))
+	}
+}
+
+func codexConfiguredModelIDs(target requestTarget) []string {
+	seen := map[string]bool{}
+	extras := make([]string, 0)
+	add := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		extras = append(extras, id)
+	}
+	add(target.profile.DefaultModel)
+	for _, id := range target.models {
+		add(id)
+	}
+	for _, id := range target.profile.FallbackChain {
+		add(id)
+	}
+	for _, id := range target.profile.MessageModels {
+		add(id)
+	}
+	for _, id := range target.profile.ModelAliases {
+		add(id)
+	}
+	return extras
+}
+
+func writeCodexConfiguredModelsFallback(w http.ResponseWriter, target requestTarget) bool {
+	if target.line != "codex" {
+		return false
+	}
+	extras := codexConfiguredModelIDs(target)
+	if len(extras) == 0 {
+		return false
+	}
+	// ponytail: model picker fallback only; real inference still reports upstream errors.
+	writeJSON(w, http.StatusOK, normalizeRemoteModels([]byte(`{"data":[]}`), extras...))
+	return true
 }
 
 // FetchUpstreamModels fetches the /v1/models list from the active upstream profile.
@@ -322,7 +403,22 @@ func (s *Server) models(w http.ResponseWriter, r *http.Request) {
 // and automatically carries the configured API key for the active profile.
 // Returns the normalized models map (same shape produced by normalizeModels).
 func (s *Server) FetchUpstreamModels(ctx context.Context) (map[string]any, error) {
-	target, err := s.runtimeTargetForRequest((&http.Request{URL: &url.URL{Path: "/v1/models"}}))
+	body, profile, err := s.fetchUpstreamModels(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	return normalizeModels(body, profile), nil
+}
+
+// FetchRealUpstreamModels returns only upstream-advertised models. Unlike
+// FetchUpstreamModels it does not prepend local Claude compatibility aliases.
+func (s *Server) FetchRealUpstreamModels(ctx context.Context, line string) (map[string]any, error) {
+	line = strings.TrimSpace(line)
+	values := url.Values{}
+	if line != "" {
+		values.Set("ocgt_line", line)
+	}
+	target, err := s.runtimeTargetForRequest(&http.Request{URL: &url.URL{Path: "/v1/models", RawQuery: values.Encode()}})
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +439,10 @@ func (s *Server) FetchUpstreamModels(ctx context.Context) (map[string]any, error
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("upstream returned status %d: %s", resp.StatusCode, string(body))
 	}
-	return normalizeModels(body, target.profile), nil
+	if target.line == "codex" {
+		return normalizeRemoteModels(body, codexConfiguredModelIDs(target)...), nil
+	}
+	return normalizeRemoteModels(body), nil
 }
 
 // TestConnection fetches /v1/models from the given upstream URL using the
@@ -496,6 +595,14 @@ func clientSourceFromRequest(r *http.Request) string {
 		raw = "claude-app"
 	}
 
+	// /v1/responses 是 Codex 独有端点（Claude Code / VS Code 走 /v1/messages）。
+	// Codex CLI/App 的 User-Agent 不可靠（某些模式甚至不发 UA），所以用路径
+	// 作为权威信号——与 requestLineFromRequest 推断 "codex" line 的逻辑一致。
+	// 这样统计才能把 Codex 流量正确归类，QuickConnect 卡片才不会永远显示 0。
+	if raw == "" && r.URL.Path == "/v1/responses" {
+		return "Codex (CLI / App)"
+	}
+
 	// Advanced User-Agent inspection
 	ua := strings.ToLower(r.Header.Get("User-Agent"))
 	if strings.Contains(ua, "vscode") || strings.Contains(ua, "code/") {
@@ -578,9 +685,84 @@ func normalizeModels(data []byte, profile config.Profile) map[string]any {
 			continue
 		}
 		seen[id] = true
-		models = append(models, map[string]any{"id": id, "type": "model", "display_name": id})
+		models = append(models, modelEntry(id, id))
 	}
-	return map[string]any{"data": models, "has_more": false}
+	return modelsResponse(models)
+}
+
+func normalizeRemoteModels(data []byte, extraModels ...string) map[string]any {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return modelsResponse([]map[string]any{})
+	}
+	list, _ := raw["data"].([]any)
+	models := make([]map[string]any, 0, len(list)+len(extraModels))
+	seen := map[string]bool{}
+	for _, item := range list {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id, _ := obj["id"].(string)
+		if id == "" {
+			id, _ = obj["name"].(string)
+		}
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		// Start from modelEntry defaults, then overlay upstream fields so
+		// rich metadata (supported_reasoning_levels, context_window, etc.)
+		// is preserved for clients like Codex that depend on it.
+		model := modelEntry(id, id)
+		for k, v := range obj {
+			if v != nil {
+				model[k] = v
+			}
+		}
+		model["id"] = id
+		model["slug"] = id
+		if protocol := modelProtocolFromMetadata(obj); protocol != "" {
+			model["protocol"] = protocol
+		}
+		models = append(models, model)
+	}
+	// Surface provider-configured models even when the upstream /v1/models list
+	// does not include them (custom overrides, newly added models, etc.).
+	for _, id := range extraModels {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		models = append(models, modelEntry(id, id))
+	}
+	return modelsResponse(models)
+}
+
+func modelProtocolFromMetadata(obj map[string]any) string {
+	for _, key := range []string{"protocol", "api", "endpoint", "mode"} {
+		raw, _ := obj[key].(string)
+		if protocol := normalizeProviderProtocol(raw); protocol != "" {
+			return protocol
+		}
+	}
+	return ""
+}
+
+func normalizeProviderProtocol(value string) string {
+	text := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case text == "anthropic" || strings.Contains(text, "messages") || strings.Contains(text, "claude"):
+		return "anthropic"
+	case text == "openai-chat" || strings.Contains(text, "chat/completions") || text == "chat":
+		return "openai-chat"
+	case text == "openai-responses" || strings.Contains(text, "responses"):
+		return "openai-responses"
+	default:
+		return ""
+	}
 }
 
 func configuredModels(profile config.Profile) map[string]any {
@@ -594,7 +776,7 @@ func configuredModels(profile config.Profile) map[string]any {
 		if display == "" {
 			display = id
 		}
-		models = append(models, map[string]any{"id": id, "type": "model", "display_name": display})
+		models = append(models, modelEntry(id, display))
 	}
 	add("claude-sonnet-4-5", "Claude Sonnet -> "+profile.ResolveModel("claude-sonnet-4-5"))
 	add("claude-haiku-4-5", "Claude Haiku -> "+profile.ResolveModel("claude-haiku-4-5"))
@@ -606,7 +788,56 @@ func configuredModels(profile config.Profile) map[string]any {
 	for _, id := range profile.MessageModels {
 		add(id, "Messages -> "+id)
 	}
-	return map[string]any{"data": models, "has_more": false}
+	return modelsResponse(models)
+}
+
+func modelsResponse(models []map[string]any) map[string]any {
+	return map[string]any{"data": models, "models": models, "has_more": false}
+}
+
+func modelEntry(id, display string) map[string]any {
+	return map[string]any{
+		"id":                      id,
+		"slug":                    id,
+		"type":                    "model",
+		"name":                    display,
+		"display_name":            display,
+		"description":             "",
+		"default_reasoning_level": "medium",
+		"supported_reasoning_levels": []map[string]string{
+			{"level": "low", "name": "Low"},
+			{"level": "medium", "name": "Medium"},
+			{"level": "high", "name": "High"},
+		},
+		"shell_type":                       "shell_command",
+		"visibility":                       "list",
+		"supported_in_api":                 true,
+		"priority":                         0,
+		"additional_speed_tiers":           []string{},
+		"service_tiers":                    []map[string]string{},
+		"default_service_tier":             "default",
+		"availability_nux":                 nil,
+		"upgrade":                          nil,
+		"base_instructions":                "",
+		"model_messages":                   nil,
+		"instructions_variables":           map[string]string{},
+		"supports_reasoning_summaries":     false,
+		"default_reasoning_summary":        "none",
+		"support_verbosity":                false,
+		"default_verbosity":                "low",
+		"apply_patch_tool_type":            "freeform",
+		"web_search_tool_type":             "text_and_image",
+		"truncation_policy":                map[string]any{"mode": "tokens", "limit": 10000},
+		"supports_parallel_tool_calls":     true,
+		"supports_image_detail_original":   false,
+		"context_window":                   128000,
+		"max_context_window":               128000,
+		"effective_context_window_percent": 95,
+		"experimental_supported_tools":     []string{},
+		"input_modalities":                 []string{"text"},
+		"supports_search_tool":             false,
+		"use_responses_lite":               false,
+	}
 }
 
 func (s *Server) addHistoryEntry(method, path string, status int, duration time.Duration, model, route string) {

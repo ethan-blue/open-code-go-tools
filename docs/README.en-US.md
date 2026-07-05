@@ -120,6 +120,14 @@ Config is stored locally:
 
 Edit this file externally and the proxy picks up changes automatically within ~3 seconds — no restart needed.
 
+Claude and Codex keep separate active upstream providers in `providers.json`.
+Switching the active provider in ocgt hot-reloads immediately. For Codex, the
+Integrations page writes a desktop-compatible `custom` provider named `ocgt`
+into user-level `~/.codex/config.toml` and generates
+`~/.codex/ocgt-model-catalog.json`; restart Codex CLI / App after setup. The
+Codex app may still show only `Custom`, but requests use the root-level
+`model = "..."` value written by ocgt.
+
 ---
 
 ## 💻 CLI Reference

@@ -18,17 +18,13 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
   const navigateItems = [
     { id: 'dashboard', label: t('cmd_goto_dashboard'), icon: '📊', shortcut: 'Ctrl+1', action: () => navTo('dashboard') },
-    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '🔌', shortcut: 'Ctrl+2', action: () => navTo('terminal') },
-    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '📈', shortcut: 'Ctrl+3', action: () => navTo('history') },
+    { id: 'providers', label: t('cmd_goto_providers'), icon: '🖥', shortcut: 'Ctrl+2', action: () => navTo('providers') },
+    { id: 'quickconnect', label: t('cmd_quick_connect'), icon: '🔌', shortcut: 'Ctrl+3', action: () => navTo('terminal') },
     { id: 'sessions', label: t('cmd_goto_sessions'), icon: '💬', shortcut: 'Ctrl+4', action: () => navTo('sessions') },
-    { id: 'copilot', label: t('cmd_copilot'), icon: '🤖', shortcut: 'Ctrl+5', action: () => navTo('copilot') },
-    { id: 'providers', label: t('cmd_goto_providers'), icon: '🖥', shortcut: 'Ctrl+6', action: () => navTo('providers') },
+    { id: 'traffic', label: t('cmd_goto_traffic'), icon: '📈', shortcut: 'Ctrl+5', action: () => navTo('history') },
     { id: 'security', label: t('sett_section_security'), icon: '🛡', action: () => navTo('security') },
     { id: 'hub', label: t('cmd_goto_hub'), icon: '☁', action: () => navTo('hub') },
     { id: 'settings', label: t('cmd_open_settings'), icon: '⚙', shortcut: 'Ctrl+,', action: () => navTo('preferences') },
-    { id: 'logs', label: t('sett_log_title'), icon: '📋', action: () => navTo('logs') },
-    { id: 'backups', label: t('sett_section_backups'), icon: '💾', action: () => navTo('backups') },
-    { id: 'about', label: t('sett_section_about'), icon: 'ℹ', action: () => navTo('about') },
   ];
 
   const actionItems = [

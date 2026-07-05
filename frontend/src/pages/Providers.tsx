@@ -2,13 +2,15 @@ import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetState
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, Plus, Trash2, AlertTriangle, Zap, Shield, Clock, ChevronDown, ChevronUp, Users } from 'lucide-react'
+import { GripVertical, Plus, Trash2, Zap, ChevronDown, ChevronUp, Users, RefreshCw, FlaskConical } from 'lucide-react'
 import { apiGet, apiFetch } from '@/lib/wails'
+import { errMessage } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 import { EmptyState, Skeleton } from '@/components/ui'
+import { ModelDropdown } from '@/components/ModelDropdown'
+import { ConfirmModal } from '@/components/ConfirmModal'
 import { AccountPoolSection } from '@/pages/providers/AccountPoolSection'
-import { QuickSetupModal } from '@/pages/providers/QuickSetupModal'
 import type { Provider, AgentLine, ProviderProtocol, ProviderFormData, RotationProviderStatus } from '@/lib/types'
 import { DEFAULT_PROVIDER_FORM } from '@/lib/types'
 
@@ -88,19 +90,28 @@ function toForm(provider: Provider): FormData {
     messageModelsText: csvText(provider.messageModels),
     fallbackChainText: csvText(provider.fallbackChain),
     defaultModel: provider.defaultModel || '',
-    priority: provider.priority,
     enabled: provider.enabled,
     line,
     protocol: (provider.protocol || defaultProtocol(line)) as ProviderProtocol,
-    rateLimitPerSecond: String(provider.rateLimitPerSecond || ''),
-    rateLimitBurst: String(provider.rateLimitBurst || ''),
     requestTimeoutSeconds: String(provider.requestTimeoutSeconds || ''),
-    thinkingBudgetTokens: String(provider.thinkingBudgetTokens || ''),
+    thinkingBudgetTokens: String(provider.thinkingBudgetTokens == null || provider.thinkingBudgetTokens === 0 ? -1 : provider.thinkingBudgetTokens),
     authMode: provider.authMode || 'bearer',
     modelAliasesJSON: jsonText(provider.modelAliases),
+    modelProtocols: provider.modelProtocols || {},
     headersJSON: jsonText(provider.headers),
     envJSON: jsonText(provider.env),
   }
+}
+
+function protocolLabel(protocol?: string) {
+  // Only the Anthropic-native protocol is surfaced as a label on the
+  // quick-switcher pill; other protocols stay unlabelled to reduce noise.
+  if (protocol === 'anthropic') return 'Claude'
+  return ''
+}
+
+function isOpenCodeGoProvider(form: FormData) {
+  return /opencode\.ai\/zen\/go/i.test(form.baseUrl)
 }
 
 function ProviderEditor({
@@ -122,6 +133,11 @@ function ProviderEditor({
   const { toast } = useToast()
   const isClaude = form.line === 'claude'
   const lineLabel = isClaude ? 'Claude' : 'Codex'
+  const openCodeGo = isOpenCodeGoProvider(form)
+  const [syncingModels, setSyncingModels] = useState(false)
+  const [syncCount, setSyncCount] = useState<number | null>(null)
+  const [testingModel, setTestingModel] = useState(false)
+  const [jsonTouched, setJsonTouched] = useState(false)
 
   // The JSON preview reflects the advanced fields (modelAliases / headers / env
   // / messageModels / fallbackChain) as a single editable blob. It regenerates
@@ -132,16 +148,17 @@ function ProviderEditor({
     env: safeParse(form.envJSON, {}),
     messageModels: parseStringList(form.messageModelsText),
     fallbackChain: parseStringList(form.fallbackChainText),
-  }, null, 2), [form.modelAliasesJSON, form.headersJSON, form.envJSON, form.messageModelsText, form.fallbackChainText])
+    modelProtocols: form.modelProtocols || {},
+  }, null, 2), [form.modelAliasesJSON, form.headersJSON, form.envJSON, form.messageModelsText, form.fallbackChainText, form.modelProtocols])
 
   const [jsonText, setJsonText] = useState(advancedJSON)
-  const jsonDirty = jsonText !== advancedJSON
+  const jsonDirty = jsonTouched && jsonText !== advancedJSON
 
   // Re-sync from the form when it changes (e.g. toggling a quick switch) and
   // the user hasn't manually edited the JSON area.
   useEffect(() => {
-    if (!jsonDirty) setJsonText(advancedJSON)
-  }, [advancedJSON, jsonDirty])
+    if (!jsonTouched) setJsonText(advancedJSON)
+  }, [advancedJSON, jsonTouched])
 
   const applyJSON = () => {
     try {
@@ -153,7 +170,9 @@ function ProviderEditor({
         envJSON: JSON.stringify(parsed.env && typeof parsed.env === 'object' ? parsed.env : {}, null, 2),
         messageModelsText: Array.isArray(parsed.messageModels) ? parsed.messageModels.join(', ') : '',
         fallbackChainText: Array.isArray(parsed.fallbackChain) ? parsed.fallbackChain.join(', ') : '',
+        modelProtocols: parsed.modelProtocols && typeof parsed.modelProtocols === 'object' && !Array.isArray(parsed.modelProtocols) ? parsed.modelProtocols : {},
       }))
+      setJsonTouched(false)
       toast(t('prov_json_applied'), 'success')
     } catch {
       toast(t('prov_json_invalid'), 'error')
@@ -163,6 +182,16 @@ function ProviderEditor({
   // Model-alias quick fields (sonnet/haiku/opus): first-class inputs that
   // read/write the same modelAliases blob the JSON section edits.
   const aliasValue = (key: string) => safeParse<Record<string, string>>(form.modelAliasesJSON, {})[key] || ''
+  const modelOptions = useMemo(() => {
+    const aliases = Object.values(safeParse<Record<string, string>>(form.modelAliasesJSON, {}))
+    return Array.from(new Set([
+      form.defaultModel,
+      ...form.models,
+      ...parseStringList(form.messageModelsText),
+      ...parseStringList(form.fallbackChainText),
+      ...aliases,
+    ].map(v => v.trim()).filter(Boolean))).sort()
+  }, [form.defaultModel, form.models, form.messageModelsText, form.fallbackChainText, form.modelAliasesJSON])
   const setAlias = (key: string, value: string) => setForm(f => {
     const next = { ...safeParse<Record<string, string>>(f.modelAliasesJSON, {}) }
     if (value.trim()) next[key] = value.trim()
@@ -182,6 +211,64 @@ function ProviderEditor({
         fallbackDesc: t('prov_rt_fallback_desc'),
         thinkingLabel: t('prov_rt_codex_thinking_label'),
       }
+
+  const syncModels = async () => {
+    setSyncingModels(true)
+    try {
+      const result = await apiGet<{ data?: Array<{ id?: string; name?: string; protocol?: ProviderProtocol }> }>(`/ocgt/api/providers/models?line=${form.line}`)
+      const protocols: Partial<Record<string, ProviderProtocol>> = {}
+      const models = (result?.data || []).map(m => {
+        const id = (m.id || m.name || '').trim()
+        if (id && m.protocol) protocols[id] = m.protocol
+        return id
+      }).filter(Boolean)
+      setForm(f => ({ ...f, models, modelProtocols: protocols }))
+      setSyncCount(models.length)
+      toast(t('toast_sync_models_success'), 'success')
+    } catch {
+      toast(t('toast_sync_models_failed'), 'error')
+    } finally {
+      setSyncingModels(false)
+    }
+  }
+
+  // Send a 1-token probe to the upstream to verify the current default model
+  // actually completes inference. Uses the editor's draft fields (baseUrl /
+  // apiKey / model / protocol) so it works even before the provider is saved.
+  const testModel = async () => {
+    const model = form.defaultModel.trim()
+    if (!model) {
+      toast(t('prov_test_no_model'), 'error')
+      return
+    }
+    // 账号池模式下 key 存在 accounts 里；回退到 legacy apiKey 字段。
+    const firstAccountKey = form.accounts.find(a => !a.disabled && a.apiKey)?.apiKey || ''
+    setTestingModel(true)
+    try {
+      const result = await apiFetch<{ success: boolean; latencyMs?: number; error?: string }>('/ocgt/api/providers/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerId,
+          baseUrl: form.baseUrl,
+          apiKey: firstAccountKey || form.apiKey,
+          model,
+          protocol: form.protocol,
+          modelProtocols: form.modelProtocols,
+          authMode: form.authMode,
+        }),
+      }, 35000)
+      if (result?.success) {
+        toast(t('prov_test_success').replace('{{ms}}', String(result.latencyMs ?? '?')), 'success')
+      } else {
+        toast(`${t('prov_test_failed')}: ${result?.error || ''}`, 'error')
+      }
+    } catch (err: unknown) {
+      toast(`${t('prov_test_failed')}: ${errMessage(err)}`, 'error')
+    } finally {
+      setTestingModel(false)
+    }
+  }
 
   return (
     <div className="prov-inline-editor">
@@ -216,12 +303,14 @@ function ProviderEditor({
               })}>Codex</button>
             </div>
           </div>
-          <div className="field">
-            <label className="prov-form-label" htmlFor="provider-protocol">{t('prov_field_protocol')}</label>
-            <select id="provider-protocol" className="select prov-input" value={form.protocol} onChange={e => setForm(f => ({ ...f, protocol: e.target.value as ProviderProtocol }))}>
-              {PROTOCOL_OPTIONS[form.line].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          </div>
+          {!openCodeGo && (
+            <div className="field">
+              <label className="prov-form-label" htmlFor="provider-protocol">{t('prov_field_protocol')}</label>
+              <select id="provider-protocol" className="select prov-input" value={form.protocol} onChange={e => setForm(f => ({ ...f, protocol: e.target.value as ProviderProtocol }))}>
+                {PROTOCOL_OPTIONS[form.line].map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+          )}
           <div className="field">
             <label className="prov-form-label" htmlFor="provider-auth-mode">{t('prov_field_auth_mode')}</label>
             <select id="provider-auth-mode" className="select prov-input" value={form.authMode} onChange={e => setForm(f => ({ ...f, authMode: e.target.value }))}>
@@ -230,19 +319,27 @@ function ProviderEditor({
           </div>
           <div className="field">
             <label className="prov-form-label" htmlFor="provider-default-model">{t('prov_field_default_model')}</label>
-            <input id="provider-default-model" className="input prov-input" value={form.defaultModel} onChange={e => setForm(f => ({ ...f, defaultModel: e.target.value }))} placeholder="model id" />
-          </div>
-          <div className="field">
-            <label className="prov-form-label" htmlFor="provider-message-models">{runtimeCopy.messageLabel}</label>
-            <input
-              id="provider-message-models"
-              className="input prov-input"
-              value={form.messageModelsText}
-              onChange={e => setForm(f => ({ ...f, messageModelsText: e.target.value }))}
-              placeholder="model-a, model-b"
+            <ModelDropdown
+              id="provider-default-model"
+              value={form.defaultModel}
+              options={modelOptions}
+              protocols={form.modelProtocols}
+              multiple={false}
+              placeholder={t('prov_model_placeholder')}
+              onChange={value => setForm(f => ({ ...f, defaultModel: value }))}
             />
-            <div className="prov-field-hint">{runtimeCopy.messageDesc}</div>
           </div>
+        </div>
+        <div className="prov-sync-row">
+          <button type="button" className="btn btn-sm btn-outline" onClick={syncModels} disabled={syncingModels}>
+            <RefreshCw width={14} height={14} className={syncingModels ? 'spin-icon' : undefined} />
+            {syncingModels ? t('status_saving') : t('btn_sync_models')}
+          </button>
+          <button type="button" className="btn btn-sm btn-outline" onClick={testModel} disabled={testingModel}>
+            <FlaskConical width={14} height={14} className={testingModel ? 'spin-icon' : undefined} />
+            {testingModel ? t('status_saving') : t('btn_test_model')}
+          </button>
+          <span className="muted tiny">{syncCount === null ? t('prov_sync_models_hint') : t('prov_sync_models_count').replace('{{n}}', String(syncCount))}</span>
         </div>
       </div>
 
@@ -267,38 +364,35 @@ function ProviderEditor({
           </div>
           <div className="field">
             <label className="prov-form-label" htmlFor="provider-thinking">{runtimeCopy.thinkingLabel}</label>
-            <input id="provider-thinking" className="input prov-input" type="number" min="-1" value={form.thinkingBudgetTokens} onChange={e => setForm(f => ({ ...f, thinkingBudgetTokens: e.target.value }))} placeholder="2048" />
-          </div>
-          <div className="field">
-            <label className="prov-form-label" htmlFor="provider-rate-limit">{t('prov_field_rate_limit')}</label>
-            <input id="provider-rate-limit" className="input prov-input" type="number" min="0" value={form.rateLimitPerSecond} onChange={e => setForm(f => ({ ...f, rateLimitPerSecond: e.target.value }))} placeholder="0 = unlimited" />
-          </div>
-          <div className="field">
-            <label className="prov-form-label" htmlFor="provider-burst">{t('prov_field_burst')}</label>
-            <input id="provider-burst" className="input prov-input" type="number" min="0" value={form.rateLimitBurst} onChange={e => setForm(f => ({ ...f, rateLimitBurst: e.target.value }))} placeholder="0" />
+            <input id="provider-thinking" className="input prov-input" type="number" min="-1" value={form.thinkingBudgetTokens} onChange={e => setForm(f => ({ ...f, thinkingBudgetTokens: e.target.value }))} placeholder="-1" />
+            <div className="prov-field-hint">{t('prov_thinking_budget_hint')}</div>
           </div>
           <div className="field">
             <label className="prov-form-label" htmlFor="provider-fallback">{t('prov_field_fallback')}</label>
-            <input id="provider-fallback" className="input prov-input" value={form.fallbackChainText} onChange={e => setForm(f => ({ ...f, fallbackChainText: e.target.value }))} placeholder="model-a, model-b" />
+            <ModelDropdown
+              id="provider-fallback"
+              value={form.fallbackChainText}
+              options={modelOptions}
+              protocols={form.modelProtocols}
+              multiple
+              placeholder={t('prov_models_placeholder')}
+              onChange={value => setForm(f => ({ ...f, fallbackChainText: value }))}
+            />
             <div className="prov-field-hint">{runtimeCopy.fallbackDesc}</div>
-          </div>
-          <div className="field">
-            <label className="prov-form-label" htmlFor="provider-priority">{t('prov_priority_hint')}</label>
-            <input id="provider-priority" className="input prov-input" type="number" min="0" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: Number(e.target.value) }))} />
           </div>
           {isClaude && (
             <>
               <div className="field">
                 <label className="prov-form-label" htmlFor="provider-alias-sonnet">{t('prov_alias_sonnet')}</label>
-                <input id="provider-alias-sonnet" className="input prov-input" value={aliasValue('sonnet')} onChange={e => setAlias('sonnet', e.target.value)} placeholder="deepseek-v4-pro" />
+                <ModelDropdown id="provider-alias-sonnet" value={aliasValue('sonnet')} options={modelOptions} protocols={form.modelProtocols} placeholder="deepseek-v4-pro" onChange={value => setAlias('sonnet', value)} />
               </div>
               <div className="field">
                 <label className="prov-form-label" htmlFor="provider-alias-haiku">{t('prov_alias_haiku')}</label>
-                <input id="provider-alias-haiku" className="input prov-input" value={aliasValue('haiku')} onChange={e => setAlias('haiku', e.target.value)} placeholder="deepseek-v4-flash" />
+                <ModelDropdown id="provider-alias-haiku" value={aliasValue('haiku')} options={modelOptions} protocols={form.modelProtocols} placeholder="deepseek-v4-flash" onChange={value => setAlias('haiku', value)} />
               </div>
               <div className="field">
                 <label className="prov-form-label" htmlFor="provider-alias-opus">{t('prov_alias_opus')}</label>
-                <input id="provider-alias-opus" className="input prov-input" value={aliasValue('opus')} onChange={e => setAlias('opus', e.target.value)} placeholder="kimi-k2.6" />
+                <ModelDropdown id="provider-alias-opus" value={aliasValue('opus')} options={modelOptions} protocols={form.modelProtocols} placeholder="kimi-k2.6" onChange={value => setAlias('opus', value)} />
                 <div className="prov-field-hint">{t('prov_alias_hint')}</div>
               </div>
             </>
@@ -319,7 +413,7 @@ function ProviderEditor({
         <textarea
           className={`settings-env-key prov-json-area${jsonDirty ? ' prov-json-dirty' : ''}`}
           value={jsonText}
-          onChange={e => setJsonText(e.target.value)}
+          onChange={e => { setJsonTouched(true); setJsonText(e.target.value) }}
           rows={16}
           spellCheck={false}
         />
@@ -350,7 +444,7 @@ function SortableProviderCard({
   form: FormData
   setForm: Dispatch<SetStateAction<FormData>>
   onToggleExpand: (provider: Provider) => void
-  onDelete: (id: string) => void
+  onDelete: (provider: Provider) => void
   onActivate: (id: string) => void
   onSave: () => void
   onCancel: () => void
@@ -366,14 +460,6 @@ function SortableProviderCard({
     zIndex: isDragging ? 10 : undefined,
     borderLeft: `3px solid ${LINE_COLORS[(provider.line || 'claude') as AgentLine]}`,
   }
-  const healthConfig = {
-    healthy: { icon: Zap, color: 'var(--online)', bg: 'var(--green-soft)', label: t('prov_health_healthy') },
-    degraded: { icon: AlertTriangle, color: 'var(--warn)', bg: 'rgba(245,158,11,0.1)', label: t('prov_health_degraded') },
-    down: { icon: Shield, color: 'var(--danger)', bg: 'rgba(239,68,68,0.1)', label: t('prov_health_down') },
-    unknown: { icon: Shield, color: 'var(--ink-400)', bg: 'var(--ink-100)', label: t('prov_health_unknown') },
-  }
-  const health = healthConfig[provider.health] || healthConfig.unknown
-  const HealthIcon = health.icon
   const poolSize = provider.accounts?.length || 0
   const coolingCount = rotation?.accounts.filter(a => a.state === 'cooldown').length || 0
   const activeAccount = rotation?.accounts.find(a => a.active)
@@ -386,7 +472,6 @@ function SortableProviderCard({
           <div className="prov-chip-row">
             <span className="prov-name">{provider.name}</span>
             <span className="tag" style={{ background: LINE_COLORS[(provider.line || 'claude') as AgentLine], color: '#fff', fontSize: 10, padding: '1px 6px' }}>{provider.line || 'claude'}</span>
-            <span className="prov-health-badge" style={{ background: health.bg, color: health.color }}><HealthIcon width={12} height={12} /> {health.label}</span>
             {provider.enabled && <span className="tag green" style={{ fontSize: 10 }}>{t('prov_card_active_tag')}</span>}
             {poolSize > 1 && (
               <span className="tag" style={{ fontSize: 10 }} title={activeAccount ? `${t('prov_pool_active_now')}: ${activeAccount.label || activeAccount.masked_key}` : undefined}>
@@ -401,15 +486,11 @@ function SortableProviderCard({
           </div>
           <div className="prov-meta">{provider.baseUrl}</div>
           <div className="prov-stats">
-            <span className="prov-stat-item"><Clock width={12} height={12} /> {provider.avgLatency}ms</span>
-            <span>{provider.requestCount.toLocaleString()} {t('prov_stat_requests')}</span>
-            <span className={provider.errorCount > 0 ? 'text-danger' : undefined}>{provider.errorCount} {t('prov_stat_errors')}</span>
             {provider.protocol && <span className="tag" style={{ fontSize: 10 }}>{provider.protocol}</span>}
             {provider.defaultModel ? <span className="tag" style={{ fontSize: 10 }}>{provider.defaultModel}</span> : null}
           </div>
         </div>
         <div className="prov-row-controls">
-          <span className="prov-priority">P{provider.priority}</span>
           <button className={provider.enabled ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost'} onClick={() => onActivate(provider.id)} disabled={provider.enabled}>
             {provider.enabled ? t('prov_card_current') : t('prov_card_enable')}
           </button>
@@ -417,7 +498,7 @@ function SortableProviderCard({
             {expanded ? <ChevronUp width={14} height={14} /> : <ChevronDown width={14} height={14} />}
             {expanded ? t('prov_card_collapse') : t('prov_card_edit')}
           </button>
-          <button className="prov-icon-btn red" onClick={() => onDelete(provider.id)}><Trash2 width={16} height={16} /></button>
+          <button className="prov-icon-btn red" onClick={() => onDelete(provider)}><Trash2 width={16} height={16} /></button>
         </div>
       </div>
       {expanded ? <ProviderEditor form={form} setForm={setForm} onSave={onSave} onCancel={onCancel} providerId={provider.id} rotation={rotation} /> : null}
@@ -436,7 +517,10 @@ export default function Providers() {
   const [form, setForm] = useState<FormData>(DEFAULT_PROVIDER_FORM)
   const [lineFilter, setLineFilter] = useState<AgentLine>('claude')
   const [rotation, setRotation] = useState<Record<string, RotationProviderStatus>>({})
-  const [showQuickSetup, setShowQuickSetup] = useState(false)
+  // Pending provider-deletion confirmation. Null when the modal is closed.
+  // Reuses the same ConfirmModal component as the client-integration removal
+  // flow so the two pages share a consistent destructive-action prompt.
+  const [deleteTarget, setDeleteTarget] = useState<Provider | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -518,8 +602,16 @@ export default function Providers() {
     setForm(toForm(provider))
   }, [editingId, closeEditor])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!confirm(t('prov_confirm_delete'))) return
+  // Open the shared confirm modal instead of the OS-native confirm().
+  const handleDelete = useCallback((provider: Provider) => {
+    setDeleteTarget(provider)
+  }, [])
+
+  const confirmDelete = useCallback(async () => {
+    const target = deleteTarget
+    setDeleteTarget(null)
+    if (!target) return
+    const id = target.id
     try {
       await apiFetch(`/ocgt/api/providers/${id}`, { method: 'DELETE' })
       setProviders(prev => prev.filter(p => p.id !== id))
@@ -528,7 +620,7 @@ export default function Providers() {
     } catch {
       toast(t('prov_delete_fail'), 'error')
     }
-  }, [closeEditor, editingId, t, toast])
+  }, [closeEditor, deleteTarget, editingId, t, toast])
 
   const handleActivate = useCallback(async (id: string) => {
     const provider = providers.find(p => p.id === id)
@@ -556,13 +648,12 @@ export default function Providers() {
         ...form,
         messageModels: parseStringList(form.messageModelsText),
         fallbackChain: parseStringList(form.fallbackChainText),
-        rateLimitPerSecond: form.rateLimitPerSecond ? parseInt(form.rateLimitPerSecond, 10) : 0,
-        rateLimitBurst: form.rateLimitBurst ? parseInt(form.rateLimitBurst, 10) : 0,
         requestTimeoutSeconds: form.requestTimeoutSeconds ? parseInt(form.requestTimeoutSeconds, 10) : 0,
-        thinkingBudgetTokens: form.thinkingBudgetTokens ? parseInt(form.thinkingBudgetTokens, 10) : 0,
+        thinkingBudgetTokens: form.thinkingBudgetTokens ? parseInt(form.thinkingBudgetTokens, 10) : -1,
         modelAliases: parseStringMap(form.modelAliasesJSON, 'modelAliases'),
         headers: parseStringMap(form.headersJSON, 'headers'),
         env: parseStringMap(form.envJSON, 'env'),
+        modelProtocols: form.modelProtocols,
       }
       delete body.modelAliasesJSON
       delete body.headersJSON
@@ -599,7 +690,6 @@ export default function Providers() {
           <p className="prov-header-sub">{t('prov_page_subtitle')}</p>
         </div>
         <div className="prov-header-actions">
-          <button className="btn btn-outline" onClick={() => setShowQuickSetup(true)}><Zap width={16} height={16} className="prov-add-icon-gap" />{t('prov_quick_setup')}</button>
           <button className="btn btn-primary" onClick={handleAdd}><Plus width={16} height={16} className="prov-add-icon-gap" />{t('prov_add')}</button>
         </div>
       </div>
@@ -636,7 +726,7 @@ export default function Providers() {
               >
                 <span className={p.enabled ? 'dot online' : 'dot off'} />
                 <span className="prov-switch-name">{p.name}</span>
-                {p.defaultModel ? <span className="prov-switch-model">{p.defaultModel}</span> : null}
+                {protocolLabel(p.protocol) && <span className="prov-switch-model">{protocolLabel(p.protocol)}</span>}
               </button>
             ))}
           </div>
@@ -686,14 +776,17 @@ export default function Providers() {
         </DndContext>
       )}
 
-      {showQuickSetup && (
-        <QuickSetupModal
-          line={lineFilter}
-          providers={providers}
-          onClose={() => setShowQuickSetup(false)}
-          onDone={() => { loadProviders(); loadRotation() }}
-        />
-      )}
+      {/* Shared confirm modal for provider deletion — same component as the
+          client-integration removal prompt. */}
+      <ConfirmModal
+        open={deleteTarget !== null}
+        danger
+        title={deleteTarget ? t('prov_delete_title').replace('{{name}}', deleteTarget.name) : ''}
+        message={t('prov_confirm_delete')}
+        confirmText={t('prov_form_delete')}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   )
 }

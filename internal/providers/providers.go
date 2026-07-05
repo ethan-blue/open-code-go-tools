@@ -37,23 +37,16 @@ type Provider struct {
 	DefaultModel          string            `json:"defaultModel,omitempty"`
 	MessageModels         []string          `json:"messageModels,omitempty"`
 	FallbackChain         []string          `json:"fallbackChain,omitempty"` // Models to retry on failure, in order
-	Priority              int               `json:"priority"`
 	Enabled               bool              `json:"enabled"`
-	Health                string            `json:"health"` // "healthy", "degraded", "down", "unknown"
-	LastCheck             string            `json:"lastCheck,omitempty"`
-	RequestCount          int64             `json:"requestCount"`
-	ErrorCount            int64             `json:"errorCount"`
-	AvgLatency            float64           `json:"avgLatency"`
 	CreatedAt             int64             `json:"createdAt"`
 	SortIndex             int               `json:"sortIndex,omitempty"`
 	Line                  string            `json:"line,omitempty"`
 	Protocol              string            `json:"protocol,omitempty"`
-	RateLimitPerSecond    int               `json:"rateLimitPerSecond,omitempty"`
-	RateLimitBurst        int               `json:"rateLimitBurst,omitempty"`
 	RequestTimeoutSeconds int               `json:"requestTimeoutSeconds,omitempty"`
 	ThinkingBudgetTokens  int               `json:"thinkingBudgetTokens,omitempty"`
 	AuthMode              string            `json:"authMode,omitempty"`
 	ModelAliases          map[string]string `json:"modelAliases,omitempty"`
+	ModelProtocols        map[string]string `json:"modelProtocols,omitempty"`
 	Headers               map[string]string `json:"headers,omitempty"`
 	Env                   map[string]string `json:"env,omitempty"`
 }
@@ -150,7 +143,7 @@ func (s *Store) save() error {
 	return fileutil.AtomicWriteFile(s.path, data, 0o644)
 }
 
-// List returns all providers sorted by sortIndex then priority.
+// List returns all providers sorted by sortIndex.
 func (s *Store) List() []Provider {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -158,10 +151,7 @@ func (s *Store) List() []Provider {
 	out := make([]Provider, len(s.Providers))
 	copy(out, s.Providers)
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].SortIndex != out[j].SortIndex {
-			return out[i].SortIndex < out[j].SortIndex
-		}
-		return out[i].Priority < out[j].Priority
+		return out[i].SortIndex < out[j].SortIndex
 	})
 	return out
 }
@@ -224,9 +214,6 @@ func (s *Store) Create(p Provider) error {
 		p.ID = generateID()
 	}
 	p.CreatedAt = time.Now().UnixMilli()
-	if p.Health == "" {
-		p.Health = "unknown"
-	}
 	migrateLegacyAccounts(&p)
 
 	// Check for duplicate ID
@@ -270,6 +257,10 @@ func isMaskedKey(key string) bool {
 	return false
 }
 
+func IsMaskedKey(key string) bool {
+	return isMaskedKey(key)
+}
+
 // Update modifies an existing provider.
 func (s *Store) Update(id string, p Provider) error {
 	s.mu.Lock()
@@ -280,11 +271,6 @@ func (s *Store) Update(id string, p Provider) error {
 			// Preserve immutable fields
 			p.ID = id
 			p.CreatedAt = s.Providers[i].CreatedAt
-			p.RequestCount = s.Providers[i].RequestCount
-			p.ErrorCount = s.Providers[i].ErrorCount
-			p.AvgLatency = s.Providers[i].AvgLatency
-			p.Health = s.Providers[i].Health
-			p.LastCheck = s.Providers[i].LastCheck
 			p.SortIndex = s.Providers[i].SortIndex
 			// Preserve real API key when incoming key is masked/empty
 			if isMaskedKey(p.APIKey) {
@@ -394,32 +380,6 @@ func (s *Store) SaveOrder(ids []string) error {
 	}
 
 	return s.save()
-}
-
-// UpdateHealth updates the health status and metrics for a provider and persists to disk.
-func (s *Store) UpdateHealth(id string, health string, latency float64, isError bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for i := range s.Providers {
-		if s.Providers[i].ID == id {
-			s.Providers[i].Health = health
-			s.Providers[i].LastCheck = time.Now().Format(time.RFC3339)
-			s.Providers[i].RequestCount++
-			if isError {
-				s.Providers[i].ErrorCount++
-			}
-			// Exponential moving average for latency
-			if s.Providers[i].AvgLatency == 0 {
-				s.Providers[i].AvgLatency = latency
-			} else {
-				s.Providers[i].AvgLatency = 0.8*s.Providers[i].AvgLatency + 0.2*latency
-			}
-			// Persist health updates to disk
-			_ = s.save()
-			break
-		}
-	}
 }
 
 // generateID creates a cryptographically random hex ID.

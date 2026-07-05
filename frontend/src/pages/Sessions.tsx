@@ -3,6 +3,7 @@ import { Search, Hash, ChevronRight } from 'lucide-react'
 import { EmptyState, Skeleton } from '@/components/ui'
 import { apiGet } from '@/lib/wails'
 import { fmtTokens, fmtCost, fmtDate } from '@/lib/utils'
+import { modelColor } from '@/lib/modelColors'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
 
@@ -20,6 +21,7 @@ interface SessionEvent {
 
 interface Session {
   sessionId: string
+  source?: string
   model: string
   startTime: string
   lastTime: string
@@ -35,6 +37,14 @@ interface Session {
 // Cap how many session rows are rendered at once. Without this the full list
 // (potentially hundreds under "All") mounts as DOM nodes and stalls first paint.
 const SESSION_RENDER_LIMIT = 100
+// Cap how many detail messages render initially. A long session can hold
+// hundreds of assistant turns with multi-kB text each; rendering all of them on
+// every component re-render (e.g. toggling the chart, typing in search) stalls
+// the whole page. We render an initial batch and expand on demand.
+const DETAIL_MSG_INITIAL = 50
+const DETAIL_MSG_STEP = 50
+// ponytail: cap chart DOM; add a virtualized legend if users need every model row.
+const SESSION_CHART_MODEL_LIMIT = 24
 
 function sessionCost(
   model: string,
@@ -58,8 +68,6 @@ function sessionCost(
   return input * r.in + output * r.out + cacheRead * r.cr + cacheCreate * r.cc
 }
 
-const SESSION_COLORS = ['var(--ink-500)', 'var(--ink-400)', 'var(--ink-300)', 'var(--ink-600)', 'var(--ink-200)', 'var(--ink-700)', 'var(--ink-100)']
-
 export default memo(function Sessions() {
   const { t } = useI18n()
   const { toast } = useToast()
@@ -80,6 +88,16 @@ export default memo(function Sessions() {
   const [detailLoading, setDetailLoading] = useState<string | null>(null)
   const [detailCache, setDetailCache] = useState<Record<string, SessionEvent[]>>({})
   const [chartOpen, setChartOpen] = useState(false)
+  // How many detail messages are currently expanded. Reset whenever a new
+  // session is selected so a freshly-opened session doesn't inherit a large cap.
+  const [detailLimit, setDetailLimit] = useState(DETAIL_MSG_INITIAL)
+
+  const sourceLabel = useCallback((source?: string) => {
+    const normalized = (source || 'claude').toLowerCase()
+    if (normalized === 'codex') return t('sessions_source_codex')
+    if (normalized === 'claude') return t('sessions_source_claude')
+    return source || t('sessions_source_unknown')
+  }, [t])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -144,7 +162,7 @@ export default memo(function Sessions() {
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter((s) =>
-        s.sessionId.toLowerCase().includes(q) || s.model.toLowerCase().includes(q),
+        s.sessionId.toLowerCase().includes(q) || s.model.toLowerCase().includes(q) || (s.source || '').toLowerCase().includes(q),
       )
     }
     if (modelFilter) {
@@ -171,6 +189,7 @@ export default memo(function Sessions() {
 
   const handleSelect = (sessionId: string) => {
     setSelectedId(sessionId)
+    setDetailLimit(DETAIL_MSG_INITIAL)
     loadDetail(sessionId)
   }
 
@@ -190,17 +209,17 @@ export default memo(function Sessions() {
   ]
   
   // Aggregated model data for the chart based on current filter
-  const chartModels = useMemo(() => {
-    const mmap: Record<string, { requests: number, total_tokens: number, pct: number }> = {}
+  const allChartModels = useMemo(() => {
+    const mmap: Record<string, { requests: number, total_tokens: number }> = {}
     let totalTokens = 0
     filtered.forEach(s => {
       if (!s.model) return
-      if (!mmap[s.model]) mmap[s.model] = { requests: 0, total_tokens: 0, pct: 0 }
+      if (!mmap[s.model]) mmap[s.model] = { requests: 0, total_tokens: 0 }
       mmap[s.model].requests += s.messageCount
       mmap[s.model].total_tokens += s.totalTokens
       totalTokens += s.totalTokens
     })
-    
+
     return Object.entries(mmap)
       .map(([name, data]) => ({
         name,
@@ -211,6 +230,27 @@ export default memo(function Sessions() {
       .sort((a, b) => b.total_tokens - a.total_tokens)
   }, [filtered])
 
+  const chartModels = useMemo(() => {
+    if (allChartModels.length <= SESSION_CHART_MODEL_LIMIT) return allChartModels
+    const shown = allChartModels.slice(0, SESSION_CHART_MODEL_LIMIT - 1)
+    const rest = allChartModels.slice(SESSION_CHART_MODEL_LIMIT - 1)
+    const other = rest.reduce((sum, m) => ({
+      name: t('sessions_other_models'),
+      requests: sum.requests + m.requests,
+      total_tokens: sum.total_tokens + m.total_tokens,
+      pct: sum.pct + m.pct,
+    }), { name: t('sessions_other_models'), requests: 0, total_tokens: 0, pct: 0 })
+    return [...shown, other]
+  }, [allChartModels, t])
+
+  // Pre-computed total for the donut arcs. Hoisting this out of the SVG map
+  // avoids recomputing a reduce() on every iteration (O(n²)) — that was what
+  // stalled the page when the chart was expanded with many models.
+  const chartTotal = useMemo(
+    () => chartModels.reduce((s, m) => s + m.total_tokens, 0),
+    [chartModels]
+  )
+
   return (
     <div id="page-sessions">
       <div className="hero-row row-reverse">
@@ -219,7 +259,7 @@ export default memo(function Sessions() {
             {periods.map((p) => (<button key={p.v} className={period === p.v ? 'on' : ''} onClick={() => setPeriod(p.v)}>{p.l}</button>))}
           </div>
           <button className="btn btn-sm btn-ghost" onClick={() => {
-            const jsonl = filtered.map(s => JSON.stringify({ sessionId: s.sessionId, model: s.model, totalTokens: s.totalTokens, messageCount: s.messageCount, lastTime: s.lastTime })).join("\n")
+            const jsonl = filtered.map(s => JSON.stringify({ sessionId: s.sessionId, source: s.source || 'claude', model: s.model, totalTokens: s.totalTokens, messageCount: s.messageCount, lastTime: s.lastTime })).join("\n")
             const blob = new Blob([jsonl], { type: "application/jsonl" })
             const url = URL.createObjectURL(blob)
             const a = document.createElement("a"); a.href = url; a.download = `ocgt-sessions-${new Date().toISOString().slice(0,10)}.jsonl`; a.click(); URL.revokeObjectURL(url)
@@ -234,7 +274,7 @@ export default memo(function Sessions() {
         </div>
       </div>
 
-      <div className="row between sessions-filters">
+      <div className="sessions-filters">
         <div className="grid-stats sessions-stats-grid">
           <div className="stat sess-stat-card">
             <div className="lbl">{t('sessions_total')}</div>
@@ -249,7 +289,7 @@ export default memo(function Sessions() {
             <div className="v sess-v" title={fmtCost(summary.totalCost)}>{fmtCost(summary.totalCost)}</div>
           </div>
         </div>
-        <div className="row gap-2 items-center flex-wrap">
+        <div className="row gap-2 items-center flex-wrap sessions-search-row">
           <input className="sess-search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('sessions_search_placeholder')} aria-label={t('sessions_search_placeholder')} />
           <select value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} className="sess-search sess-search-fixed">
             <option value="">{t('sessions_filter_all')}</option>
@@ -266,10 +306,10 @@ export default memo(function Sessions() {
       
       {chartModels.length > 0 && (
         <div className="s-chart-collapse">
-          <div className={`s-chart-header${chartOpen ? ' open' : ''}`} role="button" tabIndex={0} onClick={() => setChartOpen(!chartOpen)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChartOpen(!chartOpen) } }} aria-expanded={chartOpen}>
+          <div className={`s-chart-header${chartOpen ? ' open' : ''}`} role="button" tabIndex={0} onClick={() => setChartOpen(open => !open)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setChartOpen(open => !open) } }} aria-expanded={chartOpen}>
             <ChevronRight size={16} className={`s-chart-chevron${chartOpen ? ' open' : ''}`} />
             <span className="s-chart-title">{t('sessions_model_chart')}</span>
-            <span className="s-chart-count tag muted">{chartModels.length} {t('sessions_models')}</span>
+            <span className="s-chart-count tag muted">{allChartModels.length} {t('sessions_models')}</span>
           </div>
           {chartOpen && (
             <div className="s-chart-body">
@@ -280,11 +320,12 @@ export default memo(function Sessions() {
                     const circ = 2 * Math.PI * r
                     let offset = 0
                     return chartModels.map((m, i) => {
-                      const pct = m.total_tokens / Math.max(1, chartModels.reduce((s, x) => s + x.total_tokens, 0))
+                      const pct = chartTotal > 0 ? m.total_tokens / chartTotal : 0
                       const dash = pct * circ
+                      const color = modelColor(m.name, i)
                       const el = (
                         <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-                          stroke={SESSION_COLORS[i % SESSION_COLORS.length]} strokeWidth={sw}
+                          stroke={color} strokeWidth={sw}
                           strokeDasharray={`${dash} ${circ - dash}`}
                           strokeDashoffset={-offset} />
                       )
@@ -295,14 +336,14 @@ export default memo(function Sessions() {
                   <circle cx="64" cy="64" r="46" fill="var(--paper, #fff)" />
                 </svg>
                 <div className="sess-chart-center-wrapper">
-                  <span className="sess-chart-center-val">{chartModels.length}</span>
+                  <span className="sess-chart-center-val">{allChartModels.length}</span>
                   <span className="sess-chart-center-lbl">{t('sessions_models')}</span>
                 </div>
               </div>
               <div className="legend2 sess-legend-wrapper">
                 {chartModels.map((m, i) => (
                   <div className="row sess-legend-item" key={i}>
-                    <span className="sw sess-legend-sw" style={{ background: SESSION_COLORS[i % SESSION_COLORS.length] }} />
+                    <span className="sw sess-legend-sw" style={{ background: modelColor(m.name, i) }} />
                     <span className="nm sess-legend-nm">{m.name}</span>
                     <span className="vv muted">{m.requests} {t('tm_requests')}</span>
                     <span className="vv muted sess-legend-vv">{m.pct.toFixed(1)}%</span>
@@ -342,7 +383,8 @@ export default memo(function Sessions() {
             {filtered.slice(0, SESSION_RENDER_LIMIT).map((s) => {
               const cost = costMap[s.sessionId] || 0
               const isSelected = selectedId === s.sessionId
-                            return (
+              const source = (s.source || 'claude').toLowerCase()
+              return (
                 <div
                   key={s.sessionId}
                   className={`item ${isSelected ? 'on' : ''}`}
@@ -354,6 +396,7 @@ export default memo(function Sessions() {
                   </div>
                   <div className="prev">{s.model || t('sessions_unknown')} | {s.messageCount} {t('sessions_messages')}</div>
                   <div className="tags">
+                    <span className={source === 'codex' ? 'tag blue' : 'tag'}>{sourceLabel(s.source)}</span>
                     <span className="tag">{s.model || t('sessions_unknown')}</span>
                     {s.events?.[0]?.message?.client && <span className="tag blue">{s.events[0].message.client}</span>}
                     <span className="tag green">{fmtCost(cost)}</span>
@@ -375,10 +418,11 @@ export default memo(function Sessions() {
               <>
                 <div className="crumb">
                   <Hash size={11} className="tm-mr-4 inline-middle" />
-                  {selectedSession.sessionId} | {selectedSession.messageCount} {t('sessions_messages')} | {fmtTokens(selectedSession.totalTokens)} {t('sessions_tokens_label')}
+                  {selectedSession.sessionId} | {sourceLabel(selectedSession.source)} | {selectedSession.messageCount} {t('sessions_messages')} | {fmtTokens(selectedSession.totalTokens)} {t('sessions_tokens_label')}
                 </div>
                 <h2>{selectedSession.model || t('sessions_title')}</h2>
                 <div className="meta">
+                  <span>{sourceLabel(selectedSession.source)}</span>
                   <span>{fmtDate(selectedSession.startTime)}</span>
                   <span>{fmtDate(selectedSession.lastTime)}</span>
                   <span>IN {fmtTokens(selectedSession.inputTokens)}</span>
@@ -401,20 +445,33 @@ export default memo(function Sessions() {
                 ) : !selectedEvents || selectedEvents.length === 0 ? (
                   <p className="sess-empty-hint muted tiny">{t('sessions_no_data')}</p>
                 ) : (
-                  selectedEvents.map((ev, idx) => {
-                    const role = ev.type === 'user' ? 'user' : 'assistant'
-                    const text = ev.message?.text
-                    return (
-                      <div key={idx} className="msg">
-                        <div className="role">
-                          <span className={'pill ' + role}>{role}</span>
+                  <>
+                    {selectedEvents.slice(0, detailLimit).map((ev, idx) => {
+                      const role = ev.type === 'user' ? 'user' : 'assistant'
+                      const text = ev.message?.text
+                      const tools = ev.message?.tools
+                      return (
+                        <div key={idx} className="msg">
+                          <div className="role">
+                            <span className={'pill ' + role}>{role}</span>
+                          </div>
+                          <div className="content">
+                            {text || (tools && tools.length > 0
+                              ? <span className="muted tiny">{t('sessions_used_tools').replace('{{tools}}', tools.join(', '))}</span>
+                              : <span className="muted tiny">--</span>)}
+                          </div>
                         </div>
-                        <div className="content">
-                          {text || <span className="muted tiny">--</span>}
-                        </div>
-                      </div>
-                    )
-                  })
+                      )
+                    })}
+                    {selectedEvents.length > detailLimit && (
+                      <button
+                        className="btn btn-sm btn-ghost sess-detail-more"
+                        onClick={() => setDetailLimit((l) => l + DETAIL_MSG_STEP)}
+                      >
+                        {t('sessions_show_more').replace('{{shown}}', String(detailLimit)).replace('{{total}}', String(selectedEvents.length))}
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}

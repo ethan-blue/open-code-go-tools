@@ -17,6 +17,11 @@ type requestTarget struct {
 	timeoutSeconds int
 	thinkingBudget int
 	protocol       string
+	modelProtocols map[string]string
+	// models are the provider-advertised model IDs (from Provider.Models) that
+	// should be surfaced in addition to whatever the upstream returns. Used for
+	// Codex /v1/models so custom/override models configured in the UI are visible.
+	models []string
 	// accounts is the provider's credential pool for failover rotation.
 	// Empty for legacy profile-based targets (rotation disabled).
 	accounts []providers.Account
@@ -121,6 +126,8 @@ func targetFromProvider(p providers.Provider, fallback config.Profile, fallbackU
 		timeoutSeconds: timeoutSeconds,
 		thinkingBudget: thinkingBudget,
 		protocol:       strings.TrimSpace(p.Protocol),
+		modelProtocols: copyStringMap(p.ModelProtocols),
+		models:         append([]string(nil), p.Models...),
 		accounts:       accounts,
 	}
 }
@@ -136,6 +143,15 @@ func requestLineFromRequest(r *http.Request) string {
 	case "/v1/chat/completions", "/v1/responses":
 		return "codex"
 	case "/v1/messages", "/v1/messages/count_tokens":
+		return "claude"
+	case "/v1/models":
+		// Claude Code always sends X-Ocgt-Profile via ANTHROPIC_CUSTOM_HEADERS.
+		// Codex sends no such header — only a bearer token. Use this to route
+		// /v1/models to the correct provider so Codex sees its own model list.
+		if strings.TrimSpace(r.Header.Get("X-Ocgt-Profile")) == "" &&
+			strings.TrimSpace(r.Header.Get("X-Ocgt-Client")) == "" {
+			return "codex"
+		}
 		return "claude"
 	}
 	if isClaudeDesktopRoute(r) {
@@ -160,13 +176,33 @@ func requestedProfileName(r *http.Request) string {
 }
 
 func targetUsesMessagesEndpoint(target requestTarget, model string) bool {
-	switch strings.ToLower(target.protocol) {
+	switch targetProtocolForModel(target, model) {
 	case "anthropic":
 		return true
 	case "openai-chat", "openai-responses":
 		return false
 	}
 	return target.profile.UsesMessagesEndpoint(model)
+}
+
+func targetProtocolForModel(target requestTarget, model string) string {
+	if len(target.modelProtocols) > 0 {
+		if protocol := strings.TrimSpace(target.modelProtocols[model]); protocol != "" {
+			return defaultProviderProtocol(normalizeProviderProtocol(protocol), target.upstream)
+		}
+	}
+	return defaultProviderProtocol(normalizeProviderProtocol(target.protocol), target.upstream)
+}
+
+func defaultProviderProtocol(protocol, upstream string) string {
+	if protocol == "openai-responses" && upstreamIsOpenCodeGo(upstream) {
+		return "openai-chat"
+	}
+	return protocol
+}
+
+func upstreamIsOpenCodeGo(upstream string) bool {
+	return strings.Contains(strings.ToLower(upstream), "opencode.ai/zen/go")
 }
 
 func copyStringMap(src map[string]string) map[string]string {

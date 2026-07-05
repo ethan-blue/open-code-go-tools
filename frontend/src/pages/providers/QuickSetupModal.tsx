@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { Zap } from 'lucide-react'
-import { apiFetch } from '@/lib/wails'
 import { useI18n } from '@/i18n'
 import { useToast } from '@/hooks/toast'
-import type { Provider, AgentLine, ProviderAccount } from '@/lib/types'
-
-const DEFAULT_UPSTREAM = 'https://opencode.ai/zen/go'
+import type { ProviderAccount } from '@/lib/types'
 
 /** Split pasted text into API keys (one per line, comma/semicolon also accepted). */
 export function parsePastedKeys(raw: string): string[] {
@@ -22,30 +19,30 @@ export function parsePastedKeys(raw: string): string[] {
 }
 
 /**
- * 一键配置 (Quick Setup): paste N API keys → the active provider on the current
- * line gets an account pool with failover rotation. Creates an OpenCode Go
- * provider when the line has none.
+ * 一键配置 / 批量导入 (Quick Setup): paste N API keys → they get appended to
+ * the provider's account pool. This is a pure front-end helper: it does NOT
+ * call any backend API; it hands the parsed keys back to the caller via
+ * onImport, which wires them into the editor's `accounts` array.
+ *
+ * Lives inside the account-pool section because bulk key import is exactly
+ * what the account pool is for.
  */
 export function QuickSetupModal({
-  line,
-  providers,
+  startIndex,
   onClose,
-  onDone,
+  onImport,
 }: {
-  line: AgentLine
-  providers: Provider[]
+  /** Number of accounts already in the pool — used to label the new entries. */
+  startIndex: number
   onClose: () => void
-  onDone: () => void
+  /** Receives the parsed accounts to append to the pool. */
+  onImport: (accounts: ProviderAccount[]) => void
 }) {
   const { t } = useI18n()
   const { toast } = useToast()
   const [raw, setRaw] = useState('')
-  const [saving, setSaving] = useState(false)
 
-  const target = providers.find(p => (p.line || 'claude') === line && p.enabled)
-    || providers.find(p => (p.line || 'claude') === line)
-
-  const apply = async () => {
+  const apply = () => {
     const keys = parsePastedKeys(raw)
     if (keys.length === 0) {
       toast(t('prov_quick_setup_none'), 'error')
@@ -53,37 +50,12 @@ export function QuickSetupModal({
     }
     const accounts: ProviderAccount[] = keys.map((apiKey, i) => ({
       id: '',
-      label: `${t('prov_pool_default_label')} ${i + 1}`,
+      label: `${t('prov_pool_default_label')} ${startIndex + i + 1}`,
       apiKey,
     }))
-    setSaving(true)
-    try {
-      if (target) {
-        await apiFetch(`/ocgt/api/providers/${target.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ ...target, accounts, enabled: true }),
-        })
-      } else {
-        await apiFetch('/ocgt/api/providers', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: 'OpenCode Go',
-            baseUrl: DEFAULT_UPSTREAM,
-            line,
-            protocol: line === 'codex' ? 'openai-responses' : 'openai-chat',
-            enabled: true,
-            accounts,
-          }),
-        })
-      }
-      toast(t('prov_quick_setup_done').replace('{{n}}', String(keys.length)), 'success')
-      onDone()
-      onClose()
-    } catch {
-      toast(t('prov_quick_setup_fail'), 'error')
-    } finally {
-      setSaving(false)
-    }
+    toast(t('prov_quick_setup_done').replace('{{n}}', String(keys.length)), 'success')
+    onImport(accounts)
+    onClose()
   }
 
   const keyCount = parsePastedKeys(raw).length
@@ -96,11 +68,6 @@ export function QuickSetupModal({
         </div>
         <div className="mb">
           <p className="prov-quick-desc">{t('prov_quick_setup_desc')}</p>
-          <p className="prov-quick-target">
-            {target
-              ? t('prov_quick_setup_target').replace('{{name}}', target.name)
-              : t('prov_quick_setup_create')}
-          </p>
           <textarea
             className="settings-env-key prov-quick-textarea"
             value={raw}
@@ -113,8 +80,8 @@ export function QuickSetupModal({
         </div>
         <div className="mf">
           <button className="btn btn-sm" onClick={onClose}>{t('prov_form_cancel')}</button>
-          <button className="btn btn-sm btn-primary" onClick={apply} disabled={saving || keyCount === 0}>
-            {saving ? t('status_saving') : `${t('prov_quick_setup_apply')}${keyCount > 0 ? ` (${keyCount})` : ''}`}
+          <button className="btn btn-sm btn-primary" onClick={apply} disabled={keyCount === 0}>
+            {`${t('prov_quick_setup_apply')}${keyCount > 0 ? ` (${keyCount})` : ''}`}
           </button>
         </div>
       </div>

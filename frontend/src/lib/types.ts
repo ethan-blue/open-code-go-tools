@@ -26,23 +26,16 @@ export interface Provider {
   defaultModel?: string
   messageModels?: string[]
   fallbackChain?: string[]
-  priority: number
   enabled: boolean
-  health: 'healthy' | 'degraded' | 'down' | 'unknown'
-  lastCheck?: string
-  requestCount: number
-  errorCount: number
-  avgLatency: number
   createdAt: number
   sortIndex?: number
   line: AgentLine
   protocol: ProviderProtocol
-  rateLimitPerSecond: number
-  rateLimitBurst: number
   requestTimeoutSeconds?: number
   thinkingBudgetTokens?: number
   authMode?: string
   modelAliases?: Record<string, string>
+  modelProtocols?: Partial<Record<string, ProviderProtocol>>
   headers?: Record<string, string>
   env?: Record<string, string>
 }
@@ -56,16 +49,14 @@ export interface ProviderFormData {
   messageModelsText: string
   fallbackChainText: string
   defaultModel: string
-  priority: number
   enabled: boolean
   line: AgentLine
   protocol: ProviderProtocol
-  rateLimitPerSecond: string
-  rateLimitBurst: string
   requestTimeoutSeconds: string
   thinkingBudgetTokens: string
   authMode: string
   modelAliasesJSON: string
+  modelProtocols: Partial<Record<string, ProviderProtocol>>
   headersJSON: string
   envJSON: string
 }
@@ -79,16 +70,14 @@ export const DEFAULT_PROVIDER_FORM: ProviderFormData = {
   messageModelsText: '',
   fallbackChainText: '',
   defaultModel: '',
-  priority: 0,
   enabled: true,
   line: 'claude',
   protocol: 'anthropic',
-  rateLimitPerSecond: '',
-  rateLimitBurst: '',
   requestTimeoutSeconds: '',
-  thinkingBudgetTokens: '',
+  thinkingBudgetTokens: '-1',
   authMode: 'bearer',
   modelAliasesJSON: '{}',
+  modelProtocols: {},
   headersJSON: '{}',
   envJSON: '{}',
 }
@@ -137,7 +126,7 @@ export interface SummaryTotals {
   cache_hit_rate: number
 }
 
-export interface ClientStat { name: string; requests: number; pct: number }
+export interface ClientStat { name: string; requests: number; pct: number; p50_latency_ms?: number; p95_latency_ms?: number }
 
 export interface StatsSummary {
   period: { from: string; to: string; days: number }

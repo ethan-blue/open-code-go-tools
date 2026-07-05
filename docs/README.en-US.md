@@ -1,170 +1,101 @@
-# ocgt - Claude Code Desktop Client & Local Proxy
+# ocgt v4 - Claude Code / Codex Desktop Client And Local Proxy
 
+`ocgt` v4 is a desktop client and local proxy for Claude Code and Codex. It handles Anthropic ↔ OpenAI protocol conversion and provides the v4 desktop UI for providers, accounts, models, traffic, quota status, and client integrations. The current version is `v4.0.1`.
 
+> Chinese version: [../README.md](../README.md)
 
-> 🌐 **[简体中文版 (Chinese Version)](../README.md)**
+## v4 Highlights
 
+- New v4 desktop UI.
+- Separate Claude / Codex provider lines, replacing the old shared Profile-facing workflow.
+- Account-level config: one provider can hold multiple accounts/API keys and query quota per account.
+- Codex one-click setup writes a desktop-compatible `custom` provider and generates `~/.codex/ocgt-model-catalog.json`.
+- Model catalog and aliases include default model, configured models, fallback/message models, aliases, and upstream `/v1/models` where available.
+- Traffic, quota, and session views remain available for Claude Code and Codex workflows.
 
+## Core Features
 
-`ocgt` (OpenCode Go Tools) is a desktop app for Claude Code. Two things at its core: a local proxy that handles Anthropic ↔ OpenAI protocol conversion, and a GUI panel for managing your API Key, monitoring traffic, and launching terminals. Supports Chinese and English. Current version v2.2.1.
+### Providers And Accounts
 
+- Claude and Codex can each use their own active upstream provider.
+- One provider can hold multiple accounts/API keys.
+- Account failures, auth failures, and quota exhaustion can fail over to another account.
+- Saved config hot reloads through the v4 provider structure.
 
+### Codex Integration
 
-No need to mess with environment variables or edit system hosts. Open the app, paste your API Key, pick a model, and you're coding.
+- One-click setup writes user-level `~/.codex/config.toml`.
+- The provider id is Codex Desktop-compatible `custom`, with display name `ocgt`.
+- Root-level `model_provider = "custom"` and `model = "..."` control Codex default requests.
+- `~/.codex/ocgt-model-catalog.json` is generated from the active ocgt Codex provider.
+- Restart Codex CLI / App after setup. The Codex app may still show `Custom`, but requests use the model written by ocgt.
 
----
+### Claude Code Integration
 
-## 🖥️ Core Features & Showcases
+- Print Claude Code environment variables for the active Claude provider.
+- Configure CLI, VS Code, Claude Code settings, and Claude Desktop entry points.
+- Quick Connect can launch PowerShell, Bash, or CMD with proxy environment variables injected.
 
-### 📊 System Status Dashboard
+### Traffic And Quota
 
-![System Status](../assets/2026-05-30_213807.png)
+- Track tokens, request count, success rate, average latency, and estimated cost.
+- Filter traffic details by time, model, and status, then export CSV.
+- View Rolling / Weekly / Monthly quota progress.
+- v4.0.1 fixes quota status incorrectly reporting an unset cookie when the active provider account already has one.
 
-* **Real-time Monitoring**: Check proxy listening ports (default `127.0.0.1:8787`), upstream API status, and API Key configuration.
+### Companion Tool
 
-* **Quick Access**: See config file paths and open the directory in one click.
+- [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor): a standalone terminal monitor for real-time ocgt proxy request logs.
 
+## Quick Start
 
+1. Download `ocgt_v4.0.1` or a newer build from [Releases](../../releases).
+2. Open provider/account settings and enter your API key or account credential.
+3. Choose the active provider and default model separately for Claude and Codex.
+4. Run the Claude Code or Codex one-click integration.
+5. Restart the target client and start using it.
 
-### ⚙️ Configuration Management
-
-![Configuration Settings](../assets/2026-05-30_213821.png)
-
-* **Hot Reload**: Enter your API Key and save — changes take effect immediately, no restart needed.
-
-* **Model Mapping**: Map Claude Sonnet / Haiku / Opus to whichever upstream models you want.
-
-* **Reasoning Intensity**: Fast / Slow / Deep / Geek / Off — fixed thinking budget settings.
-
-* **Same-model Retry**: 5 exponential backoff retries + 30s circuit breaker.
-
-
-
-### 💻 Quick Connect
-
-![Terminal Activation](../assets/2026-05-30_213831.png)
-
-* **One-click Terminal**: Pick a shell (PowerShell / Bash / CMD) and launch it with all proxy env vars injected.
-
-* **Client Integration**: Four options — CLI (global settings.json), VS Code, Claude Code settings, Claude Desktop App (3P Profile).
-
-* **One-click Repair**: Fix all configured integrations at once.
-
-
-
-### 📡 Traffic Stats
-
-* Token count / requests / success rate / average latency, with auto-adapting hour/day/week granularity.
-
-* **Traffic Details** (Ctrl+5): Full-field table with 3-axis filtering (time + model + status), pagination, CSV export.
-
-
-
-### 📊 Quota Dashboard
-
-* Rolling / Weekly / Monthly quota progress bars.
-
-* Auto-refresh every 5 seconds, or refresh manually.
-
-
-
-### 🧩 Companion Tool — [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor)
-
-* Standalone terminal monitor for ocgt proxy request logs.
-
-* Color-coded output with filtering and stats.
-
-* Pairs well with ocgt GUI for full-screen terminal workflows.
-
-
-
-### 🎨 Preferences
-
-* Theme: Light / Dark / System · 5 presets + custom hue slider.
-
-* Language: 中文 / English.
-
-* Window close: Ask every time / Minimize to tray / Quit.
-
----
-
-## 🚦 Quick Start
-
-
-
-1. **Download**: Grab the latest build from [Releases](../../releases) for your OS.
-
-2. **Configure**: Open the **Configuration** page (Ctrl+2) → enter your **API Key** → pick a model → save.
-
-3. **Launch**: Go to **Quick Connect** (Ctrl+3) → choose a shell → click **Launch** → type:
-
-   ```bash
-
-   claude
-
-   ```
-
----
-
-## 📁 Configuration & Hot Reload
-
-
-
-Config is stored locally:
+## Config Files
 
 ```text
-
 %USERPROFILE%\.ocgt\config.json
-
+%USERPROFILE%\.ocgt\providers.json
+%USERPROFILE%\.codex\config.toml
+%USERPROFILE%\.codex\ocgt-model-catalog.json
 ```
 
-Edit this file externally and the proxy picks up changes automatically within ~3 seconds — no restart needed.
+- `config.json` stores local proxy, preferences, quota, and shared settings.
+- `providers.json` stores Claude / Codex providers and account-level config.
+- Codex files are written to the user-level `.codex` directory by one-click setup.
 
-Claude and Codex keep separate active upstream providers in `providers.json`.
-Switching the active provider in ocgt hot-reloads immediately. For Codex, the
-Integrations page writes a desktop-compatible `custom` provider named `ocgt`
-into user-level `~/.codex/config.toml` and generates
-`~/.codex/ocgt-model-catalog.json`; restart Codex CLI / App after setup. The
-Codex app may still show only `Custom`, but requests use the root-level
-`model = "..."` value written by ocgt.
+## CLI Reference
 
----
-
-## 💻 CLI Reference
-
-Prefer the GUI? Skip this. But `ocgt` also has CLI commands:
-
-```powershell
-ocgt init       # Create default config
-ocgt serve      # Run proxy in the background
-ocgt claude-env # Print current profile env vars
-ocgt ccswitch   # Output CC Switch provider JSON
-ocgt version    # Show version
+```powershell
+ocgt init       # Create default config
+ocgt serve      # Run the proxy in the background
+ocgt claude-env # Print current Claude provider environment variables
+ocgt ccswitch   # Output CC Switch provider JSON
+ocgt version    # Show version
 ```
 
----
+## Build
 
-## 🛠️ Build & Development
+Requires Go 1.22+, Node.js, and Wails v2.12:
 
-Requires Go 1.22+ and Wails CLI for compilation.
-
-**Install Wails CLI**:
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
+cd frontend
+npm install
+cd ..
+wails build
 ```
 
-**Run Development Mode**:
-```powershell
-wails dev
-```
+## Known Limits
 
-**Build Production Executable**:
-```powershell
-.\build.bat
-```
+1. The Codex app may still show `Custom` in its model picker; actual requests use the root-level `model` written by ocgt.
+2. Usage stats depend on upstream token/cache fields, and some gateways may omit them.
+3. Costs are estimates and may differ from the final bill.
 
----
+## License
 
-## 📄 License
-
-This project is licensed under the **MIT License**.
+MIT License

@@ -1,167 +1,102 @@
-# ocgt — Claude Code 桌面客户端 & 本地代理
+# ocgt v4 - Claude Code / Codex 桌面客户端与本地代理
 
+`ocgt` v4 是给 Claude Code 和 Codex 使用的桌面客户端与本地代理。它负责 Anthropic ↔ OpenAI 协议转换，并提供 v4 桌面界面来管理供应商、账号、模型、流量、额度和客户端集成。当前版本是 `v4.0.1`。
 
+> English version: [docs/README.en-US.md](docs/README.en-US.md)
 
-`ocgt` 是给 Claude Code 用的桌面客户端。核心就两件事：一个本地代理负责 Anthropic ↔ OpenAI 协议转换，一个 GUI 面板让你管 API Key、看流量、起终端。中英双语。当前版本 v2.2.1。
+## v4 重点
 
-> 🌐 **[English Version](docs/README.en-US.md)**
+- 新的 v4 桌面界面。
+- Claude / Codex 双供应商线：两边各自维护当前生效上游，不再绑在同一个旧 Profile 概念上。
+- 账号级配置：同一供应商可维护多个账号/API Key，支持按账号查询额度。
+- Codex 一键配置：写入桌面端兼容的 `custom` provider，并生成 `~/.codex/ocgt-model-catalog.json`。
+- 模型目录和别名：支持默认模型、模型列表、fallback/message 模型、别名和上游 `/v1/models` 同步。
+- 流量、额度和会话视图继续保留，适合同时服务 Claude Code 与 Codex。
 
----
+## 核心功能
 
-## ✨ 核心功能
+### 供应商与账号
 
-### 📊 系统状态看板
-![System Status](assets/2026-05-30_213807.png)
-- 实时监控代理监听端口、上游 API 状态、API Key 配置
-- 可视化配置文件路径，一键打开所在文件夹
-- 客户端集成状态一目了然（CLI / VS Code / Claude Desktop）
+- Claude 和 Codex 分别选择当前上游供应商。
+- 同一供应商支持多个账号/API Key。
+- 账号失败、鉴权失败或额度耗尽时可进行故障转移。
+- 配置保存后按 v4 结构热重载。
 
-### ⚙️ 配置管理
+### Codex 集成
 
-![Configuration Settings](assets/2026-05-30_213821.png)
+- 一键写入用户级 `~/.codex/config.toml`。
+- provider id 使用 Codex Desktop 兼容的 `custom`，显示名为 `ocgt`。
+- 根级 `model_provider = "custom"` 和 `model = "..."` 控制 Codex 默认请求。
+- 生成 `~/.codex/ocgt-model-catalog.json`，写入当前 ocgt Codex 供应商的模型目录。
+- 配置后重启 Codex CLI / App 生效；Codex App 可能仍显示为 `Custom`，实际请求会使用 ocgt 写入的模型。
 
-- 填入 API Key 保存即热重载生效，不用重启
+### Claude Code 集成
 
-- **模型映射**：Sonnet / Haiku / Opus 随便映射到上游模型
+- 支持输出 Claude Code 环境变量。
+- 支持 CLI、VS Code、Claude Code settings、Claude Desktop 等常见集成入口。
+- 快速连接页可拉起 PowerShell、Bash 或 CMD，并注入代理环境变量。
 
-- **思考强度**：低 / 中 / 高 / 极高 / 关
+### 流量与额度
 
-- **同模型重试**：5 次指数退避 + 30s 断路器
+- 记录 Token、请求数、成功率、平均延迟和费用估算。
+- 流量明细支持按时间、模型、状态筛选，并可导出 CSV。
+- 额度看板支持 Rolling / Weekly / Monthly 进度查看。
+- v4.0.1 修复了已配置账号 cookie 时额度页仍提示未配置的问题。
 
-- **多账号轮询**：同一供应商可配置多个 API Key（账号池），429 / 额度耗尽 / 鉴权失败自动故障转移到下一个账号，冷却结束自动切回主账号；支持一键粘贴多 Key 配置与按账号查询额度
+### 配套工具
 
-- **模型回退链**：请求失败时按 fallback chain 顺序自动切换备用模型
+- [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor)：独立终端监控工具，用于实时查看 ocgt 代理请求日志。
 
-### 💻 快速连接
+## 快速开始
 
-![Terminal Activation](assets/2026-05-30_213831.png)
+1. 从 [Releases](../../releases) 下载 `ocgt_v4.0.1` 或更新版本。
+2. 打开供应商/账号配置，填入 API Key 或账号凭证。
+3. 为 Claude 和 Codex 分别选择当前供应商与默认模型。
+4. 在集成页执行 Claude Code 或 Codex 一键配置。
+5. 重启对应客户端后开始使用。
 
-- 一键拉起带全套代理环境变量的终端（PowerShell / Bash / CMD）
-
-- 四种客户端集成：CLI（全局 settings.json）、VS Code、Claude Code settings、Claude Desktop App（3P Profile）
-
-- 一键修复所有已配置的集成
-
-### 📡 流量统计面板
-
-- Token / 请求数 / 成功率 / 平均延迟，按小时/天/周自适应粒度展示
-
-- **流量明细**（Ctrl+5）：全字段表格、三维筛选（时间+模型+状态）、分页导航、CSV 导出
-
-### 📊 套餐额度看板
-
-- Rolling / Weekly / Monthly 额度进度条
-
-- 5 秒自动刷新，也可手动刷新
-
-### 🧩 配套工具 — [ocgt-monitor](https://github.com/xxtt-01/ocgt-monitor)
-- 独立终端监控工具，实时展示 ocgt 代理请求日志
-- 彩色高亮输出，支持过滤和统计
-- 与 ocgt GUI 互补使用，适合全屏终端工作流
-
-### 🎨 偏好设置
-
-- 主题：浅色 / 深色 / 跟随系统 · 5 种预设色 + 自定义色相
-
-- 语言：中文 / English
-
-- 关窗口时：每次问我 / 最小化到托盘 / 直接退出
-
----
-
-## 🚀 快速开始
-
-
-
-1. **下载**：[Releases](../../releases) → 选你系统的版本
-
-2. **配置**：配置管理页（Ctrl+2）→ 填 API Key → 选模型 → 保存
-
-3. **启动**：快速连接（Ctrl+3）→ 选终端 → 点一下 → 输 `claude`
-
----
-
-## 🔒 安全特性
-
-| 特性 | 说明 |
-|------|------|
-| **API Key 遮蔽** | 接口返回 `sk-...xxxx`，前端不暴露完整密钥 |
-| **命令注入防护** | 终端启动用环境变量引用代替字符串拼接 |
-| **自动认证** | Dashboard API 自动生成随机 Token，防止局域网未授权访问 |
-| **IP 识别** | 限流器以 `RemoteAddr` 为准，XFF 仅信任 localhost |
-| **优雅关机** | 追踪在途流式请求，最长等待 30s 再关闭 |
-| **CORS 收紧** | 仅允许 localhost 来源跨域 |
-
----
-
-## 📁 配置与热重载
-
-
+## 配置文件
 
 ```text
-
 %USERPROFILE%\.ocgt\config.json
-
+%USERPROFILE%\.ocgt\providers.json
+%USERPROFILE%\.codex\config.toml
+%USERPROFILE%\.codex\ocgt-model-catalog.json
 ```
 
+- `config.json` 保存本地代理、偏好、额度等通用配置。
+- `providers.json` 保存 Claude / Codex 供应商与账号级配置。
+- Codex 相关文件由一键配置写入用户级 `.codex` 目录。
 
-
-- **Schema 版本化**：`version` 字段 + `Migrate()` 迁移方法（当前 schema v1）
-
-- **热重载**：检测文件修改时间，3 秒轮询，外部编辑自动生效
-
-- **双供应商线**：Claude / Codex 各自维护当前生效上游供应商（providers.json），切换即热重载
-
-- **Codex 一键配置**：客户端集成页会把桌面端兼容的 `custom` provider 写入用户级
-  `~/.codex/config.toml`，provider 显示名仍是 `ocgt`，并生成
-  `~/.codex/ocgt-model-catalog.json`。Codex App 可能仍只显示“自定义”，实际请求
-  使用 ocgt 写入的根级 `model = "..."`；配置后重启 Codex CLI / App 生效。
-
----
-
-## 💻 命令行参考
+## 命令行参考
 
 ```powershell
 ocgt init       # 初始化默认配置
 ocgt serve      # 后台运行代理服务
-ocgt claude-env # 打印当前供应商的 Claude Code 环境变量
+ocgt claude-env # 打印当前 Claude 供应商环境变量
 ocgt ccswitch   # 输出 CC Switch provider JSON
 ocgt version    # 查看版本
 ```
 
----
+## 构建
 
-## 🛠️ 构建
-
-需要 Go 1.22+，Wails v2.12：
+需要 Go 1.22+、Node.js 和 Wails v2.12：
 
 ```powershell
 go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
-wails dev          # 开发模式
-wails build        # 生产构建
+cd frontend
+npm install
+cd ..
+wails build
 ```
 
----
+## 已知限制
 
-## ⚠️ 已知限制
+1. Codex App 的模型选择器可能仍只显示 `Custom`；实际请求以 ocgt 写入的根级 `model` 为准。
+2. 用量统计依赖上游返回的 token/cache 字段，部分网关可能缺字段。
+3. 费用是估算值，可能与最终账单不同。
 
-
-
-代理转发时，用量统计可能存在偏差：
-
-
-
-1. **缓存统计依赖上游**：DeepSeek/Qwen 等靠 `prompt_tokens_details.cached_tokens` 返回缓存数据，部分上游不返回就没法统计
-
-2. **费用是估算值**：按官方定价表计算，跟实际账单可能有出入，仅供参考
-
-
-
-这是架构限制，不是 Bug。
-
----
-
-## 📄 许可证
+## 许可证
 
 MIT License
 

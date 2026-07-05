@@ -1,5 +1,14 @@
 # Release Notes
 
+## ocgt v4.0.1 (2026-07-05)
+
+- Fixed dashboard quota status showing "quota cookie is not configured" when the
+  active OpenCode Go provider account already has a quota cookie.
+- Quota credential resolution now treats unset environment placeholders such as
+  `${OPENCODE_GO_AUTH_COOKIE}` as empty, then falls back to the active provider
+  account pool. Wails `FetchQuota()` and dashboard `/quota/status` now share the
+  same resolution path.
+
 ## ocgt v4.0.0 (2026-07-05)
 
 - V4 desktop build output is `ocgt_v4.0.0.exe`.

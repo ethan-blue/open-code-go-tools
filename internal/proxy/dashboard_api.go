@@ -529,27 +529,34 @@ func (s *Server) sessionsSnapshot() ([]session.SessionStats, error) {
 func (s *Server) resolveQuotaCredentials() (cookie, workspaceID string) {
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
-	if cookie != "" && workspaceID != "" {
-		return
-	}
 
 	s.configMu.RLock()
-	if cookie == "" && s.config.QuotaCookie != "" {
+	if !quota.CredentialConfigured(cookie) && quota.CredentialConfigured(s.config.QuotaCookie) {
 		cookie = s.config.QuotaCookie
 	}
-	if workspaceID == "" && s.config.QuotaWorkspaceID != "" {
+	if !resolvedQuotaValueConfigured(workspaceID) && resolvedQuotaValueConfigured(s.config.QuotaWorkspaceID) {
 		workspaceID = s.config.QuotaWorkspaceID
 	}
 	s.configMu.RUnlock()
-	if cookie == "" {
+	if !quota.CredentialConfigured(cookie) {
 		if c, w, ok := s.providerQuotaCredentials(); ok {
 			cookie = c
-			if workspaceID == "" {
+			if !resolvedQuotaValueConfigured(workspaceID) {
 				workspaceID = w
 			}
 		}
 	}
 	return
+}
+
+// ResolveQuotaCredentials exposes the same quota credential resolution used by
+// the dashboard API to Wails bindings.
+func (s *Server) ResolveQuotaCredentials() (cookie, workspaceID string) {
+	return s.resolveQuotaCredentials()
+}
+
+func resolvedQuotaValueConfigured(value string) bool {
+	return strings.TrimSpace(os.ExpandEnv(value)) != ""
 }
 
 func (s *Server) providerQuotaCredentials() (cookie, workspaceID string, ok bool) {
@@ -563,7 +570,7 @@ func (s *Server) providerQuotaCredentials() (cookie, workspaceID string, ok bool
 			continue
 		}
 		for _, acc := range provider.Accounts {
-			if strings.TrimSpace(acc.QuotaCookie) == "" {
+			if !quota.CredentialConfigured(acc.QuotaCookie) {
 				continue
 			}
 			return strings.TrimSpace(acc.QuotaCookie), strings.TrimSpace(acc.QuotaWorkspaceID), true

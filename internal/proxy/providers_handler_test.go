@@ -229,6 +229,55 @@ func TestProviderTestEndpointMatchesSavedProviderByBaseURL(t *testing.T) {
 	}
 }
 
+func TestQuotaStatusFallsBackToProviderAccountWhenGlobalCookiePlaceholderUnset(t *testing.T) {
+	t.Setenv("OPENCODE_GO_AUTH_COOKIE", "")
+	t.Setenv("OPENCODE_GO_WORKSPACE_ID", "")
+
+	srv, err := New(config.Config{
+		Listen:           "127.0.0.1:0",
+		QuotaCookie:      "${OPENCODE_GO_AUTH_COOKIE}",
+		QuotaWorkspaceID: "${OPENCODE_GO_WORKSPACE_ID}",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv.configDir = t.TempDir()
+	store := srv.ensureStore()
+	if err := store.Create(providers.Provider{
+		ID:      "go-provider",
+		Name:    "OpenCode Go",
+		BaseURL: "https://opencode.ai/zen/go",
+		Enabled: true,
+		Line:    "claude",
+		Accounts: []providers.Account{{
+			ID:               "acc-1",
+			APIKey:           "sk-test",
+			QuotaCookie:      "auth=account-cookie",
+			QuotaWorkspaceID: "wrk_account",
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cookie, workspaceID := srv.ResolveQuotaCredentials()
+	if cookie != "auth=account-cookie" || workspaceID != "wrk_account" {
+		t.Fatalf("resolved quota credentials = (%q, %q)", cookie, workspaceID)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ocgt/api/quota/status", nil)
+	rr := httptest.NewRecorder()
+	srv.apiQuotaStatus(rr, req)
+	var body struct {
+		Configured bool `json:"configured"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode quota status: %v, body: %s", err, rr.Body.String())
+	}
+	if !body.Configured {
+		t.Fatalf("quota status should be configured when provider account has quota cookie: %s", rr.Body.String())
+	}
+}
+
 // TestProviderTestEndpointAnthropicProtocol verifies the anthropic protocol
 // routes the probe to /v1/messages.
 func TestProviderTestEndpointAnthropicProtocol(t *testing.T) {

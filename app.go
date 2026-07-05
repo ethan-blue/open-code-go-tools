@@ -1604,33 +1604,37 @@ func (a *App) TestUpstreamConnection(upstream, apiKey string) map[string]any {
 // resolveQuotaCredentials resolves quota display credentials.
 // Priority: env vars → account-level Config.QuotaCookie/QuotaWorkspaceID.
 func (a *App) resolveQuotaCredentials() (cookie, workspaceID string) {
+	if a.srv != nil {
+		return a.srv.ResolveQuotaCredentials()
+	}
 	cookie = os.Getenv("OPENCODE_GO_AUTH_COOKIE")
 	workspaceID = os.Getenv("OPENCODE_GO_WORKSPACE_ID")
-	if cookie != "" && workspaceID != "" {
-		return
-	}
 
 	path, err := config.DefaultPath()
 	if err == nil {
 		cfg, err := config.Load(path)
 		if err == nil {
-			if cookie == "" && cfg.QuotaCookie != "" {
+			if !quota.CredentialConfigured(cookie) && quota.CredentialConfigured(cfg.QuotaCookie) {
 				cookie = cfg.QuotaCookie
 			}
-			if workspaceID == "" && cfg.QuotaWorkspaceID != "" {
+			if !resolvedQuotaConfigValueConfigured(workspaceID) && resolvedQuotaConfigValueConfigured(cfg.QuotaWorkspaceID) {
 				workspaceID = cfg.QuotaWorkspaceID
 			}
 		}
 	}
-	if cookie == "" {
+	if !quota.CredentialConfigured(cookie) {
 		if c, w, ok := activeProviderQuotaCredentials(); ok {
 			cookie = c
-			if workspaceID == "" {
+			if !resolvedQuotaConfigValueConfigured(workspaceID) {
 				workspaceID = w
 			}
 		}
 	}
 	return
+}
+
+func resolvedQuotaConfigValueConfigured(value string) bool {
+	return strings.TrimSpace(os.ExpandEnv(value)) != ""
 }
 
 func activeProviderQuotaCredentials() (cookie, workspaceID string, ok bool) {
@@ -1643,7 +1647,7 @@ func activeProviderQuotaCredentials() (cookie, workspaceID string, ok bool) {
 			continue
 		}
 		for _, acc := range provider.Accounts {
-			if strings.TrimSpace(acc.QuotaCookie) == "" {
+			if !quota.CredentialConfigured(acc.QuotaCookie) {
 				continue
 			}
 			return strings.TrimSpace(acc.QuotaCookie), strings.TrimSpace(acc.QuotaWorkspaceID), true

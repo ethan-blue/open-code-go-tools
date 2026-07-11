@@ -1,6 +1,8 @@
 # ocgt — Desktop Client and Local Proxy for Claude Code and Codex
 
-ocgt (OpenCode Go Tools) is a desktop application that also runs a local HTTP proxy, forwarding Claude Code and Codex requests to the upstream provider you configure. It converts between the Anthropic, OpenAI Chat Completions, and OpenAI Responses protocols, so a client that only speaks one of them can reach any compatible provider.
+ocgt (OpenCode Go Tools) is a desktop client and local proxy built primarily for the **OpenCode Go plan** ([opencode.ai/go](https://opencode.ai/go?ref=75Q34GPBZ1)): OpenCode Go is the default upstream, with a built-in quota dashboard for it, so Claude Code and Codex connect straight to your OpenCode Go subscription.
+
+It also supports other OpenAI / Anthropic-compatible upstream providers. As a local HTTP proxy, it converts between the Anthropic, OpenAI Chat Completions, and OpenAI Responses protocols, so a client that only speaks one of them can reach any compatible provider.
 
 The UI is bilingual (English / Simplified Chinese) and covers provider and account management, model configuration, traffic and quota monitoring, session inspection, cross-device sync, and client setup for Claude Code and Codex. Current version: `v4.0.3`.
 
@@ -8,6 +10,7 @@ The UI is bilingual (English / Simplified Chinese) and covers provider and accou
 
 ## What it solves
 
+- Connects Claude Code and Codex to an OpenCode Go subscription, with OpenCode Go quota usage (Rolling / Weekly / Monthly) in the same UI — this is its primary use.
 - Claude Code speaks only the Anthropic protocol, Codex speaks only the OpenAI Responses protocol, and many third-party providers (DeepSeek, Kimi, MiniMax, Qwen, ...) expose only OpenAI Chat Completions. ocgt translates between them so these clients and providers interoperate.
 - Each provider carries an account pool; when one account is rate-limited, fails auth, or runs out of quota, it fails over to the next without a config change.
 - Claude and Codex each keep their own active upstream, independently.

@@ -1,6 +1,8 @@
 # ocgt — Claude Code 与 Codex 的桌面客户端与本地代理
 
-ocgt（OpenCode Go Tools）是一个桌面应用，同时充当本地 HTTP 代理，把 Claude Code 和 Codex 的请求转发到你配置的上游供应商。它在 Anthropic、OpenAI Chat Completions、OpenAI Responses 三种协议之间做转换，让原本只认某一种协议的客户端也能接到任意兼容供应商上。
+ocgt（OpenCode Go Tools）主要是为 **OpenCode Go 套餐**（[opencode.ai/go](https://opencode.ai/go?ref=75Q34GPBZ1)）打造的桌面客户端与本地代理：默认上游就是 OpenCode Go，内置针对 OpenCode Go 的额度看板，让 Claude Code 和 Codex 直接接到你的 OpenCode Go 订阅上。
+
+同时它也支持其他 OpenAI / Anthropic 兼容的上游供应商——作为一个本地 HTTP 代理，它在 Anthropic、OpenAI Chat Completions、OpenAI Responses 三种协议之间做转换，让原本只认某一种协议的客户端也能接到任意兼容供应商上。
 
 界面提供中英双语，覆盖供应商与账号管理、模型配置、流量与额度监控、会话查看、跨设备同步，以及 Claude Code / Codex 的客户端接入配置。当前版本 `v4.0.3`。
 
@@ -8,6 +10,7 @@ ocgt（OpenCode Go Tools）是一个桌面应用，同时充当本地 HTTP 代�
 
 ## 它解决什么问题
 
+- 把 Claude Code 和 Codex 接到 OpenCode Go 订阅上，并在同一个界面里看 OpenCode Go 的额度用量（Rolling / Weekly / Monthly）——这是它的主要用途。
 - Claude Code 只说 Anthropic 协议，Codex 只说 OpenAI Responses 协议，而很多第三方供应商（DeepSeek、Kimi、MiniMax、Qwen 等）只提供 OpenAI Chat Completions 接口。ocgt 在中间做协议转换，让这些客户端和供应商互通。
 - 一个供应商配一套账号池，某个账号被限流、鉴权失败或额度耗尽时自动切换到下一个，不用手动改配置。
 - Claude 和 Codex 各自维护当前生效的上游，互不干扰。

@@ -165,14 +165,15 @@ func (a *App) SetupClaudeDesktopApp() string {
 	profile := map[string]any{
 		"coworkEgressAllowedHosts":     []string{"*"},
 		"disableDeploymentModeChooser": true,
+		"gatewayToken":                 token,
 		"inferenceGatewayApiKey":       token,
 		"inferenceGatewayAuthScheme":   "bearer",
 		"inferenceGatewayBaseUrl":      "http://" + listen + "/claude-desktop",
 		"inferenceProvider":            "gateway",
 		"inferenceModels": []map[string]any{
-			{"name": "claude-sonnet-4-5", "labelOverride": "Sonnet"},
-			{"name": "claude-opus-4-7", "labelOverride": "Opus"},
-			{"name": "claude-haiku-4-5", "labelOverride": "Haiku"},
+			{"name": "claude-sonnet-5", "labelOverride": "Sonnet", "supports1m": true},
+			{"name": "claude-opus-4-8", "labelOverride": "Opus", "supports1m": true},
+			{"name": "claude-haiku-4-5", "labelOverride": "Haiku", "supports1m": true},
 		},
 	}
 	meta := readJSONObject(metaPath)

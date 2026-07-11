@@ -778,9 +778,11 @@ func configuredModels(profile config.Profile) map[string]any {
 		}
 		models = append(models, modelEntry(id, display))
 	}
-	add("claude-sonnet-4-5", "Claude Sonnet -> "+profile.ResolveModel("claude-sonnet-4-5"))
+	add("claude-sonnet-5", "Claude Sonnet -> "+profile.ResolveModel("claude-sonnet-4-5"))
+	add("claude-sonnet-4-5", "Claude Sonnet 4.5 -> "+profile.ResolveModel("claude-sonnet-4-5"))
 	add("claude-haiku-4-5", "Claude Haiku -> "+profile.ResolveModel("claude-haiku-4-5"))
-	add("claude-opus-4-7", "Claude Opus -> "+profile.ResolveModel("claude-opus-4-7"))
+	add("claude-opus-4-8", "Claude Opus -> "+profile.ResolveModel("claude-opus-4-7"))
+	add("claude-opus-4-7", "Claude Opus 4.7 -> "+profile.ResolveModel("claude-opus-4-7"))
 	add(profile.DefaultModel, "Default -> "+profile.ResolveModel(""))
 	for alias, target := range profile.ModelAliases {
 		add(alias, alias+" -> "+target)
@@ -833,7 +835,7 @@ func modelEntry(id, display string) map[string]any {
 		"context_window":                   128000,
 		"max_context_window":               128000,
 		"effective_context_window_percent": 95,
-		"experimental_supported_tools":     []string{},
+		"experimental_supported_tools":     []string{"shell", "apply_patch", "web_search"},
 		"input_modalities":                 []string{"text"},
 		"supports_search_tool":             false,
 		"use_responses_lite":               false,

@@ -1422,7 +1422,7 @@ func TestConfiguredModelsIncludesRoutes(t *testing.T) {
 	}
 	out := configuredModels(profile)
 	models := out["data"].([]map[string]any)
-	if len(models) != 5 {
+	if len(models) != 7 {
 		t.Fatalf("configured model count = %#v", out)
 	}
 	ids := map[string]bool{}
@@ -1430,7 +1430,7 @@ func TestConfiguredModelsIncludesRoutes(t *testing.T) {
 		id, _ := model["id"].(string)
 		ids[id] = true
 	}
-	for _, want := range []string{"claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-7", "kimi", "minimax-m2.7"} {
+	for _, want := range []string{"claude-sonnet-5", "claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-8", "claude-opus-4-7", "kimi", "minimax-m2.7"} {
 		if !ids[want] {
 			t.Fatalf("configured models missing %q: %#v", want, out)
 		}

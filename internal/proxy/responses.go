@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -45,35 +46,10 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert Responses API input to Anthropic messages format
-	var messages []anthropicMsg
-	switch v := payload.Input.(type) {
-	case string:
-		messages = append(messages, anthropicMsg{Role: "user", Content: v})
-	case []any:
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				role, _ := m["role"].(string)
-				// Handle both simple string content and structured content blocks
-				if content, ok := m["content"].(string); ok && role != "" {
-					messages = append(messages, anthropicMsg{Role: role, Content: content})
-				} else if contentArr, ok := m["content"].([]any); ok && role != "" {
-					// Flatten content blocks into a single text string
-					var parts []string
-					for _, block := range contentArr {
-						if bm, ok := block.(map[string]any); ok {
-							if text, ok := bm["text"].(string); ok {
-								parts = append(parts, text)
-							}
-						}
-					}
-					if len(parts) > 0 {
-						messages = append(messages, anthropicMsg{Role: role, Content: strings.Join(parts, "\n")})
-					}
-				}
-			}
-		}
-	}
+	// Convert Responses API input to Anthropic messages format. This also
+	// reconstructs tool-call turns (function_call / function_call_output) so
+	// multi-turn tool use survives the round-trip through the proxy.
+	messages := responsesInputToMessages(payload.Input)
 
 	// Prepend instructions as a system message if provided
 	var system any
@@ -122,6 +98,179 @@ func (s *Server) responses(w http.ResponseWriter, r *http.Request) {
 	s.forwardResponses(w, r, target, payload, messages, system, start, client)
 }
 
+// responsesInputToMessages converts a Responses-API `input` field into
+// Anthropic messages. It accepts a bare string, or an array of input items:
+// role/content messages (string or structured content blocks) plus the
+// tool-call continuation items function_call and function_call_output, which
+// are reconstructed as Anthropic tool_use / tool_result content blocks so the
+// downstream converter can carry a multi-turn tool conversation upstream.
+func responsesInputToMessages(input any) []anthropicMsg {
+	var messages []anthropicMsg
+	switch v := input.(type) {
+	case string:
+		messages = append(messages, anthropicMsg{Role: "user", Content: v})
+	case []any:
+		for _, item := range v {
+			m, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch m["type"] {
+			case "function_call":
+				// Assistant turn that invoked a tool → tool_use block.
+				callID, _ := m["call_id"].(string)
+				name, _ := m["name"].(string)
+				if callID == "" || name == "" {
+					continue
+				}
+				var argsObj any
+				if argStr, _ := m["arguments"].(string); argStr != "" {
+					if json.Unmarshal([]byte(argStr), &argsObj) != nil {
+						argsObj = map[string]any{}
+					}
+				} else {
+					argsObj = map[string]any{}
+				}
+				messages = append(messages, anthropicMsg{
+					Role: "assistant",
+					Content: []any{map[string]any{
+						"type":  "tool_use",
+						"id":    callID,
+						"name":  name,
+						"input": argsObj,
+					}},
+				})
+			case "function_call_output":
+				// Tool result the client fed back → tool_result block.
+				callID, _ := m["call_id"].(string)
+				if callID == "" {
+					continue
+				}
+				messages = append(messages, anthropicMsg{
+					Role: "user",
+					Content: []any{map[string]any{
+						"type":        "tool_result",
+						"tool_use_id": callID,
+						"content":     responsesOutputText(m["output"]),
+					}},
+				})
+			case "reasoning":
+				// Assistant reasoning the client echoed back. Carry only the
+				// human-readable summary as a thinking block; Codex's
+				// encrypted_content is an OpenAI-format blob, not a valid
+				// Anthropic signature, so it is intentionally dropped. On the
+				// chat path this becomes reasoning_content; the anthropic path
+				// strips signature-less thinking blocks (see buildAnthropicPayload).
+				summary := responsesReasoningSummary(m)
+				if summary == "" {
+					continue
+				}
+				messages = append(messages, anthropicMsg{
+					Role: "assistant",
+					Content: []any{map[string]any{
+						"type":     "thinking",
+						"thinking": summary,
+					}},
+				})
+			default:
+				// Plain role/content message.
+				role, _ := m["role"].(string)
+				if role == "" {
+					continue
+				}
+				if content, ok := m["content"].(string); ok {
+					messages = append(messages, anthropicMsg{Role: role, Content: content})
+				} else if contentArr, ok := m["content"].([]any); ok {
+					var parts []string
+					for _, block := range contentArr {
+						if bm, ok := block.(map[string]any); ok {
+							if text, ok := bm["text"].(string); ok {
+								parts = append(parts, text)
+							}
+						}
+					}
+					if len(parts) > 0 {
+						messages = append(messages, anthropicMsg{Role: role, Content: strings.Join(parts, "\n")})
+					}
+				}
+			}
+		}
+	}
+	return messages
+}
+
+// responsesOutputText normalizes a function_call_output `output` field, which
+// may be a plain string or an array of content blocks, into a single string.
+func responsesOutputText(output any) string {
+	switch o := output.(type) {
+	case string:
+		return o
+	case []any:
+		var parts []string
+		for _, block := range o {
+			if bm, ok := block.(map[string]any); ok {
+				if text, ok := bm["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.Join(parts, "\n")
+	default:
+		return ""
+	}
+}
+
+// responsesReasoningSummary extracts human-readable summary text from a
+// Responses `reasoning` item. The summary may be a plain string, an array of
+// {type:"summary_text", text:...} blocks, or absent (encrypted-only), in which
+// case it returns "".
+func responsesReasoningSummary(item map[string]any) string {
+	switch s := item["summary"].(type) {
+	case string:
+		return strings.TrimSpace(s)
+	case []any:
+		var parts []string
+		for _, block := range s {
+			if bm, ok := block.(map[string]any); ok {
+				if text, ok := bm["text"].(string); ok && text != "" {
+					parts = append(parts, text)
+				}
+			}
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	}
+	// Some clients place summary text directly on a `text` field.
+	if text, ok := item["text"].(string); ok {
+		return strings.TrimSpace(text)
+	}
+	return ""
+}
+
+// stripUnsignedThinkingBlocks removes thinking content blocks that carry no
+// signature from each message's content. Anthropic rejects thinking blocks
+// without a valid signature, and reasoning we reconstruct from a Codex
+// Responses continuation has none (the encrypted blob is not Anthropic-valid).
+// The chat path keeps these blocks (converted to reasoning_content); only the
+// anthropic path must strip them before forwarding to /v1/messages.
+func stripUnsignedThinkingBlocks(messages []anthropicMsg) {
+	for i := range messages {
+		blocks, ok := messages[i].Content.([]any)
+		if !ok {
+			continue
+		}
+		kept := blocks[:0]
+		for _, block := range blocks {
+			if bm, ok := block.(map[string]any); ok && bm["type"] == "thinking" {
+				if sig, _ := bm["signature"].(string); sig == "" {
+					continue // drop signature-less thinking block
+				}
+			}
+			kept = append(kept, block)
+		}
+		messages[i].Content = kept
+	}
+}
+
 // forwardResponses handles non-streaming Responses API requests.
 // It forwards to the upstream via chat completions (or Anthropic messages for
 // native profiles) and converts the result to Responses API format.
@@ -138,31 +287,9 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 		return
 	}
 
-	// Build anthropicRequest for forwarding
-	anthReq := anthropicRequest{
-		Model:    model,
-		Messages: messages,
-		System:   system,
-		Stream:   false,
-	}
-	if payload.Temperature != nil {
-		anthReq.Temperature = payload.Temperature
-	}
-	if payload.MaxOutputTokens > 0 {
-		anthReq.MaxTokens = payload.MaxOutputTokens
-	}
-
-	// Convert Responses API tools to Anthropic tools format
-	if len(payload.Tools) > 0 {
-		for _, t := range payload.Tools {
-			anthReq.Tools = append(anthReq.Tools, anthropicTool{
-				Type:        "function",
-				Name:        t.Name,
-				Description: t.Description,
-				InputSchema: t.Parameters,
-			})
-		}
-	}
+	// Build anthropicRequest for forwarding (chat path shares the same payload
+	// shape as the anthropic path; anthropicToOpenAI translates it downstream).
+	anthReq := buildAnthropicPayload(model, payload, messages, system, false)
 
 	const maxRetries = 5
 	var lastErr error
@@ -189,6 +316,7 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 
 		chatReq := anthropicToOpenAI(anthReq)
 		chatReq.Model = model
+		chatReq.ParallelToolCalls = payload.ParallelToolCalls
 
 		body, err := json.Marshal(chatReq)
 		if err != nil {
@@ -275,27 +403,54 @@ func (s *Server) forwardResponses(w http.ResponseWriter, r *http.Request, target
 		resp.Body.Close()
 
 		// Convert to Responses API format
-		text := ""
+		var outputItems []responsesItem
 		if len(out.Choices) > 0 {
-			text = out.Choices[0].Message.Content
+			choice := out.Choices[0]
+			// Text content message (only if there is text)
+			if choice.Message.Content != "" {
+				outputItems = append(outputItems, responsesItem{
+					Type:   "message",
+					ID:     fmt.Sprintf("msg_%s", generateID()),
+					Role:   "assistant",
+					Status: "completed",
+					Content: []responsesContent{
+						{
+							Type:        "output_text",
+							Text:        choice.Message.Content,
+							Annotations: []any{},
+						},
+					},
+				})
+			}
+			// Tool calls → function_call output items
+			for _, call := range choice.Message.ToolCalls {
+				outputItems = append(outputItems, responsesItem{
+					Type:      "function_call",
+					ID:        fmt.Sprintf("fc_%s", generateID()),
+					Status:    "completed",
+					CallID:    call.ID,
+					Name:      call.Function.Name,
+					Arguments: call.Function.Arguments,
+				})
+			}
+		}
+		if len(outputItems) == 0 {
+			outputItems = []responsesItem{{
+				Type:   "message",
+				ID:     fmt.Sprintf("msg_%s", generateID()),
+				Role:   "assistant",
+				Status: "completed",
+				Content: []responsesContent{
+					{Type: "output_text", Text: "", Annotations: []any{}},
+				},
+			}}
 		}
 
 		responsesResp := responsesResponse{
 			ID:     fmt.Sprintf("resp_%s", generateID()),
 			Object: "response",
 			Model:  model,
-			Output: []responsesItem{
-				{
-					Type: "message",
-					Role: "assistant",
-					Content: []responsesContent{
-						{
-							Type: "output_text",
-							Text: text,
-						},
-					},
-				},
-			},
+			Output: outputItems,
 			Usage: responsesUsage{
 				InputTokens:  out.Usage.PromptTokens,
 				OutputTokens: out.Usage.CompletionTokens,
@@ -346,28 +501,7 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 	}
 
 	// Build anthropicRequest for forwarding
-	anthReq := anthropicRequest{
-		Model:    model,
-		Messages: messages,
-		System:   system,
-		Stream:   true,
-	}
-	if payload.Temperature != nil {
-		anthReq.Temperature = payload.Temperature
-	}
-	if payload.MaxOutputTokens > 0 {
-		anthReq.MaxTokens = payload.MaxOutputTokens
-	}
-	if len(payload.Tools) > 0 {
-		for _, t := range payload.Tools {
-			anthReq.Tools = append(anthReq.Tools, anthropicTool{
-				Type:        "function",
-				Name:        t.Name,
-				Description: t.Description,
-				InputSchema: t.Parameters,
-			})
-		}
-	}
+	anthReq := buildAnthropicPayload(model, payload, messages, system, true)
 
 	// Sanitize image content for non-vision models
 	if !supportsVisionInput(model) {
@@ -376,6 +510,7 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 
 	chatReq := anthropicToOpenAI(anthReq)
 	chatReq.Model = model
+	chatReq.ParallelToolCalls = payload.ParallelToolCalls
 
 	body, err := json.Marshal(chatReq)
 	if err != nil {
@@ -467,17 +602,91 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 		"type":     "response.created",
 		"response": initialResp,
 	})
-	itemID := fmt.Sprintf("msg_%s", generateID())
-	emitResponsesTextStart(w, flusher, itemID)
 
-	// Parse upstream OpenAI SSE and convert to Responses API format
+	// Track streaming state for text and tool calls
 	var fullText strings.Builder
 	var inputTokens, outputTokens int
+	var textItemAdded bool
+	var textItemID string
+	var textOutputIndex uint32
+	var nextOutputIndex uint32
+
+	// Tool call state tracking (keyed by tool index from upstream)
+	type toolCallState struct {
+		callID      string
+		name        string
+		arguments   string
+		itemID      string
+		outputIndex uint32
+		added       bool
+		done        bool
+	}
+	toolStates := make(map[int]*toolCallState)
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
 	var lineBuf strings.Builder
 	var inDataBlock bool
+
+	ensureTextItemStarted := func() {
+		if textItemAdded {
+			return
+		}
+		textItemAdded = true
+		textItemID = fmt.Sprintf("msg_%s", generateID())
+		outputIdx := nextOutputIndex
+		textOutputIndex = outputIdx
+		nextOutputIndex++
+		writeSSEEvent(w, flusher, "response.output_item.added", map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": outputIdx,
+			"item": map[string]any{
+				"id":      textItemID,
+				"type":    "message",
+				"status":  "in_progress",
+				"role":    "assistant",
+				"content": []any{},
+			},
+		})
+		writeSSEEvent(w, flusher, "response.content_part.added", map[string]any{
+			"type":          "response.content_part.added",
+			"item_id":       textItemID,
+			"output_index":  outputIdx,
+			"content_index": 0,
+			"part":          map[string]any{"type": "output_text", "text": "", "annotations": []any{}},
+		})
+	}
+
+	flushTextItem := func() {
+		if !textItemAdded {
+			return
+		}
+		writeSSEEvent(w, flusher, "response.output_text.done", map[string]any{
+			"type":          "response.output_text.done",
+			"item_id":       textItemID,
+			"output_index":  textOutputIndex,
+			"content_index": 0,
+			"text":          fullText.String(),
+		})
+		writeSSEEvent(w, flusher, "response.content_part.done", map[string]any{
+			"type":          "response.content_part.done",
+			"item_id":       textItemID,
+			"output_index":  textOutputIndex,
+			"content_index": 0,
+			"part":          map[string]any{"type": "output_text", "text": fullText.String(), "annotations": []any{}},
+		})
+		writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": textOutputIndex,
+			"item": map[string]any{
+				"id":      textItemID,
+				"type":    "message",
+				"status":  "completed",
+				"role":    "assistant",
+				"content": []any{map[string]any{"type": "output_text", "text": fullText.String(), "annotations": []any{}}},
+			},
+		})
+	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -494,14 +703,12 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 		}
 
 		if line == "" && inDataBlock {
-			// Process accumulated data line
 			inDataBlock = false
 			var chunk openAIChunk
 			if err := json.Unmarshal([]byte(lineBuf.String()), &chunk); err != nil {
 				continue
 			}
 
-			// Extract usage from the final chunk if present
 			if chunk.Usage.PromptTokens > 0 {
 				inputTokens = chunk.Usage.PromptTokens
 			}
@@ -512,16 +719,76 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 			if len(chunk.Choices) > 0 {
 				delta := chunk.Choices[0].Delta
 
-				// Stream text content as response.output_text.delta
+				// Text content
 				if delta.Content != "" {
+					ensureTextItemStarted()
 					fullText.WriteString(delta.Content)
 					writeSSEEvent(w, flusher, "response.output_text.delta", map[string]any{
 						"type":          "response.output_text.delta",
-						"item_id":       itemID,
+						"item_id":       textItemID,
 						"output_index":  0,
 						"content_index": 0,
 						"delta":         delta.Content,
 					})
+				}
+
+				// Tool calls
+				for _, tc := range delta.ToolCalls {
+					idx := 0
+					if tc.Index != nil {
+						idx = *tc.Index
+					}
+					state, exists := toolStates[idx]
+					if !exists {
+						state = &toolCallState{}
+						toolStates[idx] = state
+					}
+					if tc.ID != "" {
+						state.callID = tc.ID
+					}
+					if tc.Function.Name != "" {
+						state.name = tc.Function.Name
+					}
+					if tc.Function.Arguments != "" {
+						state.arguments += tc.Function.Arguments
+					}
+
+					// Emit output_item.added when we have both call_id and name
+					if !state.added && state.callID != "" && state.name != "" {
+						// Flush any pending text item first
+						flushTextItem()
+						state.added = true
+						state.outputIndex = nextOutputIndex
+						nextOutputIndex++
+						state.itemID = fmt.Sprintf("fc_%s", generateID())
+						writeSSEEvent(w, flusher, "response.output_item.added", map[string]any{
+							"type":         "response.output_item.added",
+							"output_index": state.outputIndex,
+							"item": map[string]any{
+								"id":      state.itemID,
+								"type":    "function_call",
+								"status":  "in_progress",
+								"call_id": state.callID,
+								"name":    state.name,
+							},
+						})
+						// Emit any arguments accumulated so far
+						if state.arguments != "" {
+							writeSSEEvent(w, flusher, "response.function_call_arguments.delta", map[string]any{
+								"type":         "response.function_call_arguments.delta",
+								"item_id":      state.itemID,
+								"output_index": state.outputIndex,
+								"delta":        state.arguments,
+							})
+						}
+					} else if state.added && tc.Function.Arguments != "" {
+						writeSSEEvent(w, flusher, "response.function_call_arguments.delta", map[string]any{
+							"type":         "response.function_call_arguments.delta",
+							"item_id":      state.itemID,
+							"output_index": state.outputIndex,
+							"delta":        tc.Function.Arguments,
+						})
+					}
 				}
 			}
 			continue
@@ -530,35 +797,85 @@ func (s *Server) streamResponses(w http.ResponseWriter, r *http.Request, target 
 		// Non-data lines (comments, empty lines) — skip
 	}
 
-	// If we didn't get usage from the stream, estimate output tokens from text
+	// Finalize: flush text item if still open
+	flushTextItem()
+
+	// Finalize: close all tool call items
+	for _, idx := range sortedKeys(toolStates) {
+		state := toolStates[idx]
+		if state.done {
+			continue
+		}
+		state.done = true
+		if !state.added {
+			// Tool call never got enough info — skip
+			continue
+		}
+		writeSSEEvent(w, flusher, "response.function_call_arguments.done", map[string]any{
+			"type":         "response.function_call_arguments.done",
+			"item_id":      state.itemID,
+			"output_index": state.outputIndex,
+			"arguments":    state.arguments,
+		})
+		writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
+			"type":         "response.output_item.done",
+			"output_index": state.outputIndex,
+			"item": map[string]any{
+				"id":        state.itemID,
+				"type":      "function_call",
+				"status":    "completed",
+				"call_id":   state.callID,
+				"name":      state.name,
+				"arguments": state.arguments,
+			},
+		})
+	}
+
 	if outputTokens == 0 {
 		outputTokens = estimateTokensFromText(fullText.String())
 	}
 
-	// Build the final completed response
+	// Build the final completed response with all output items
+	var finalOutput []responsesItem
+	if fullText.Len() > 0 {
+		finalOutput = append(finalOutput, responsesItem{
+			Type:   "message",
+			ID:     textItemID,
+			Role:   "assistant",
+			Status: "completed",
+			Content: []responsesContent{
+				{Type: "output_text", Text: fullText.String(), Annotations: []any{}},
+			},
+		})
+	}
+	for _, idx := range sortedKeys(toolStates) {
+		state := toolStates[idx]
+		if state.added {
+			finalOutput = append(finalOutput, responsesItem{
+				Type:      "function_call",
+				ID:        state.itemID,
+				Status:    "completed",
+				CallID:    state.callID,
+				Name:      state.name,
+				Arguments: state.arguments,
+			})
+		}
+	}
+	if len(finalOutput) == 0 {
+		finalOutput = []responsesItem{{
+			Type: "message", ID: fmt.Sprintf("msg_%s", generateID()),
+			Role: "assistant", Status: "completed",
+			Content: []responsesContent{{Type: "output_text", Text: "", Annotations: []any{}}},
+		}}
+	}
+
 	completedResp := responsesResponse{
 		ID:     responseID,
 		Object: "response",
 		Model:  model,
-		Output: []responsesItem{
-			{
-				Type: "message",
-				Role: "assistant",
-				Content: []responsesContent{
-					{
-						Type: "output_text",
-						Text: fullText.String(),
-					},
-				},
-			},
-		},
-		Usage: responsesUsage{
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
-		},
+		Output: finalOutput,
+		Usage:  responsesUsage{InputTokens: inputTokens, OutputTokens: outputTokens},
 	}
-
-	emitResponsesTextDone(w, flusher, itemID, fullText.String())
 
 	// Emit response.completed event
 	writeSSEEvent(w, flusher, "response.completed", map[string]any{
@@ -590,6 +907,7 @@ func (s *Server) forwardResponsesViaAnthropic(w http.ResponseWriter, r *http.Req
 	}
 
 	anthReq := buildAnthropicPayload(model, payload, messages, system, false)
+	stripUnsignedThinkingBlocks(anthReq.Messages)
 	candidates := s.buildCandidateModels(model, target.profile)
 	const maxRetries = 5
 	var lastErr error
@@ -726,6 +1044,7 @@ func (s *Server) streamResponsesViaAnthropic(w http.ResponseWriter, r *http.Requ
 	}
 
 	anthReq := buildAnthropicPayload(model, payload, messages, system, true)
+	stripUnsignedThinkingBlocks(anthReq.Messages)
 	if !supportsVisionInput(model) {
 		sanitizeContentBlocksForNonVision(anthReq.Messages)
 	}
@@ -813,12 +1132,75 @@ func (s *Server) streamResponsesViaAnthropic(w http.ResponseWriter, r *http.Requ
 		"type":     "response.created",
 		"response": initialResp,
 	})
-	itemID := fmt.Sprintf("msg_%s", generateID())
-	emitResponsesTextStart(w, flusher, itemID)
 
-	// Parse upstream Anthropic SSE and translate to Responses-API events.
+	// Track streaming state
 	var fullText strings.Builder
 	var inputTokens, outputTokens int
+	var textItemAdded bool
+	var textItemID string
+	var textOutputIndex uint32
+	var nextOutputIndex uint32
+
+	// Tool use tracking for Anthropic streaming
+	type anthropicToolState struct {
+		id          string
+		name        string
+		inputJSON   strings.Builder
+		itemID      string
+		outputIndex uint32
+		added       bool
+		done        bool
+	}
+	toolStates := make(map[int]*anthropicToolState) // keyed by content_block index
+	var currentBlockIndex int
+	var currentBlockType string // "text" or "tool_use"
+
+	ensureTextItemStarted := func() {
+		if textItemAdded {
+			return
+		}
+		textItemAdded = true
+		textItemID = fmt.Sprintf("msg_%s", generateID())
+		outputIdx := nextOutputIndex
+		textOutputIndex = outputIdx
+		nextOutputIndex++
+		writeSSEEvent(w, flusher, "response.output_item.added", map[string]any{
+			"type":         "response.output_item.added",
+			"output_index": outputIdx,
+			"item": map[string]any{
+				"id": textItemID, "type": "message", "status": "in_progress",
+				"role": "assistant", "content": []any{},
+			},
+		})
+		writeSSEEvent(w, flusher, "response.content_part.added", map[string]any{
+			"type": "response.content_part.added", "item_id": textItemID,
+			"output_index": outputIdx, "content_index": 0,
+			"part": map[string]any{"type": "output_text", "text": "", "annotations": []any{}},
+		})
+	}
+
+	flushTextItem := func() {
+		if !textItemAdded {
+			return
+		}
+		writeSSEEvent(w, flusher, "response.output_text.done", map[string]any{
+			"type": "response.output_text.done", "item_id": textItemID,
+			"output_index": textOutputIndex, "content_index": 0, "text": fullText.String(),
+		})
+		writeSSEEvent(w, flusher, "response.content_part.done", map[string]any{
+			"type": "response.content_part.done", "item_id": textItemID,
+			"output_index": textOutputIndex, "content_index": 0,
+			"part": map[string]any{"type": "output_text", "text": fullText.String(), "annotations": []any{}},
+		})
+		writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
+			"type": "response.output_item.done", "output_index": textOutputIndex,
+			"item": map[string]any{
+				"id": textItemID, "type": "message", "status": "completed", "role": "assistant",
+				"content": []any{map[string]any{"type": "output_text", "text": fullText.String(), "annotations": []any{}}},
+			},
+		})
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 256*1024), 16*1024*1024)
 	var lineBuf strings.Builder
@@ -844,20 +1226,81 @@ func (s *Server) streamResponsesViaAnthropic(w http.ResponseWriter, r *http.Requ
 						inputTokens = intFromJSONNumber(uu["input_tokens"])
 					}
 				}
+			case "content_block_start":
+				if cb, ok := ev["content_block"].(map[string]any); ok {
+					idx := intFromJSONNumber(ev["index"])
+					currentBlockIndex = idx
+					currentBlockType, _ = cb["type"].(string)
+					if currentBlockType == "tool_use" {
+						toolID, _ := cb["id"].(string)
+						toolName, _ := cb["name"].(string)
+						state := &anthropicToolState{
+							id:   toolID,
+							name: toolName,
+						}
+						toolStates[idx] = state
+					}
+				}
 			case "content_block_delta":
 				if delta, ok := ev["delta"].(map[string]any); ok {
-					if dt, _ := delta["type"].(string); dt == "text_delta" {
+					dt, _ := delta["type"].(string)
+					switch dt {
+					case "text_delta":
 						if t, _ := delta["text"].(string); t != "" {
+							ensureTextItemStarted()
 							fullText.WriteString(t)
 							writeSSEEvent(w, flusher, "response.output_text.delta", map[string]any{
-								"type":          "response.output_text.delta",
-								"item_id":       itemID,
-								"output_index":  0,
-								"content_index": 0,
-								"delta":         t,
+								"type": "response.output_text.delta", "item_id": textItemID,
+								"output_index": 0, "content_index": 0, "delta": t,
 							})
 						}
+					case "input_json_delta":
+						if partial, _ := delta["partial_json"].(string); partial != "" {
+							state, ok := toolStates[currentBlockIndex]
+							if ok {
+								state.inputJSON.WriteString(partial)
+								if !state.added && state.id != "" && state.name != "" {
+									flushTextItem()
+									state.added = true
+									state.outputIndex = nextOutputIndex
+									nextOutputIndex++
+									state.itemID = fmt.Sprintf("fc_%s", generateID())
+									writeSSEEvent(w, flusher, "response.output_item.added", map[string]any{
+										"type": "response.output_item.added", "output_index": state.outputIndex,
+										"item": map[string]any{
+											"id": state.itemID, "type": "function_call", "status": "in_progress",
+											"call_id": state.id, "name": state.name,
+										},
+									})
+								}
+								if state.added {
+									writeSSEEvent(w, flusher, "response.function_call_arguments.delta", map[string]any{
+										"type":    "response.function_call_arguments.delta",
+										"item_id": state.itemID, "output_index": state.outputIndex,
+										"delta": partial,
+									})
+								}
+							}
+						}
 					}
+				}
+			case "content_block_stop":
+				state, ok := toolStates[currentBlockIndex]
+				if ok && state.added && !state.done {
+					state.done = true
+					writeSSEEvent(w, flusher, "response.function_call_arguments.done", map[string]any{
+						"type":    "response.function_call_arguments.done",
+						"item_id": state.itemID, "output_index": state.outputIndex,
+						"arguments": state.inputJSON.String(),
+					})
+					writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
+						"type": "response.output_item.done", "output_index": state.outputIndex,
+						"item": map[string]any{
+							"id": state.itemID, "type": "function_call", "status": "completed",
+							"call_id": state.id, "name": state.name,
+							"arguments": state.inputJSON.String(),
+						},
+					})
 				}
 			case "message_delta":
 				if u, ok := ev["usage"].(map[string]any); ok {
@@ -868,18 +1311,61 @@ func (s *Server) streamResponsesViaAnthropic(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	// Finalize
+	flushTextItem()
+	for _, idx := range sortedKeys(toolStates) {
+		state := toolStates[idx]
+		if state.added && !state.done {
+			state.done = true
+			writeSSEEvent(w, flusher, "response.function_call_arguments.done", map[string]any{
+				"type":    "response.function_call_arguments.done",
+				"item_id": state.itemID, "output_index": state.outputIndex,
+				"arguments": state.inputJSON.String(),
+			})
+			writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
+				"type": "response.output_item.done", "output_index": state.outputIndex,
+				"item": map[string]any{
+					"id": state.itemID, "type": "function_call", "status": "completed",
+					"call_id": state.id, "name": state.name,
+					"arguments": state.inputJSON.String(),
+				},
+			})
+		}
+	}
+
 	if outputTokens == 0 {
 		outputTokens = estimateTokensFromText(fullText.String())
 	}
 
+	// Build final output items
+	var finalOutput []responsesItem
+	if fullText.Len() > 0 {
+		finalOutput = append(finalOutput, responsesItem{
+			Type: "message", ID: textItemID, Role: "assistant", Status: "completed",
+			Content: []responsesContent{{Type: "output_text", Text: fullText.String(), Annotations: []any{}}},
+		})
+	}
+	for _, idx := range sortedKeys(toolStates) {
+		state := toolStates[idx]
+		if state.added {
+			finalOutput = append(finalOutput, responsesItem{
+				Type: "function_call", ID: state.itemID, Status: "completed",
+				CallID: state.id, Name: state.name, Arguments: state.inputJSON.String(),
+			})
+		}
+	}
+	if len(finalOutput) == 0 {
+		finalOutput = []responsesItem{{Type: "message", ID: fmt.Sprintf("msg_%s", generateID()),
+			Role: "assistant", Status: "completed",
+			Content: []responsesContent{{Type: "output_text", Text: "", Annotations: []any{}}},
+		}}
+	}
+
 	completedResp := responsesResponse{
-		ID:     responseID,
-		Object: "response",
-		Model:  model,
-		Output: []responsesItem{{Type: "message", Role: "assistant", Content: []responsesContent{{Type: "output_text", Text: fullText.String()}}}},
+		ID: responseID, Object: "response", Model: model,
+		Output: finalOutput,
 		Usage:  responsesUsage{InputTokens: inputTokens, OutputTokens: outputTokens},
 	}
-	emitResponsesTextDone(w, flusher, itemID, fullText.String())
 	writeSSEEvent(w, flusher, "response.completed", map[string]any{
 		"type":     "response.completed",
 		"response": completedResp,
@@ -1132,7 +1618,56 @@ func buildAnthropicPayload(model string, payload responsesRequest, messages []an
 			})
 		}
 	}
+	// Map Responses tool_choice into Anthropic's intermediate shape. The chat
+	// path re-translates this to OpenAI via convertToolChoice; the anthropic
+	// path uses it directly. Fold an explicit parallel_tool_calls:false into
+	// Anthropic's disable_parallel_tool_use so it survives on that path too.
+	if tc := responsesToolChoiceToAnthropic(payload.ToolChoice); tc != nil {
+		if payload.ParallelToolCalls != nil && !*payload.ParallelToolCalls {
+			tc["disable_parallel_tool_use"] = true
+		}
+		anthReq.ToolChoice = tc
+	} else if payload.ParallelToolCalls != nil && !*payload.ParallelToolCalls && len(anthReq.Tools) > 0 {
+		anthReq.ToolChoice = map[string]any{"type": "auto", "disable_parallel_tool_use": true}
+	}
 	return anthReq
+}
+
+// responsesToolChoiceToAnthropic converts an OpenAI/Responses tool_choice into
+// the Anthropic-style shape understood by convertToolChoice. It accepts:
+//   - "auto"     -> {"type":"auto"}
+//   - "none"     -> {"type":"none"}  (no tool call this turn)
+//   - "required" -> {"type":"any"}   (must call some tool)
+//   - {"type":"function","name":X} or {"type":"function","function":{"name":X}}
+//     -> {"type":"tool","name":X}
+//
+// It returns nil when the choice is absent or unrecognized, leaving the
+// upstream default in effect.
+func responsesToolChoiceToAnthropic(choice any) map[string]any {
+	switch v := choice.(type) {
+	case string:
+		switch v {
+		case "auto":
+			return map[string]any{"type": "auto"}
+		case "none":
+			return map[string]any{"type": "none"}
+		case "required":
+			return map[string]any{"type": "any"}
+		}
+	case map[string]any:
+		if v["type"] == "function" {
+			name, _ := v["name"].(string)
+			if name == "" {
+				if fn, ok := v["function"].(map[string]any); ok {
+					name, _ = fn["name"].(string)
+				}
+			}
+			if name != "" {
+				return map[string]any{"type": "tool", "name": name}
+			}
+		}
+	}
+	return nil
 }
 
 // anthropicToResponses converts an Anthropic /v1/messages JSON response into a
@@ -1140,8 +1675,11 @@ func buildAnthropicPayload(model string, payload responsesRequest, messages []an
 func anthropicToResponses(data []byte, model string) (responsesResponse, tokenUsage) {
 	var ar struct {
 		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type  string          `json:"type"`
+			Text  string          `json:"text"`
+			ID    string          `json:"id"`
+			Name  string          `json:"name"`
+			Input json.RawMessage `json:"input"`
 		} `json:"content"`
 		Usage struct {
 			InputTokens              int `json:"input_tokens"`
@@ -1153,24 +1691,46 @@ func anthropicToResponses(data []byte, model string) (responsesResponse, tokenUs
 	_ = json.Unmarshal(data, &ar)
 
 	var text string
+	var toolCallItems []responsesItem
 	for _, block := range ar.Content {
-		if block.Type == "text" && block.Type != "" {
+		switch block.Type {
+		case "text":
 			if text == "" {
 				text = block.Text
 			} else {
 				text += "\n" + block.Text
 			}
+		case "tool_use":
+			toolCallItems = append(toolCallItems, responsesItem{
+				Type:      "function_call",
+				ID:        fmt.Sprintf("fc_%s", generateID()),
+				Status:    "completed",
+				CallID:    block.ID,
+				Name:      block.Name,
+				Arguments: string(block.Input),
+			})
 		}
 	}
+
+	var outputItems []responsesItem
+	if text != "" || len(toolCallItems) == 0 {
+		outputItems = append(outputItems, responsesItem{
+			Type:   "message",
+			ID:     fmt.Sprintf("msg_%s", generateID()),
+			Role:   "assistant",
+			Status: "completed",
+			Content: []responsesContent{
+				{Type: "output_text", Text: text, Annotations: []any{}},
+			},
+		})
+	}
+	outputItems = append(outputItems, toolCallItems...)
+
 	resp := responsesResponse{
 		ID:     fmt.Sprintf("resp_%s", generateID()),
 		Object: "response",
 		Model:  model,
-		Output: []responsesItem{{
-			Type:    "message",
-			Role:    "assistant",
-			Content: []responsesContent{{Type: "output_text", Text: text}},
-		}},
+		Output: outputItems,
 		Usage: responsesUsage{
 			InputTokens:  ar.Usage.InputTokens,
 			OutputTokens: ar.Usage.OutputTokens,
@@ -1185,46 +1745,6 @@ func anthropicToResponses(data []byte, model string) (responsesResponse, tokenUs
 	return resp, usage
 }
 
-func emitResponsesTextStart(w http.ResponseWriter, flusher http.Flusher, itemID string) {
-	item := map[string]any{"id": itemID, "type": "message", "status": "in_progress", "role": "assistant", "content": []any{}}
-	writeSSEEvent(w, flusher, "response.output_item.added", map[string]any{
-		"type":         "response.output_item.added",
-		"output_index": 0,
-		"item":         item,
-	})
-	writeSSEEvent(w, flusher, "response.content_part.added", map[string]any{
-		"type":          "response.content_part.added",
-		"item_id":       itemID,
-		"output_index":  0,
-		"content_index": 0,
-		"part":          map[string]any{"type": "output_text", "text": "", "annotations": []any{}},
-	})
-}
-
-func emitResponsesTextDone(w http.ResponseWriter, flusher http.Flusher, itemID, text string) {
-	part := map[string]any{"type": "output_text", "text": text, "annotations": []any{}}
-	item := map[string]any{"id": itemID, "type": "message", "status": "completed", "role": "assistant", "content": []any{part}}
-	writeSSEEvent(w, flusher, "response.output_text.done", map[string]any{
-		"type":          "response.output_text.done",
-		"item_id":       itemID,
-		"output_index":  0,
-		"content_index": 0,
-		"text":          text,
-	})
-	writeSSEEvent(w, flusher, "response.content_part.done", map[string]any{
-		"type":          "response.content_part.done",
-		"item_id":       itemID,
-		"output_index":  0,
-		"content_index": 0,
-		"part":          part,
-	})
-	writeSSEEvent(w, flusher, "response.output_item.done", map[string]any{
-		"type":         "response.output_item.done",
-		"output_index": 0,
-		"item":         item,
-	})
-}
-
 // writeSSEEvent writes a single SSE event to the response writer.
 func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventName string, data any) {
 	jsonData, err := json.Marshal(data)
@@ -1234,6 +1754,19 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventName string
 	}
 	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventName, jsonData)
 	flusher.Flush()
+}
+
+// sortedKeys returns the integer keys of a map in ascending order. Tool-call
+// state is keyed by the upstream index (arrival order); iterating a Go map is
+// nondeterministic, so callers use this to emit output items in a stable,
+// arrival-ordered sequence across requests.
+func sortedKeys[V any](m map[int]V) []int {
+	keys := make([]int, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return keys
 }
 
 // generateID generates a random hex ID for Responses API.

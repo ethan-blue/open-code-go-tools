@@ -280,7 +280,7 @@ func catalogEntry(id string, index int) map[string]any {
 		"context_window":                   262144,
 		"max_context_window":               262144,
 		"effective_context_window_percent": 95,
-		"experimental_supported_tools":     []string{},
+		"experimental_supported_tools":     []string{"shell", "apply_patch", "web_search"},
 		"input_modalities":                 []string{"text"},
 		// ponytail: one neutral level for third-party models; add richer
 		// per-model metadata only after an upstream actually needs it.

@@ -20,7 +20,7 @@ func anthropicToOpenAI(in anthropicRequest) openAIRequest {
 	if out.Stream {
 		out.StreamOptions = map[string]bool{"include_usage": true}
 	}
-	
+
 	// Clamp MaxTokens to prevent "Range of max_tokens should be [1, 65536]" errors
 	// (common with Qwen and other non-OpenAI standard providers)
 	if out.MaxTokens <= 0 {
@@ -229,9 +229,9 @@ func usageFromOpenAI(in openAIUsage, fallbackInputTokens int) tokenUsage {
 		cacheRead = in.PromptTokensDetails.CachedTokens
 	}
 	return tokenUsage{
-		InputTokens:     inputTokens,
-		OutputTokens:    outputTokens,
-		CacheReadTokens: cacheRead,
+		InputTokens:         inputTokens,
+		OutputTokens:        outputTokens,
+		CacheReadTokens:     cacheRead,
 		CacheCreationTokens: in.CacheCreationInputTokens,
 	}
 }
@@ -296,6 +296,8 @@ func convertToolChoice(choice any, allowedToolNames map[string]bool) any {
 	switch m["type"] {
 	case "auto":
 		return "auto"
+	case "none":
+		return "none"
 	case "any":
 		return "required"
 	case "tool":

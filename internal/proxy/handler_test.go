@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -215,6 +216,273 @@ func TestResponsesEmptyInput(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for empty input, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestResponsesInputToMessagesToolContinuation verifies that a Responses-API
+// input array carrying a prior tool call (function_call) and its result
+// (function_call_output) is reconstructed as Anthropic tool_use / tool_result
+// content blocks. This matters because Codex sends these items on the
+// continuation turn; dropping them (the pre-fix behavior) silently breaks
+// multi-turn tool use — the upstream never learns the tool's result.
+func TestResponsesInputToMessagesToolContinuation(t *testing.T) {
+	input := []any{
+		map[string]any{"role": "user", "content": "what's the weather?"},
+		map[string]any{
+			"type":      "function_call",
+			"call_id":   "call_abc",
+			"name":      "get_weather",
+			"arguments": `{"city":"Paris"}`,
+		},
+		map[string]any{
+			"type":    "function_call_output",
+			"call_id": "call_abc",
+			"output":  "sunny, 21C",
+		},
+	}
+
+	msgs := responsesInputToMessages(input)
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d: %#v", len(msgs), msgs)
+	}
+
+	// [0] plain user text
+	if msgs[0].Role != "user" {
+		t.Fatalf("msg[0] role = %q, want user", msgs[0].Role)
+	}
+	if s, _ := msgs[0].Content.(string); s != "what's the weather?" {
+		t.Fatalf("msg[0] content = %#v", msgs[0].Content)
+	}
+
+	// [1] assistant tool_use reconstructed from function_call, with arguments
+	// parsed into a structured object (not left as a JSON string).
+	if msgs[1].Role != "assistant" {
+		t.Fatalf("msg[1] role = %q, want assistant", msgs[1].Role)
+	}
+	blocks, ok := msgs[1].Content.([]any)
+	if !ok || len(blocks) != 1 {
+		t.Fatalf("msg[1] content is not a single block: %#v", msgs[1].Content)
+	}
+	tu, _ := blocks[0].(map[string]any)
+	if tu["type"] != "tool_use" || tu["id"] != "call_abc" || tu["name"] != "get_weather" {
+		t.Fatalf("msg[1] tool_use block wrong: %#v", tu)
+	}
+	inputObj, ok := tu["input"].(map[string]any)
+	if !ok || inputObj["city"] != "Paris" {
+		t.Fatalf("msg[1] tool_use input not parsed to object: %#v", tu["input"])
+	}
+
+	// [2] user tool_result reconstructed from function_call_output
+	if msgs[2].Role != "user" {
+		t.Fatalf("msg[2] role = %q, want user", msgs[2].Role)
+	}
+	rblocks, ok := msgs[2].Content.([]any)
+	if !ok || len(rblocks) != 1 {
+		t.Fatalf("msg[2] content is not a single block: %#v", msgs[2].Content)
+	}
+	tr, _ := rblocks[0].(map[string]any)
+	if tr["type"] != "tool_result" || tr["tool_use_id"] != "call_abc" || tr["content"] != "sunny, 21C" {
+		t.Fatalf("msg[2] tool_result block wrong: %#v", tr)
+	}
+}
+
+// TestResponsesToolContinuationReachesUpstream is the end-to-end regression
+// guard for the tool-continuation fix: it captures the chat-completions body
+// the proxy sends upstream and asserts the tool result arrives as a role:tool
+// message. Before the fix, function_call_output was dropped and this body
+// contained no tool result at all.
+func TestResponsesToolContinuationReachesUpstream(t *testing.T) {
+	var gotBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"qwen3.7-max","choices":[{"message":{"content":"It's sunny in Paris."},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","input":[` +
+		`{"role":"user","content":"what's the weather?"},` +
+		`{"type":"function_call","call_id":"call_abc","name":"get_weather","arguments":"{\"city\":\"Paris\"}"},` +
+		`{"type":"function_call_output","call_id":"call_abc","output":"sunny, 21C"}` +
+		`]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	var upstreamReq struct {
+		Messages []struct {
+			Role       string `json:"role"`
+			ToolCallID string `json:"tool_call_id"`
+			Content    any    `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(gotBody, &upstreamReq); err != nil {
+		t.Fatalf("failed to decode upstream body: %v, body: %s", err, gotBody)
+	}
+
+	var sawToolResult bool
+	for _, m := range upstreamReq.Messages {
+		if m.Role == "tool" && m.ToolCallID == "call_abc" {
+			sawToolResult = true
+			if s, _ := m.Content.(string); !strings.Contains(s, "sunny") {
+				t.Fatalf("tool message content missing result: %#v", m.Content)
+			}
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("upstream request dropped the tool result (role:tool message absent): %s", gotBody)
+	}
+}
+
+// TestResponsesToolChoiceMapping verifies the Responses→Anthropic tool_choice
+// mapping that lets Codex control tool invocation. Without it, a client that
+// says "you must call a tool" (required) or "don't call tools" (none) is
+// silently ignored.
+func TestResponsesToolChoiceMapping(t *testing.T) {
+	cases := []struct {
+		name string
+		in   any
+		want map[string]any
+	}{
+		{"auto", "auto", map[string]any{"type": "auto"}},
+		{"none", "none", map[string]any{"type": "none"}},
+		{"required", "required", map[string]any{"type": "any"}},
+		{"named function flat", map[string]any{"type": "function", "name": "get_weather"}, map[string]any{"type": "tool", "name": "get_weather"}},
+		{"named function nested", map[string]any{"type": "function", "function": map[string]any{"name": "get_weather"}}, map[string]any{"type": "tool", "name": "get_weather"}},
+		{"unknown string", "banana", nil},
+		{"nil", nil, nil},
+		{"function without name", map[string]any{"type": "function"}, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := responsesToolChoiceToAnthropic(tc.in)
+			if tc.want == nil {
+				if got != nil {
+					t.Fatalf("want nil, got %#v", got)
+				}
+				return
+			}
+			for k, v := range tc.want {
+				if got[k] != v {
+					t.Fatalf("key %q = %#v, want %#v (full: %#v)", k, got[k], v, got)
+				}
+			}
+		})
+	}
+}
+
+// TestConvertToolChoiceNone verifies the chat-path leg of tool_choice="none":
+// the Anthropic intermediate {type:none} must translate to OpenAI "none" so a
+// generic OpenAI-compatible upstream also suppresses tool calls.
+func TestConvertToolChoiceNone(t *testing.T) {
+	allowed := map[string]bool{"get_weather": true}
+	got := convertToolChoice(map[string]any{"type": "none"}, allowed)
+	if got != "none" {
+		t.Fatalf("convertToolChoice(none) = %#v, want \"none\"", got)
+	}
+}
+
+// TestResponsesReasoningSummary verifies extraction of reasoning summary text
+// from the several shapes Codex may send.
+func TestResponsesReasoningSummary(t *testing.T) {
+	cases := []struct {
+		name string
+		item map[string]any
+		want string
+	}{
+		{"string summary", map[string]any{"summary": "  thought  "}, "thought"},
+		{"array summary", map[string]any{"summary": []any{
+			map[string]any{"type": "summary_text", "text": "step 1"},
+			map[string]any{"type": "summary_text", "text": "step 2"},
+		}}, "step 1\nstep 2"},
+		{"text fallback", map[string]any{"text": "direct"}, "direct"},
+		{"encrypted only", map[string]any{"encrypted_content": "opaque"}, ""},
+		{"empty", map[string]any{}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := responsesReasoningSummary(tc.item); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStripUnsignedThinkingBlocks verifies that signature-less thinking blocks
+// are removed (Anthropic rejects them) while signed thinking, and all other
+// block types, survive.
+func TestStripUnsignedThinkingBlocks(t *testing.T) {
+	msgs := []anthropicMsg{
+		{Role: "assistant", Content: []any{
+			map[string]any{"type": "thinking", "thinking": "no sig"},                        // dropped
+			map[string]any{"type": "thinking", "thinking": "signed", "signature": "abc123"}, // kept
+			map[string]any{"type": "text", "text": "hello"},                                 // kept
+		}},
+		{Role: "user", Content: "plain string stays"}, // untouched (not a block array)
+	}
+	stripUnsignedThinkingBlocks(msgs)
+
+	blocks, ok := msgs[0].Content.([]any)
+	if !ok {
+		t.Fatalf("msg[0] content type changed: %#v", msgs[0].Content)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 surviving blocks, got %d: %#v", len(blocks), blocks)
+	}
+	if b0, _ := blocks[0].(map[string]any); b0["signature"] != "abc123" {
+		t.Fatalf("first surviving block should be the signed thinking: %#v", blocks[0])
+	}
+	if s, _ := msgs[1].Content.(string); s != "plain string stays" {
+		t.Fatalf("string content should be untouched: %#v", msgs[1].Content)
+	}
+}
+
+// TestResponsesToolChoiceReachesUpstream is the end-to-end guard: a Responses
+// request with tool_choice="required" and parallel_tool_calls=false must reach
+// the chat-completions upstream as tool_choice:"required" and
+// parallel_tool_calls:false.
+func TestResponsesToolChoiceReachesUpstream(t *testing.T) {
+	var gotBody []byte
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl_1","model":"qwen3.7-max","choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer upstream.Close()
+
+	srv := newChatTestServer(t, upstream.URL)
+
+	body := []byte(`{"model":"qwen3.7-max","input":"weather?",` +
+		`"tool_choice":"required","parallel_tool_calls":false,` +
+		`"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body: %s", rr.Code, rr.Body.String())
+	}
+
+	var upstreamReq struct {
+		ToolChoice        any   `json:"tool_choice"`
+		ParallelToolCalls *bool `json:"parallel_tool_calls"`
+	}
+	if err := json.Unmarshal(gotBody, &upstreamReq); err != nil {
+		t.Fatalf("decode upstream body: %v, body: %s", err, gotBody)
+	}
+	if upstreamReq.ToolChoice != "required" {
+		t.Fatalf("upstream tool_choice = %#v, want \"required\": %s", upstreamReq.ToolChoice, gotBody)
+	}
+	if upstreamReq.ParallelToolCalls == nil || *upstreamReq.ParallelToolCalls != false {
+		t.Fatalf("upstream parallel_tool_calls = %#v, want false: %s", upstreamReq.ParallelToolCalls, gotBody)
 	}
 }
 

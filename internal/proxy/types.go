@@ -158,17 +158,18 @@ type anthropicTool struct {
 }
 
 type openAIRequest struct {
-	Model         string          `json:"model"`
-	Messages      []openAIMessage `json:"messages"`
-	Stream        bool            `json:"stream,omitempty"`
-	StreamOptions map[string]bool `json:"stream_options,omitempty"`
-	MaxTokens     int             `json:"max_tokens,omitempty"`
-	Temperature   *float64        `json:"temperature,omitempty"`
-	TopP          *float64        `json:"top_p,omitempty"`
-	Stop          []string        `json:"stop,omitempty"`
-	Tools         []openAITool    `json:"tools,omitempty"`
-	ToolChoice    any             `json:"tool_choice,omitempty"`
-	Thinking      any             `json:"thinking,omitempty"`
+	Model             string          `json:"model"`
+	Messages          []openAIMessage `json:"messages"`
+	Stream            bool            `json:"stream,omitempty"`
+	StreamOptions     map[string]bool `json:"stream_options,omitempty"`
+	MaxTokens         int             `json:"max_tokens,omitempty"`
+	Temperature       *float64        `json:"temperature,omitempty"`
+	TopP              *float64        `json:"top_p,omitempty"`
+	Stop              []string        `json:"stop,omitempty"`
+	Tools             []openAITool    `json:"tools,omitempty"`
+	ToolChoice        any             `json:"tool_choice,omitempty"`
+	ParallelToolCalls *bool           `json:"parallel_tool_calls,omitempty"`
+	Thinking          any             `json:"thinking,omitempty"`
 	// DeepSeek-compatible thinking effort. Only set for models that advertise this parameter.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
@@ -276,6 +277,14 @@ type responsesRequest struct {
 
 	Tools []responsesTool `json:"tools,omitempty"`
 
+	// ToolChoice mirrors the OpenAI/Responses tool_choice: the string
+	// "auto"/"none"/"required" or an object {"type":"function","name":...}.
+	ToolChoice any `json:"tool_choice,omitempty"`
+
+	// ParallelToolCalls lets the client disable parallel tool calls. A pointer
+	// so an explicit false is distinguishable from "unset" (default behavior).
+	ParallelToolCalls *bool `json:"parallel_tool_calls,omitempty"`
+
 	Temperature *float64 `json:"temperature,omitempty"`
 
 	MaxOutputTokens int `json:"max_output_tokens,omitempty"`
@@ -302,14 +311,20 @@ type responsesResponse struct {
 }
 
 type responsesItem struct {
-	Type    string             `json:"type"`
-	Role    string             `json:"role,omitempty"`
-	Content []responsesContent `json:"content,omitempty"`
+	Type      string             `json:"type"`
+	ID        string             `json:"id,omitempty"`
+	Role      string             `json:"role,omitempty"`
+	Status    string             `json:"status,omitempty"`
+	Content   []responsesContent `json:"content,omitempty"`
+	CallID    string             `json:"call_id,omitempty"`
+	Name      string             `json:"name,omitempty"`
+	Arguments string             `json:"arguments,omitempty"`
 }
 
 type responsesContent struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type        string `json:"type"`
+	Text        string `json:"text,omitempty"`
+	Annotations []any  `json:"annotations,omitempty"`
 }
 
 type responsesUsage struct {

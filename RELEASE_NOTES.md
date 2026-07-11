@@ -1,5 +1,23 @@
 # Release Notes
 
+## ocgt v4.0.3 (2026-07-11)
+
+- Codex Responses API tool calling is now complete across all upstream
+  protocols (openai-chat / anthropic / openai-responses):
+  - `tool_choice` (`auto` / `none` / `required` / a named function) is now
+    honored and mapped correctly to each upstream.
+  - `parallel_tool_calls: false` is now respected (OpenAI top-level field and
+    Anthropic `disable_parallel_tool_use`).
+  - Multi-turn tool use no longer breaks: `function_call` /
+    `function_call_output` continuation items are reconstructed so the tool
+    result reaches the upstream (previously dropped).
+  - Reasoning summary from Responses `reasoning` items is carried through;
+    signature-less thinking is stripped on the Anthropic path.
+  - Streamed multi-tool output is emitted in a deterministic, arrival order.
+- Build output is `ocgt_v4.0.3.exe`.
+- Note: v4.0.2 was released from another branch; this entry rolls its version
+  forward on the main line.
+
 ## ocgt v4.0.1 (2026-07-05)
 
 - Fixed dashboard quota status showing "quota cookie is not configured" when the

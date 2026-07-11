@@ -1,6 +1,6 @@
 # ocgt v4 - Claude Code / Codex Desktop Client And Local Proxy
 
-`ocgt` v4 is a desktop client and local proxy for Claude Code and Codex. It handles Anthropic ↔ OpenAI protocol conversion and provides the v4 desktop UI for providers, accounts, models, traffic, quota status, and client integrations. The current version is `v4.0.1`.
+`ocgt` v4 is a desktop client and local proxy for Claude Code and Codex. It handles Anthropic ↔ OpenAI protocol conversion and provides the v4 desktop UI for providers, accounts, models, traffic, quota status, and client integrations. The current version is `v4.0.3`.
 
 > Chinese version: [../README.md](../README.md)
 
@@ -41,6 +41,7 @@
 - Track tokens, request count, success rate, average latency, and estimated cost.
 - Filter traffic details by time, model, and status, then export CSV.
 - View Rolling / Weekly / Monthly quota progress.
+- v4.0.3 completes Codex Responses API tool calling: `tool_choice`, `parallel_tool_calls`, multi-turn tool-call continuation, and reasoning-summary passthrough, across the openai-chat / anthropic / openai-responses upstream protocols.
 - v4.0.1 fixes quota status incorrectly reporting an unset cookie when the active provider account already has one.
 
 ### Companion Tool
@@ -49,7 +50,7 @@
 
 ## Quick Start
 
-1. Download `ocgt_v4.0.1` or a newer build from [Releases](../../releases).
+1. Download `ocgt_v4.0.3` or a newer build from [Releases](../../releases).
 2. Open provider/account settings and enter your API key or account credential.
 3. Choose the active provider and default model separately for Claude and Codex.
 4. Run the Claude Code or Codex one-click integration.

@@ -1,6 +1,6 @@
 # ocgt v4 - Claude Code / Codex 桌面客户端与本地代理
 
-`ocgt` v4 是给 Claude Code 和 Codex 使用的桌面客户端与本地代理。它负责 Anthropic ↔ OpenAI 协议转换，并提供 v4 桌面界面来管理供应商、账号、模型、流量、额度和客户端集成。当前版本是 `v4.0.1`。
+`ocgt` v4 是给 Claude Code 和 Codex 使用的桌面客户端与本地代理。它负责 Anthropic ↔ OpenAI 协议转换，并提供 v4 桌面界面来管理供应商、账号、模型、流量、额度和客户端集成。当前版本是 `v4.0.3`。
 
 > English version: [docs/README.en-US.md](docs/README.en-US.md)
 
@@ -41,6 +41,7 @@
 - 记录 Token、请求数、成功率、平均延迟和费用估算。
 - 流量明细支持按时间、模型、状态筛选，并可导出 CSV。
 - 额度看板支持 Rolling / Weekly / Monthly 进度查看。
+- v4.0.3 补全了 Codex Responses API 的工具调用能力：`tool_choice`、`parallel_tool_calls`、多轮工具调用续传与推理摘要透传，覆盖 openai-chat / anthropic / openai-responses 三种上游协议。
 - v4.0.1 修复了已配置账号 cookie 时额度页仍提示未配置的问题。
 
 ### 配套工具
@@ -49,7 +50,7 @@
 
 ## 快速开始
 
-1. 从 [Releases](../../releases) 下载 `ocgt_v4.0.1` 或更新版本。
+1. 从 [Releases](../../releases) 下载 `ocgt_v4.0.3` 或更新版本。
 2. 打开供应商/账号配置，填入 API Key 或账号凭证。
 3. 为 Claude 和 Codex 分别选择当前供应商与默认模型。
 4. 在集成页执行 Claude Code 或 Codex 一键配置。

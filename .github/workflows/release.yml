@@ -58,7 +58,11 @@ jobs:
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          wails build -platform ${{ matrix.platform }} -clean -ldflags "-s -w -X github.com/ethan-blue/open-code-go-tools/internal/version.Version=${VERSION}"
+          TAGS=""
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            TAGS="-tags webkit2_41"
+          fi
+          wails build -platform ${{ matrix.platform }} -clean $TAGS -ldflags "-s -w -X github.com/ethan-blue/open-code-go-tools/internal/version.Version=${VERSION}"
 
       - name: Archive macOS app
         if: runner.os == 'macOS'
@@ -86,6 +90,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: build
+    if: always() && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
